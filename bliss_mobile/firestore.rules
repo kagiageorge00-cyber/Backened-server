@@ -1,0 +1,244 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ==================== HELPER FUNCTIONS ====================
+    function isAdmin() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    function isStaff() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'staff';
+    }
+    
+    function isEmployer() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'employer';
+    }
+    
+    function isAgent() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'agent';
+    }
+    
+    function isCandidate() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'candidate';
+    }
+    
+    // ==================== USERS COLLECTION ====================
+    match /users/{userId} {
+      // Only admins can read all users, users can only read themselves
+      allow read: if request.auth.uid == userId || isAdmin();
+      
+      // Users can only write their own data (except role - admin only)
+      allow create: if request.auth.uid == userId;
+      allow update: if request.auth.uid == userId &&
+                       !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'kycVerified']);
+      
+      // Admin can update any user field
+      allow update: if isAdmin();
+    }
+    
+    // ==================== FLIGHT BOOKINGS ====================
+    match /flight_bookings/{bookingId} {
+      // User can only read their own bookings
+      allow read: if request.auth.uid == resource.data.userId || isAdmin();
+      
+      // User can create their own booking
+      allow create: if request.auth.uid == request.resource.data.userId;
+      
+      // User can only update their own bookings (status updates)
+      allow update: if request.auth.uid == resource.data.userId;
+      
+      // Only admin can delete
+      allow delete: if isAdmin();
+    }
+    
+    // ==================== HOTEL BOOKINGS ====================
+    match /hotel_bookings/{bookingId} {
+      // User can only read their own bookings
+      allow read: if request.auth.uid == resource.data.userId || isAdmin();
+      
+      // User can create their own booking
+      allow create: if request.auth.uid == request.resource.data.userId;
+      
+      // User can only update their own bookings
+      allow update: if request.auth.uid == resource.data.userId;
+      
+      // Only admin can delete
+      allow delete: if isAdmin();
+    }
+    
+    // ==================== PAYMENT METADATA ====================
+    match /payment_metadata/{metadataId} {
+      // User can read their own payment metadata, admins see all
+      allow read: if request.auth.uid == resource.data.userId || isAdmin();
+      
+      // Created by backend only (from booking functions)
+      allow create: if request.auth.uid == request.resource.data.userId;
+      
+      // Only admins can update payment status
+      allow update: if isAdmin();
+    }
+    
+    // ==================== AMADEUS PAYABLES ====================
+    match /amadeus_payables/{payableId} {
+      // Only admins can read amadeus payables (sensitive financial data)
+      allow read: if isAdmin();
+      
+      // Only backend (via custom claims) can write - disabled for now
+      allow write: if false;
+    }
+    
+    // ==================== SETTLEMENTS ====================
+    match /settlements/{settlementId} {
+      // Only admins can read settlements
+      allow read: if isAdmin();
+      
+      // Only backend can create/update - disabled for now
+      allow write: if false;
+    }
+    
+    // ==================== VISA APPLICATIONS ====================
+    match /visa_applications/{applicationId} {
+      // User can read their own, staff/admin see all
+      allow read: if request.auth.uid == resource.data.userId || isAdmin() || isStaff();
+      
+      // User can create their own application
+      allow create: if request.auth.uid == request.resource.data.userId;
+      
+      // User can update their own (before review starts)
+      allow update: if request.auth.uid == resource.data.userId &&
+                       resource.data.status < 1;
+      
+      // Staff/Admin can update status fields only
+      allow update: if (isAdmin() || isStaff()) &&
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'approvalDate', 'rejectionReason']);
+    }
+    
+    // ==================== MEDICAL APPOINTMENTS ====================
+    match /medical_appointments/{appointmentId} {
+      // User can read their own, staff/admin see all
+      allow read: if request.auth.uid == resource.data.userId || isAdmin() || isStaff();
+      
+      // User can create appointment
+      allow create: if request.auth.uid == request.resource.data.userId;
+      
+      // User can update their own appointment
+      allow update: if request.auth.uid == resource.data.userId;
+      
+      // Staff can update appointment status/notes
+      allow update: if (isAdmin() || isStaff());
+    }
+    
+    // ==================== WEBHOOK EVENTS (Admin audit log) ====================
+    match /webhook_events/{eventId} {
+      // Only admins can read webhook events
+      allow read: if isAdmin();
+      
+      // Only backend can create - disabled for now
+      allow write: if false;
+    }
+
+    // ==================== LEGACY COLLECTIONS (Keep backward compatibility) ====================
+    // Jobs collection
+    match /jobs/{jobId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && (isEmployer() || isAdmin());
+    }
+
+    // Applications collection
+    match /applications/{appId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == resource.data.candidateId;
+    }
+
+    // Payments collection
+    match /payments/{paymentId} {
+      allow read: if request.auth != null && (request.auth.uid == resource.data.userId || isAdmin());
+      allow write: if request.auth != null;
+    }
+
+    // Interviews collection
+    match /interviews/{interviewId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+
+    // Employers collection
+    match /employers/{employerId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && (request.auth.uid == employerId || isAdmin());
+    }
+
+    // Agents collection
+    match /agents/{agentId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+
+    // Candidates collection
+    match /candidates/{candidateId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+
+    // Staff collection
+    match /staff/{staffId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // Bliss announcements
+    match /bliss_announcements/{announcementId} {
+      allow read: if true;
+      allow create, update, delete: if request.auth != null;
+    }
+
+    // Bliss global chat
+    match /bliss_global_chat/{messageId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update, delete: if false;
+    }
+
+    // Bliss private chats
+    match /bliss_private_chats/{chatId} {
+      function isParticipant() {
+        return request.auth != null && chatId.split('-').hasAny([request.auth.uid]);
+      }
+
+      allow read: if isParticipant();
+      allow create: if request.auth != null;
+
+      match /messages/{messageId} {
+        allow read: if isParticipant();
+        allow create: if request.auth != null
+                      && (request.resource.data.from == request.auth.uid)
+                      && (request.resource.data.to in chatId.split('-'))
+                      && (request.resource.data.type in ['text', 'image', 'file', 'call', 'video_call']);
+        allow update, delete: if false;
+      }
+    }
+
+    // Bliss support tickets
+    match /bliss_support_tickets/{ticketId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null;
+      allow delete: if request.auth != null;
+    }
+
+    // Bliss notifications
+    match /bliss_notifications/{notificationId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null;
+      allow delete: if request.auth != null;
+    }
+    
+    // ==================== DEFAULT DENY ====================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+

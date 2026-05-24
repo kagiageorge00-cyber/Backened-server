@@ -1,0 +1,48 @@
+mutation SeedData @transaction @auth(level: USER, insecureReason: "This operation is safe to expose to all logged in users.") {
+  company_insertMany(data: [
+    {
+      id: "6b29c370-729b-40aa-a8cf-96ffef993911",
+      name: "Acme Corp",
+      industry: "Technology"
+    },
+    {
+      id: "d8904a16-9a9b-4e33-b0c3-3740175f3622",
+      name: "Beta Industries",
+      industry: "Manufacturing"
+    }
+  ])
+  user_insertMany(data: [
+    {
+      id: "2c918082-b3a9-4c4c-a5a9-5c1b3a9a4c7d",
+      companyId: "6b29c370-729b-40aa-a8cf-96ffef993911",
+      displayName: "John Doe",
+      email: "john.doe@example.com",
+      role: "Admin"
+    },
+    {
+      id: "8b8b5442-b7a4-4c4f-8c5c-6b6a8b8b5442",
+      companyId: "d8904a16-9a9b-4e33-b0c3-3740175f3622",
+      displayName: "Jane Smith",
+      email: "jane.smith@example.com",
+      role: "Manager"
+    }
+  ])
+  jobPosting_insertMany(data: [
+    {
+      id: "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+      companyId: "6b29c370-729b-40aa-a8cf-96ffef993911",
+      title: "Software Engineer",
+      department: "Engineering",
+      description: "Develop and maintain software applications",
+      status: "Open"
+    },
+    {
+      id: "f4e3d2c1-b0a9-4d8c-9e7f-1a2b3c4d5e6f",
+      companyId: "d8904a16-9a9b-4e33-b0c3-3740175f3622",
+      title: "Production Manager",
+      department: "Production",
+      description: "Manage production operations",
+      status: "Closed"
+    }
+  ])
+}

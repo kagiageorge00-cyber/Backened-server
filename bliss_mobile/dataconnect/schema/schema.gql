@@ -1,0 +1,56 @@
+type Company @table {
+  name: String!
+  industry: String!
+  website: String
+  description: String
+}
+
+type JobPosting @table {
+  company: Company!
+  title: String!
+  description: String!
+  department: String!
+  status: String!
+  location: String
+  salaryRange: String
+  requirements: String
+  responsibilities: String
+}
+
+type Applicant @table {
+  firstName: String!
+  lastName: String!
+  email: String!
+  resumeUrl: String!
+  applicationDate: Timestamp!
+  phone: String
+  coverLetterUrl: String
+  desiredSalary: Float
+}
+
+type Application @table {
+  applicant: Applicant!
+  jobPosting: JobPosting!
+  applicationStatus: String!
+  submissionDate: Timestamp!
+  notes: String
+}
+
+type User @table {
+  company: Company!
+  email: String!
+  displayName: String!
+  role: String!
+  photoUrl: String
+  department: String
+}
+
+type Interview @table {
+  application: Application!
+  interviewDate: Date!
+  interviewTime: String!
+  interviewer: User!
+  interviewType: String
+  feedback: String
+  notes: String
+}

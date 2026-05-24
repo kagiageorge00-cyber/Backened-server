@@ -1,0 +1,27 @@
+mutation CreateApplicant($applicationDate: Timestamp!, $email: String!, $firstName: String!, $lastName: String!, $resumeUrl: String!) @auth(level: USER) {
+  applicant_insert(data: {applicationDate: $applicationDate, email: $email, firstName: $firstName, lastName: $lastName, resumeUrl: $resumeUrl})
+}
+
+query ListJobPostings @auth(level: PUBLIC, insecureReason: "This operation is safe to expose to the public") {
+  jobPostings {
+    id
+    title
+    description
+    company {
+      name
+    }
+  }
+}
+
+mutation UpdateApplicationStatus($id: UUID!, $applicationStatus: String!) @auth(level: USER) {
+  application_update(key: {id: $id}, data: {applicationStatus: $applicationStatus})
+}
+
+query GetUserByEmail($email: String!) @auth(level: USER, insecureReason: "This operation is safe to expose to all logged in users.") {
+  users(where: {email: {eq: $email}}) {
+    id
+    displayName
+    email
+    role
+  }
+}
