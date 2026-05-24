@@ -1,0 +1,17 @@
+{
+  "name": "bliss-travel-backend",
+  "version": "1.0.0",
+  "description": "Express backend for Bliss travel system",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.18.4",
+    "mongoose": "^9.6.2"
+  },
+  "engines": {
+    "node": ">=16"
+  }
+}
