@@ -5,6 +5,8 @@ const multer = require('multer');
 const path = require('path');
 const cors = require('cors');
 require('dotenv').config();
+const candidateRoutes = require('./routes/candidateRoutes');
+const applyRoutes = require('./routes/applyRoutes');
 const { notifyPaymentSuccess, notifyRegistrationSuccess, notifyApplicationUpdate, sendNotification } = require('./notificationService');
 // ----------------------
 // Bliss Connect: Medical Booking System
@@ -267,13 +269,19 @@ app.get('/api/users/candidates-approved', async (req, res) => {
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
+app.use(express.json());
+
+app.use('/api/candidates', candidateRoutes);
+app.use('/api/apply', applyRoutes);
+
+app.get('/api/health', (req, res) => {
+  res.status(200).json({ status: 'ok', message: 'Backend is running' });
+});
 
 // Simple in-memory storage for registered users (optional)
 const users = [];
 
 // Middleware
-app.use(cors());
-app.use(express.json());
 
 // Request logging
 app.use((req, res, next) => {

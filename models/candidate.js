@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 
 const candidateSchema = new mongoose.Schema({
   // BASIC INFO
+  fullName: String,
   name: String, // 🔥 match frontend
   email: String,
   phone: { type: String, unique: true },
@@ -45,6 +46,8 @@ const candidateSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+}, {
+  timestamps: true,
 });
 
 module.exports = mongoose.model("Candidate", candidateSchema);
