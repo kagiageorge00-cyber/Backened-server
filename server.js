@@ -654,10 +654,34 @@ app.use((err, req, res, next) => {
   res.status(err.status || 500).json({ success: false, error: err.message || 'Internal server error' });
 });
 
+const startServer = async () => {
+  if (!process.env.MONGO_URI) {
+    console.error('❌ MONGO_URI is not set. Please configure the Render environment variable.');
+    process.exit(1);
+  }
+
+  console.log('🚀 Starting server...');
+
+  const PORT = process.env.PORT || 3000;
+
+  try {
+    await mongoose.connect(process.env.MONGO_URI, {
+      serverSelectionTimeoutMS: 10000,
+    });
+
+    console.log('✅ MongoDB connected');
+
+    app.listen(PORT, () => {
+      console.log(`✅ Server running on port ${PORT}`);
+    });
+  } catch (err) {
+    console.error('❌ MongoDB connection error:', err.message);
+    process.exit(1);
+  }
+};
+
 if (require.main === module) {
-  app.listen(PORT, () => {
-    console.log(`Bliss travel backend listening on port ${PORT}`);
-  });
+  startServer();
 }
 
 module.exports = app;
