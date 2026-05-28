@@ -5,6 +5,7 @@ const multer = require('multer');
 const path = require('path');
 const cors = require('cors');
 require('dotenv').config();
+const Candidate = require('./models/candidate');
 const candidateRoutes = require('./routes/candidateRoutes');
 const applyRoutes = require('./routes/applyRoutes');
 const { notifyPaymentSuccess, notifyRegistrationSuccess, notifyApplicationUpdate, sendNotification } = require('./notificationService');
@@ -273,6 +274,15 @@ app.use(express.json());
 
 app.use('/api/candidates', candidateRoutes);
 app.use('/api/apply', applyRoutes);
+
+app.get('/api/marketplace', async (req, res) => {
+  try {
+    const candidates = await Candidate.find({ isVerified: true, status: 'available' }).sort({ createdAt: -1 });
+    return res.status(200).json({ success: true, count: candidates.length, data: candidates });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message || 'Failed to fetch marketplace candidates' });
+  }
+});
 
 app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'ok', message: 'Backend is running' });
