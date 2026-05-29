@@ -8,6 +8,7 @@ require('dotenv').config();
 const Candidate = require('./models/candidate');
 const candidateRoutes = require('./routes/candidateRoutes');
 const applyRoutes = require('./routes/applyRoutes');
+const submitPaymentsRoutes = require('./routes/submitpayments');
 const { notifyPaymentSuccess, notifyRegistrationSuccess, notifyApplicationUpdate, sendNotification } = require('./notificationService');
 // ----------------------
 // Bliss Connect: Medical Booking System
@@ -274,6 +275,7 @@ app.use(express.json());
 
 app.use('/api/candidates', candidateRoutes);
 app.use('/api/apply', applyRoutes);
+app.use('/api', submitPaymentsRoutes);
 
 app.get('/api/marketplace', async (req, res) => {
   try {
