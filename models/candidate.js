@@ -42,6 +42,11 @@ const candidateSchema = new mongoose.Schema({
     default: "pending",
   },
 
+  uniqueCode: {
+    type: String,
+    default: "",
+  },
+
   createdAt: {
     type: Date,
     default: Date.now,
