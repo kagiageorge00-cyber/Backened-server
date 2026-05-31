@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 
 const Payment = require("../models/Payment");
-const Candidate = require("../models/Candidate");
+const Candidate = require("../models/candidate");
 const sendEmail = require("../email");
 
 // ======================
