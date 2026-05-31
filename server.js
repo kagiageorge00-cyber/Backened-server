@@ -18,7 +18,7 @@ const Payment = require('./models/Payment');
 // ======================
 const candidateRoutes = require('./routes/candidateRoutes');
 const applyRoutes = require('./routes/applyRoutes');
-const registerRoutes = require('./routes/registerRoutes');
+const registerRoutes = require("./routes/register");
 const paymentRoutes = require('./routes/paymentRoutes');
 const uploadRoutes = require('./routes/uploadRoutes');
 const adminRoutes = require('./routes/adminRoutes');
