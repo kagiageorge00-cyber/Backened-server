@@ -1,11 +1,31 @@
+// routes/register.js
+
 const express = require("express");
 const router = express.Router();
-const Candidate = require("../models/Candidate");
-const Payment = require("../models/Payment"); // make sure this exists
-const sendEmail = require("../email"); // your email service
+const bcrypt = require("bcryptjs");
+
+const Candidate = require("../models/candidate");
+const Payment = require("../models/Payment");
+const sendEmail = require("../email");
 
 // ======================
-// REGISTER CANDIDATE
+// 🔐 HELPERS
+// ======================
+function generatePassword(length = 8) {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+  let pass = "";
+  for (let i = 0; i < length; i++) {
+    pass += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return pass;
+}
+
+function generateCandidateCode() {
+  return "BLISS-" + Math.floor(100000 + Math.random() * 900000); // cleaner ID
+}
+
+// ======================
+// 🚀 REGISTER CANDIDATE
 // ======================
 router.post("/register", async (req, res) => {
   try {
@@ -16,8 +36,6 @@ router.post("/register", async (req, res) => {
       country,
       skills,
       experience,
-      photoUrl,
-      videoUrl,
     } = req.body;
 
     // ======================
@@ -26,16 +44,16 @@ router.post("/register", async (req, res) => {
     if (!fullName || !email || !phone) {
       return res.status(400).json({
         success: false,
-        error: "Missing required fields",
+        error: "fullName, email and phone are required",
       });
     }
 
     // ======================
-    // CHECK IF ALREADY EXISTS
+    // CHECK EXISTING
     // ======================
     const existing = await Candidate.findOne({ phone });
     if (existing) {
-      return res.status(400).json({
+      return res.status(409).json({
         success: false,
         error: "Candidate already registered",
       });
@@ -57,19 +75,27 @@ router.post("/register", async (req, res) => {
     }
 
     // ======================
+    // GENERATE CREDENTIALS
+    // ======================
+    const passwordPlain = generatePassword();
+    const hashedPassword = await bcrypt.hash(passwordPlain, 10);
+    const uniqueCode = generateCandidateCode();
+
+    // ======================
     // CREATE CANDIDATE
     // ======================
     const candidate = await Candidate.create({
       fullName,
+      name: fullName, // 🔥 matches your schema
       email,
       phone,
       country,
       skills,
       experience,
-      photoUrl,
-      videoUrl,
 
-      // 🔥 SYSTEM FLAGS
+      uniqueCode, // ✅ correct field (not candidateId)
+      password: hashedPassword,
+
       isVerified: true,
       paymentStatus: "completed",
       status: "available",
@@ -80,16 +106,17 @@ router.post("/register", async (req, res) => {
     // ======================
     await sendEmail(
       email,
-      "Application Successful - Bliss Connect",
+      "Your Bliss Connect Login Details",
       `Hello ${fullName},
 
-🎉 Your application has been received successfully.
+✅ Registration successful!
 
-✅ You are now a verified candidate on Bliss Connect.
+Your login details:
 
-We will match you with available jobs soon.
+ID: ${uniqueCode}
+Password: ${passwordPlain}
 
-Thank you for trusting us.
+Login here: https://your-portal-link.com
 
 — Bliss Connect`
     );
@@ -97,18 +124,19 @@ Thank you for trusting us.
     // ======================
     // RESPONSE
     // ======================
-    res.json({
+    return res.status(201).json({
       success: true,
       message: "Candidate registered successfully",
+      candidateId: uniqueCode,
       data: candidate,
     });
 
   } catch (err) {
     console.error("❌ REGISTER ERROR:", err);
 
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
-      error: err.message,
+      error: err.message || "Server error",
     });
   }
 });
