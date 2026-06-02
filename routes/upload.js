@@ -41,9 +41,5 @@ router.post("/", upload.single("image"), (req, res) => {
     });
   }
 });
-res.json({
-  success: true,
-  url: `http://102.0.16.208:3000/uploads/${req.file.filename}`,
-});
 
 module.exports = router;

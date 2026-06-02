@@ -1,61 +1,72 @@
-// backend/models/payment.js
+// models/Payment.js
 
-module.exports = (sequelize, DataTypes) => {
-  const Payment = sequelize.define(
-    "Payment",
-    {
-      id: {
-        type: DataTypes.INTEGER,
-        autoIncrement: true,
-        primaryKey: true,
-      },
+const mongoose = require("mongoose");
 
-      intentId: {
-        type: DataTypes.STRING,
-        allowNull: false,
-        unique: true,
-      },
-
-      userId: {
-        type: DataTypes.STRING,
-        allowNull: false,
-      },
-
-      amount: {
-        type: DataTypes.FLOAT,
-        allowNull: false,
-      },
-
-      title: {
-        type: DataTypes.STRING,
-        allowNull: false,
-      },
-
-      method: {
-        type: DataTypes.STRING, // mpesa / flutterwave / card
-        allowNull: true,
-      },
-
-      status: {
-        type: DataTypes.STRING, // pending / verified / failed
-        defaultValue: "pending",
-      },
-
-      transactionId: {
-        type: DataTypes.STRING,
-        allowNull: true,
-      },
-
-      metadata: {
-        type: DataTypes.JSON, // optional extra info (callback data etc.)
-        allowNull: true,
-      },
+const paymentSchema = new mongoose.Schema(
+  {
+    intentId: {
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
     },
-    {
-      tableName: "payments",
-      timestamps: true, // adds createdAt & updatedAt
-    }
-  );
 
-  return Payment;
-};
+    userId: {
+      type: String, // can later change to ObjectId if linking to User
+      required: true,
+      index: true,
+    },
+
+    amount: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+
+    title: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    method: {
+      type: String,
+      enum: ["mpesa", "card", "flutterwave", "cash"],
+      default: "mpesa",
+    },
+
+    status: {
+      type: String,
+      enum: ["pending", "completed", "failed"],
+      default: "pending",
+      index: true,
+    },
+
+    transactionId: {
+      type: String,
+      trim: true,
+      index: true,
+    },
+
+    metadata: {
+      type: mongoose.Schema.Types.Mixed, // more flexible than Object
+      default: {},
+    },
+  },
+  {
+    timestamps: true,
+  }
+);
+
+// ======================
+// INDEXES (FAST QUERIES)
+// ======================
+paymentSchema.index({ userId: 1, status: 1 });
+
+// ======================
+// EXPORT SAFE MODEL
+// ======================
+const Payment =
+  mongoose.models.Payment || mongoose.model("Payment", paymentSchema);
+
+module.exports = Payment;
