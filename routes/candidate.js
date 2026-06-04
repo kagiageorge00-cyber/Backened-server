@@ -11,6 +11,18 @@ const candidateSchema = new mongoose.Schema({
 
   photoUrl: String,
   videoUrl: String,
+  passportUrl: String,
+  medicalUrl: String,
+  resumeUrl: String,
+  additionalUrl: String,
+
+  uniqueCode: {
+    type: String,
+    unique: true,
+    index: true,
+  },
+
+  password: String,
 
   // 🔥 NEW SYSTEM
   isVerified: {

@@ -53,14 +53,64 @@ async function notifyPaymentSuccess(user) {
 async function notifyRegistrationSuccess(user) {
   if (!user.email) return;
 
+  const portalUrl = process.env.FRONTEND_URL || 'https://your-portal-link.com';
+  const loginUrl = user.uniqueCode
+    ? `${portalUrl}/candidatePortal?candidateId=${encodeURIComponent(user.uniqueCode)}`
+    : `${portalUrl}/candidatePortal`;
+
   const message = `
-    <h2>Welcome to Bliss Connect 🎉</h2>
-    <p>Hello ${user.name},</p>
-    <p>Your registration was successful.</p>
-    <p>Please proceed with your application.</p>
+    <h2>Registration Complete 🎉</h2>
+    <p>Hello ${user.name || 'Candidate'},</p>
+    <p>Your registration is now complete.</p>
+    <p>Use the following credentials to log in to the candidate portal:</p>
+    <ul>
+      <li><strong>Candidate ID:</strong> ${user.uniqueCode}</li>
+      <li><strong>Password:</strong> ${user.password}</li>
+    </ul>
+    <p>Login here: <a href="${loginUrl}">${loginUrl}</a></p>
+    <p>Please keep these details safe.</p>
   `;
 
-  await sendEmail(user.email, 'Welcome to Bliss Connect', message);
+  await sendEmail(user.email, 'Bliss Connect Registration Successful', message);
+}
+
+// ======================
+// ✅ MARKETPLACE LISTING EMAIL
+// ======================
+async function notifyMarketplaceListing(user) {
+  if (!user.email) return;
+
+  const message = `
+    <h2>Your profile is now on the market</h2>
+    <p>Hello ${user.name || 'Candidate'},</p>
+    <p>Your application is now visible to employers on the Bliss Connect marketplace.</p>
+    <p>We will notify you when potential employers are available.</p>
+    <p>Thank you for joining Bliss Connect.</p>
+  `;
+
+  await sendEmail(user.email, 'Your Application is Now on the Market', message);
+}
+
+// ======================
+// ✅ PAYMENT APPROVAL EMAIL
+// ======================
+async function notifyPaymentApproved(user) {
+  if (!user.email) return;
+
+  const portalUrl = process.env.FRONTEND_URL || 'https://your-portal-link.com';
+  const formUrl = `${portalUrl}/candidateForm${user.candidateId ? `?candidateId=${encodeURIComponent(user.candidateId)}` : ''}`;
+
+  const message = `
+    <h2>Payment Approved ✅</h2>
+    <p>Hello ${user.name || 'Candidate'},</p>
+    <p>Your payment has been approved by our team.</p>
+    ${user.candidateId ? `<p>Your Candidate ID is <strong>${user.candidateId}</strong>.</p>` : ''}
+    <p>Please complete your registration in the candidate form:</p>
+    <p><a href="${formUrl}">${formUrl}</a></p>
+    <p>Once your registration is complete, you will receive login details and marketplace confirmation.</p>
+  `;
+
+  await sendEmail(user.email, 'Payment Approved — Complete Your Registration', message);
 }
 
 // ======================
@@ -94,7 +144,9 @@ async function sendNotification(user, text) {
 
 module.exports = {
   notifyPaymentSuccess,
+  notifyPaymentApproved,
   notifyRegistrationSuccess,
+  notifyMarketplaceListing,
   notifyApplicationUpdate,
   sendNotification,
 };

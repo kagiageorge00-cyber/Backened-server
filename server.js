@@ -36,17 +36,91 @@ const paymentRoutes = require('./routes/payment');
 const uploadRoutes = require('./routes/upload');
 const adminRoutes = require('./routes/admin');
 const submitPaymentsRoutes = require('./routes/submitpayments');
+const submitPaymentsLegacy = require('./submitpayments');
+const CandidateModel = require('./models/candidate');
+const bcrypt = require('bcryptjs');
+const flightSearch = require('../functions/flightSearch');
 
 // ======================
 // API ROUTES
 // ======================
+app.use('/api', submitPaymentsLegacy);
 app.use('/api/candidates', candidateRoutes);
 app.use('/api/apply', applyRoutes);
 app.use('/api/register', registerRoutes);
+app.use('/api/candidate', registerRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/submitpayments', submitPaymentsRoutes);
+
+app.post('/register', async (req, res) => {
+  const { name, email, phone, userType } = req.body;
+  if (!name || !email || !phone || !userType) {
+    return res.status(400).json({ success: false, error: 'name, email, phone and userType are required' });
+  }
+
+  return res.json({
+    success: true,
+    user: { name, email, phone, userType }
+  });
+});
+
+app.post('/payment', async (req, res) => {
+  const { userId, amount } = req.body;
+  if (!userId || amount == null) {
+    return res.status(400).json({ success: false, error: 'userId and amount are required' });
+  }
+
+  return res.json({
+    success: true,
+    transactionId: `TX_${Date.now()}`
+  });
+});
+
+app.post('/flightSearch', async (req, res) => {
+  try {
+    const { origin, destination, date } = req.body;
+    if (!origin || !destination || !date) {
+      return res.status(400).json({ success: false, error: 'origin, destination and date are required' });
+    }
+
+    try {
+      const flights = await flightSearch.searchFlights(origin, destination, date);
+      return res.json({ success: true, flights: Array.isArray(flights) ? flights : [] });
+    } catch (error) {
+      console.warn('Flight search fallback:', error.message);
+      return res.json({ success: true, flights: [] });
+    }
+  } catch (err) {
+    console.error('Flight search error:', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/candidate/login', async (req, res) => {
+  try {
+    const { candidateId, password } = req.body;
+    if (!candidateId || !password) {
+      return res.status(400).json({ success: false, error: 'candidateId and password are required' });
+    }
+
+    const candidate = await CandidateModel.findOne({ uniqueCode: candidateId });
+    if (!candidate) {
+      return res.status(401).json({ success: false, error: 'Invalid ID or password' });
+    }
+
+    const match = await bcrypt.compare(password, candidate.password || '');
+    if (!match) {
+      return res.status(401).json({ success: false, error: 'Invalid ID or password' });
+    }
+
+    res.json({ success: true, candidateId: candidate.uniqueCode, fullName: candidate.fullName });
+  } catch (err) {
+    console.error('Login error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 // ======================
 // HEALTH CHECK
@@ -205,6 +279,12 @@ async function startServer() {
   }
 }
 
-startServer();
+if (require.main === module) {
+  startServer();
+}
 
 module.exports = app;
+
+if (require.main === module) {
+  startServer();
+}

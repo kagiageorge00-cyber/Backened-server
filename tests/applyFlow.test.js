@@ -1,3 +1,12 @@
+jest.mock('../models/Payment', () => ({
+  findOne: jest.fn().mockResolvedValue(null),
+  create: jest.fn().mockResolvedValue({
+    _id: 'PAY_123',
+    id: 'PAY_123',
+    transactionId: 'RK7WXYZ9AB',
+  }),
+}));
+
 const express = require('express');
 const request = require('supertest');
 

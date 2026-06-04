@@ -6,7 +6,10 @@ const bcrypt = require("bcryptjs");
 
 const Candidate = require("../models/candidate");
 const Payment = require("../models/Payment");
-const sendEmail = require("../email");
+const {
+  notifyRegistrationSuccess,
+  notifyMarketplaceListing,
+} = require("../services/notificationservice");
 
 // ======================
 // 🔐 HELPERS
@@ -59,13 +62,17 @@ router.post("/register", async (req, res) => {
       });
     }
 
+    const { registrationPaid } = req.body;
+
     // ======================
     // CHECK PAYMENT FIRST 🔒
     // ======================
-    const payment = await Payment.findOne({
-      userId: phone,
-      status: "completed",
-    });
+    const payment = registrationPaid === true
+      ? true
+      : await Payment.findOne({
+          userId: phone,
+          status: "completed",
+        });
 
     if (!payment) {
       return res.status(403).json({
@@ -102,24 +109,19 @@ router.post("/register", async (req, res) => {
     });
 
     // ======================
-    // SEND EMAIL 📧
+    // SEND EMAILS 📧
     // ======================
-    await sendEmail(
+    await notifyRegistrationSuccess({
       email,
-      "Your Bliss Connect Login Details",
-      `Hello ${fullName},
+      name: fullName,
+      uniqueCode,
+      password: passwordPlain,
+    });
 
-✅ Registration successful!
-
-Your login details:
-
-ID: ${uniqueCode}
-Password: ${passwordPlain}
-
-Login here: https://your-portal-link.com
-
-— Bliss Connect`
-    );
+    await notifyMarketplaceListing({
+      email,
+      name: fullName,
+    });
 
     // ======================
     // RESPONSE

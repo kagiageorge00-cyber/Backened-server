@@ -1,72 +1,28 @@
 const express = require("express");
 const router = express.Router();
-const nodemailer = require("nodemailer");
 
 // ✅ CORRECT MODEL PATH
 const Payment = require("../models/Payment");
+const User = require("../models/User");
+const { notifyPaymentSuccess } = require("../services/notificationservice");
 
 // ==========================
-// EMAIL SETUP
+// SUBMIT PAYMENT HANDLER
 // ==========================
-let transporter;
-
-function getTransporter() {
-  if (transporter) return transporter;
-
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-    console.warn("⚠️ Email credentials missing");
-    return null;
-  }
-
-  transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
-  });
-
-  return transporter;
-}
-
-// ==========================
-// SEND EMAIL
-// ==========================
-async function sendPaymentEmail(email, name) {
-  try {
-    const transport = getTransporter();
-    if (!transport) return;
-
-    await transport.sendMail({
-      from: `"Bliss Support" <${process.env.EMAIL_USER}>`,
-      to: email,
-      subject: "Payment Submitted",
-      html: `
-        <h2>Hello ${name || "User"}</h2>
-        <p>Your payment has been received.</p>
-        <p>Status: <b>Pending Approval</b></p>
-      `,
-    });
-
-    console.log("📧 Email sent");
-  } catch (err) {
-    console.log("❌ Email error:", err.message);
-  }
-}
-
-// ==========================
-// SUBMIT PAYMENT
-// ==========================
-router.post("/payments", async (req, res) => {
+async function handleSubmitPayment(req, res) {
   try {
     const {
-      userId,
+      userId: userIdFromBody,
       email,
       name,
       amount,
       transactionCode,
       paymentMethod,
+      phone,
+      candidateId,
     } = req.body;
+
+    const userId = userIdFromBody || phone || candidateId || email;
 
     if (!userId || !amount || !transactionCode) {
       return res.status(400).json({
@@ -100,11 +56,33 @@ router.post("/payments", async (req, res) => {
 
     console.log("✅ Payment saved");
 
-    if (email) sendPaymentEmail(email, name);
+    const notifyUser = {
+      email,
+      name,
+    };
 
-    res.status(201).json({
+    if (!notifyUser.email && userId) {
+      const candidate = await User.findOne({
+        $or: [
+          { phone: userId },
+          { uniqueCode: userId },
+          { email: userId },
+        ],
+      });
+      if (candidate) {
+        notifyUser.email = candidate.email;
+        notifyUser.name = candidate.name || notifyUser.name;
+      }
+    }
+
+    if (notifyUser.email) {
+      await notifyPaymentSuccess(notifyUser);
+    }
+
+    res.status(200).json({
       success: true,
-      message: "Payment submitted",
+      message: "Payment submitted successfully",
+      paymentId: payment._id || payment.id,
       data: payment,
     });
 
@@ -115,6 +93,9 @@ router.post("/payments", async (req, res) => {
       error: err.message,
     });
   }
-});
+}
+
+router.post('/payments', handleSubmitPayment);
 
 module.exports = router;
+module.exports.handleSubmitPayment = handleSubmitPayment;
