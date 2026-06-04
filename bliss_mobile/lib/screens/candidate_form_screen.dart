@@ -96,10 +96,17 @@ class _CandidateFormScreenState extends State<CandidateFormScreen> {
   void showSuccess() {
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (_) => AlertDialog(
-        title: const Text('Documents Uploaded'),
+        title: const Text('✅ Registration Complete!'),
         content: const Text(
-          'Your documents have been collected successfully. The team will review them and contact you if anything else is required.',
+          'Congratulations! Your registration is now complete.\n\n'
+          'Your profile has been posted to the Bliss Connect marketplace.\n\n'
+          'You will receive an email shortly with:\n'
+          '• Your unique candidate code\n'
+          '• Password for the candidate portal\n'
+          '• Login link to track opportunities\n\n'
+          'Check your email for these important details!',
         ),
         actions: [
           TextButton(

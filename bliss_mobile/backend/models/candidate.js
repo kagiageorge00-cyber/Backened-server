@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const candidateSchema = new mongoose.Schema({
+  name: String,
   fullName: String,
   email: String,
   phone: { type: String, unique: true },
