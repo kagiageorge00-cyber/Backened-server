@@ -39,7 +39,17 @@ const submitPaymentsRoutes = require('./routes/submitpayments');
 const submitPaymentsLegacy = require('./submitpayments');
 const CandidateModel = require('./models/candidate');
 const bcrypt = require('bcryptjs');
-const flightSearch = require('../functions/flightSearch');
+
+// Gracefully handle flightSearch module (may not exist in all deployments)
+let flightSearch;
+try {
+  flightSearch = require('../functions/flightSearch');
+} catch (err) {
+  // Fallback stub if functions directory is not available
+  flightSearch = {
+    searchFlights: async () => []
+  };
+}
 
 // ======================
 // API ROUTES
