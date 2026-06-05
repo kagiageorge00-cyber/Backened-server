@@ -99,7 +99,7 @@ async function notifyPaymentApproved(user) {
   if (!user.email) return;
 
   const portalUrl = FRONTEND_URL.replace(/\/$/, '');
-  const formUrl = `${portalUrl}/candidate-form${user.candidateId ? `?candidateId=${encodeURIComponent(user.candidateId)}` : ''}`;
+  const formUrl = `${portalUrl}/#/candidate-form${user.candidateId ? `?candidateId=${encodeURIComponent(user.candidateId)}` : ''}`;
 
   const message = `
     <h2>Payment Approved ✅</h2>

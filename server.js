@@ -179,7 +179,7 @@ app.get('/api/payment-success/:candidateId', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Candidate not found' });
     }
 
-    const candidateFormLink = `${FRONTEND_URL}/candidate-form?candidateId=${candidateId}`;
+    const candidateFormLink = `${FRONTEND_URL}/#/candidate-form?candidateId=${candidateId}`;
 
     return res.status(200).json({
       success: true,

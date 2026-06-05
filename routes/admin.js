@@ -265,7 +265,7 @@ router.post("/payments/:paymentId/approve", requireAdminAuth, async (req, res) =
     if (notificationTarget.email) {
       // STEP 3: Send payment approval email with candidate form link
       const frontendUrl = FRONTEND_URL.replace(/\/$/, '');
-      const candidateFormLink = `${frontendUrl}/candidate-form?candidateId=${notificationTarget.candidateId}`;
+      const candidateFormLink = `${frontendUrl}/#/candidate-form?candidateId=${notificationTarget.candidateId}`;
       
       console.log("📧 Sending payment approval email to", notificationTarget.email);
       

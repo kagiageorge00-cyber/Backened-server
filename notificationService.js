@@ -38,7 +38,7 @@ async function notifyPaymentSuccess(user) {
 
   // Send email with candidate form link
   if (user.email) {
-    const candidateFormLink = `${FRONTEND_URL}/candidate-form?candidateId=${user.phone || user.email}`;
+    const candidateFormLink = `${FRONTEND_URL}/#/candidate-form?candidateId=${user.phone || user.email}`;
     sendEmail(
       user.email,
       'Payment Received - Complete Your Form ✅',

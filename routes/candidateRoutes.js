@@ -270,7 +270,7 @@ router.get('/form/data', async (req, res) => {
     return res.status(200).json({
       success: true,
       data: candidate,
-      formLink: `${FRONTEND_URL}/candidate-form?candidateId=${candidateId}`
+      formLink: `${FRONTEND_URL}/#/candidate-form?candidateId=${candidateId}`
     });
   } catch (error) {
     return sendError(res, 500, error.message || 'Failed to fetch candidate form data');

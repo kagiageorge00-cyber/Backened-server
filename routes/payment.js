@@ -162,7 +162,7 @@ router.post("/verify", async (req, res) => {
 
     // SEND EMAIL (ASYNC - DON'T WAIT)
     if (candidate?.email) {
-      const candidateFormLink = `${FRONTEND_URL}/candidate-form?candidateId=${candidate.uniqueCode || candidate._id}`;
+      const candidateFormLink = `${FRONTEND_URL}/#/candidate-form?candidateId=${candidate.uniqueCode || candidate._id}`;
       
       sendEmail(
         candidate.email,
