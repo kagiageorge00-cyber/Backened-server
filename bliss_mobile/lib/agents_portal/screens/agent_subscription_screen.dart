@@ -9,7 +9,8 @@ class AgentSubscriptionScreen extends StatefulWidget {
   const AgentSubscriptionScreen({super.key, required this.agentId});
 
   @override
-  State<AgentSubscriptionScreen> createState() => _AgentSubscriptionScreenState();
+  State<AgentSubscriptionScreen> createState() =>
+      _AgentSubscriptionScreenState();
 }
 
 class _AgentSubscriptionScreenState extends State<AgentSubscriptionScreen> {
@@ -213,7 +214,9 @@ class _AgentSubscriptionScreenState extends State<AgentSubscriptionScreen> {
                       child: ElevatedButton(
                         onPressed: () {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Upgrade functionality coming soon')),
+                            const SnackBar(
+                                content:
+                                    Text('Upgrade functionality coming soon')),
                           );
                         },
                         style: ElevatedButton.styleFrom(
@@ -251,7 +254,9 @@ class _AgentSubscriptionScreenState extends State<AgentSubscriptionScreen> {
                       child: ElevatedButton(
                         onPressed: () {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Renewal functionality coming soon')),
+                            const SnackBar(
+                                content:
+                                    Text('Renewal functionality coming soon')),
                           );
                         },
                         style: ElevatedButton.styleFrom(
@@ -288,7 +293,11 @@ class _AgentSubscriptionScreenState extends State<AgentSubscriptionScreen> {
         children: [
           Text(
             label,
-            style: TextStyle(fontSize: 14, color: Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black87),
+            style: TextStyle(
+                fontSize: 14,
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.white
+                    : Colors.black87),
           ),
           if (statusColor != null)
             Container(

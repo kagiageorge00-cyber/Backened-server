@@ -9,63 +9,104 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  cupertino_icons: ^1.0.5
-  shared_preferences: ^2.1.1
-  file_picker: ^10.3.7
-  qr_flutter: ^4.1.0
-  # firebase_core: ^4.2.1
-  # cloud_firestore: ^6.0.3
-  # cloud_functions: ^6.0.3
-  # firebase_auth: ^6.1.1
-  # firebase_storage: ^13.0.4
-  image_picker: ^1.2.1
-  image_picker_for_web: ^3.1.1
-  intl: ^0.17.0
-  characters: 1.4.0
-  mime: ^2.0.0
-  fl_chart: ^0.68.0
-  http: ^1.1.0
-  font_awesome_flutter: ^10.2.1
-  uuid: ^3.0.7
-  video_player: ^2.8.3
-  chewie: ^1.7.1
+
+  cupertino_icons: ^1.0.6
+
+  # Core
+  http: ^1.2.1
+  provider: ^6.1.2
+  shared_preferences: ^2.2.2
+
+  # Auth
+  google_sign_in: ^6.2.1
+
+  # Payments
   mpesa_flutter_plugin: ^1.6.1
-  provider: ^6.0.5
   flutterwave_standard: ^1.1.0
-  agora_rtc_engine: ^6.3.0
-  permission_handler: ^10.4.0
-  fluttertoast: ^8.2.0
-  google_sign_in: ^6.2.0 
+  flutter_stripe: ^10.1.1
+
+  # Media
+  image_picker: ^1.2.1
+  file_picker: ^10.3.7
+  video_player: ^2.8.5
+  chewie: ^1.8.0
+
+  # UI / Utils
+  intl: 0.17.0
+  uuid: ^4.4.0
+  font_awesome_flutter: ^10.7.0
+  fl_chart: ^0.68.0
+  fluttertoast: ^8.2.4
+  url_launcher: ^6.3.0
+
+  # Documents
   pdf: ^3.11.0
   printing: ^5.12.0
-  flutter_secure_storage: ^9.0.0
+
+  # Security
   encrypt: ^5.0.3
-  flutter_stripe: ^10.1.1
-  url_launcher: ^6.2.2
-  go_router: ^13.0.0
-  firebase_messaging: ^16.1.2
-  
-  
+  crypto: ^3.0.2
 
+  # Realtime / Calls
+  agora_rtc_engine: ^6.3.0
+  permission_handler: ^11.3.1
 
+  # Firebase / Backend
+  # Firebase packages removed — using Render HTTP backend instead
+  flutter_secure_storage: ^9.0.0
+  http_parser: ^4.0.3
+  cloud_firestore:
+    path: packages/cloud_firestore
+  firebase_auth:
+    path: packages/firebase_auth
+  firebase_core:
+    path: packages/firebase_core
+  firebase_storage:
+    path: packages/firebase_storage
+  cloud_firestore_web:
+    path: packages/cloud_firestore_web
+  firebase_auth_web:
+    path: packages/firebase_auth_web
+  firebase_core_web:
+    path: packages/firebase_core_web
+  firebase_storage_web:
+    path: packages/firebase_storage_web
+  _flutterfire_internals:
+    path: packages/_flutterfire_internals
 
-
-
-
-  
-   
-
+  # Routing
+  go_router: ^13.2.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
-  lints: ^6.0.0
+
+dependency_overrides:
+  cloud_firestore:
+    path: "C:/Users/PC/Desktop/bliss software @/bliss_mobile/packages/cloud_firestore"
+  firebase_auth:
+    path: "C:/Users/PC/Desktop/bliss software @/bliss_mobile/packages/firebase_auth"
+  firebase_core:
+    path: "C:/Users/PC/Desktop/bliss software @/bliss_mobile/packages/firebase_core"
+  firebase_storage:
+    path: "C:/Users/PC/Desktop/bliss software @/bliss_mobile/packages/firebase_storage"
+  cloud_firestore_web:
+    path: "C:/Users/PC/Desktop/bliss software @/bliss_mobile/packages/cloud_firestore_web"
+  firebase_auth_web:
+    path: "C:/Users/PC/Desktop/bliss software @/bliss_mobile/packages/firebase_auth_web"
+  firebase_core_web:
+    path: "C:/Users/PC/Desktop/bliss software @/bliss_mobile/packages/firebase_core_web"
+  firebase_storage_web:
+    path: "C:/Users/PC/Desktop/bliss software @/bliss_mobile/packages/firebase_storage_web"
+  _flutterfire_internals:
+    path: "C:/Users/PC/Desktop/bliss software @/bliss_mobile/packages/_flutterfire_internals"
 
 flutter:
   uses-material-design: true
 
   assets:
+    # Videos
     - assets/videos/video1.mp4
     - assets/videos/video2.mp4
     - assets/videos/video3.mp4
@@ -74,11 +115,8 @@ flutter:
     - assets/videos/video6.mp4
     - assets/videos/video7.mp4
     - assets/videos/video8.mp4
-    - assets/images/candidatebanner1.svg
-    - assets/images/candidatebanner2.svg
-    - assets/images/candidatebanner3.svg
-    - assets/images/candidatebanner4.svg
-    - assets/images/candidatebanner5.svg
+
+    # Images
     - assets/images/logo.png
     - assets/images/picture1.png
     - assets/images/picture3.png
@@ -88,17 +126,29 @@ flutter:
     - assets/images/picture7.png
     - assets/images/picture8.png
     - assets/images/picture9.png
+    - assets/images/background.png
+
+    # Candidate
+    - assets/images/candidatebanner1.svg
+    - assets/images/candidatebanner2.svg
+    - assets/images/candidatebanner3.svg
+    - assets/images/candidatebanner4.svg
+    - assets/images/candidatebanner5.svg
+
     - assets/images/candidateslide1.jpeg
     - assets/images/candidateslide2.jpeg
     - assets/images/candidateslide3.jpeg
     - assets/images/candidateslide4.jpeg
     - assets/images/candidateslide5.jpeg
+
+    # Agent
     - assets/images/agentslide1.jpeg
     - assets/images/agentslide2.jpeg
     - assets/images/agentslide3.jpeg
     - assets/images/agentlide4.jpeg
     - assets/images/agentslide5.jpeg
-    - assets/images/agentslide5.jpeg
+
+    # Employer
     - assets/images/employerslide1.jpeg
     - assets/images/employerslide2.jpeg
     - assets/images/employerslide3.jpeg
@@ -106,16 +156,6 @@ flutter:
     - assets/images/employerslide5.jpeg
     - assets/images/employerslide6.jpeg
     - assets/images/employerslide7.jpeg
-
-  # fonts:
-  #   # Using system Roboto font instead of Inter
-  #   - family: Inter
-  #     fonts:
-  #       - asset: fonts/Inter-Regular.ttf
-  #       - asset: fonts/Inter-Medium.ttf
-  #         weight: 500
-  #       - asset: fonts/Inter-SemiBold.ttf
-  #         weight: 600
-  #       - asset: fonts/Inter-Bold.ttf
-  #         weight: 700
-
+    # All other images in the images folder
+    - assets/images/
+   

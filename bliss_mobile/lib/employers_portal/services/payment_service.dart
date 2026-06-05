@@ -1,4 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:bliss_mobile/firebase_stub.dart';
 
 class PaymentService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -29,7 +29,10 @@ class PaymentService {
       final employerId = data['employerId'];
 
       // Update payment
-      await _db.collection('payments').doc(paymentId).update({'status': 'verified'});
+      await _db
+          .collection('payments')
+          .doc(paymentId)
+          .update({'status': 'verified'});
 
       // Unlock candidate documents
       await _db.collection('candidates').doc(candidateId).update({

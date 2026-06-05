@@ -1,8 +1,6 @@
 // lib/employers_portal/models/interview_model.dart
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 class Interview {
-  String id; // mutable for Firestore doc ID assignment
+  String id;
   final String candidateId;
   final String candidateName;
   final String jobId;
@@ -11,8 +9,8 @@ class Interview {
   final String employerName;
 
   final DateTime scheduledDate;
-  final String scheduledTime; // e.g., "14:00 - 15:00"
-  String status; // Pending, Completed, Passed, Failed
+  final String scheduledTime;
+  String status;
   final String? feedback;
   final String? videoCallLink;
 
@@ -31,7 +29,7 @@ class Interview {
     this.videoCallLink,
   });
 
-  /// Convert Firestore Map → Interview
+  /// ✅ FROM BACKEND (JSON)
   factory Interview.fromMap(Map<String, dynamic> map) {
     return Interview(
       id: map['id'] ?? '',
@@ -42,7 +40,7 @@ class Interview {
       employerId: map['employerId'] ?? '',
       employerName: map['employerName'] ?? '',
       scheduledDate: map['scheduledDate'] != null
-          ? (map['scheduledDate'] as Timestamp).toDate()
+          ? DateTime.tryParse(map['scheduledDate']) ?? DateTime.now()
           : DateTime.now(),
       scheduledTime: map['scheduledTime'] ?? '',
       status: map['status'] ?? 'Pending',
@@ -51,7 +49,7 @@ class Interview {
     );
   }
 
-  /// Convert Interview → Map for Firestore
+  /// ✅ TO BACKEND (JSON)
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -61,7 +59,7 @@ class Interview {
       'jobTitle': jobTitle,
       'employerId': employerId,
       'employerName': employerName,
-      'scheduledDate': Timestamp.fromDate(scheduledDate),
+      'scheduledDate': scheduledDate.toIso8601String(),
       'scheduledTime': scheduledTime,
       'status': status,
       'feedback': feedback,
@@ -69,7 +67,7 @@ class Interview {
     };
   }
 
-  /// Clone with updates
+  /// ✅ COPY WITH
   Interview copyWith({
     String? candidateId,
     String? candidateName,

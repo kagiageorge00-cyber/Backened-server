@@ -45,6 +45,10 @@ function requireAdminAuth(req, res, next) {
 // ======================
 router.post("/login", async (req, res) => {
   try {
+    // Debug: log incoming request details to help diagnose 400/404 issues
+    console.log("🔔 Admin login request headers:", req.headers);
+    console.log("🔔 Admin login body:", req.body);
+
     const { username, password } = req.body;
     
     if (!username || !password) {
@@ -240,7 +244,7 @@ router.post("/payments/:paymentId/approve", requireAdminAuth, async (req, res) =
     let approvalEmailSent = false;
     if (notificationTarget.email) {
       // STEP 3: Send payment approval email with candidate form link
-      const candidateFormLink = `${process.env.FRONTEND_URL || 'https://blisssconnection12.netlify.app'}/candidate-form?candidateId=${notificationTarget.candidateId}`;
+      const candidateFormLink = `${process.env.FRONTEND_URL || 'https://blisssconnect12.netlify.app'}/candidate-form?candidateId=${notificationTarget.candidateId}`;
       
       console.log("📧 Sending payment approval email to", notificationTarget.email);
       
@@ -282,7 +286,7 @@ router.post("/payments/:paymentId/approve", requireAdminAuth, async (req, res) =
             
             <p style="color: #666; font-size: 12px; margin-top: 30px; border-top: 1px solid #ddd; padding-top: 20px;">
               Bliss Connect Team<br/>
-              <a href="https://blisssconnection12.netlify.app" style="color: #4CAF50; text-decoration: none;">Visit our website</a>
+              <a href="https://blisssconnect12.netlify.app" style="color: #4CAF50; text-decoration: none;">Visit our website</a>
             </p>
           </div>
         </div>`

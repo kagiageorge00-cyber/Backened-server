@@ -1,4 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:bliss_mobile/firebase_stub.dart';
 import '../models/employer_model.dart';
 
 class EmployerService {
@@ -50,4 +50,3 @@ class EmployerService {
     await saveEmployerProfile(defaultProfile);
   }
 }
-

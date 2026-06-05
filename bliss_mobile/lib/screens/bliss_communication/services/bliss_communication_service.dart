@@ -3,8 +3,7 @@
 import 'dart:typed_data';
 import 'dart:io' show File;
 
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart';
+import 'package:bliss_mobile/firebase_stub.dart';
 
 // Models used throughout the service. Ensure these files exist.
 import '../models/announcement_model.dart';
@@ -51,7 +50,9 @@ class BlissCommunicationService {
   // ANNOUNCEMENTS
   // ---------------------------------------------------------------------------
   Future<void> sendAnnouncement(AnnouncementModel announcement) async {
-    await _firestore.collection('bliss_announcements').add(announcement.toMap());
+    await _firestore
+        .collection('bliss_announcements')
+        .add(announcement.toMap());
   }
 
   Stream<List<AnnouncementModel>> announcementsStream({String? audience}) {
@@ -352,7 +353,9 @@ class BlissCommunicationService {
   // NOTIFICATIONS
   // ---------------------------------------------------------------------------
   Future<void> sendNotification(NotificationModel notification) async {
-    await _firestore.collection('bliss_notifications').add(notification.toMap());
+    await _firestore
+        .collection('bliss_notifications')
+        .add(notification.toMap());
   }
 
   Stream<List<NotificationModel>> notificationsForUserStream(String userId) {

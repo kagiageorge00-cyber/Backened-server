@@ -1,7 +1,7 @@
 // employer_dashboard_wrapper.dart
 import 'package:flutter/material.dart';
 import '../../services/backend_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:bliss_mobile/firebase_stub.dart';
 
 // <-- Update this import to the file that contains your dashboard widget.
 // If you used the Mockup 2 code I gave you, the file I suggested was

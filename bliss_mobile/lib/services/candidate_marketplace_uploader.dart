@@ -1,80 +1,76 @@
-import 'dart:io';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart';
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 
-class CandidateMarketplaceUploader {
-  /// Upload candidate info: full photo, ID photo, video, and resume
-  static Future<void> uploadCandidate({
+import '../config/api_config.dart';
+
+class CandidateMarketplaceService {
+  static const String baseUrl = ApiConfig.baseUrl;
+
+  /// ✅ CREATE CANDIDATE (MAIN FUNCTION)
+  static Future<bool> createCandidate({
     required String candidateId,
-    required String resumeText,
-    required File fullPhoto,
-    required File idPhoto,
-    File? videoFile,
+    required String fullName,
+    required String phone,
+    required String country,
+    required String jobCategory,
+    required String skills,
+    required String experience,
+    required String salary,
+    String? videoUrl,
   }) async {
     try {
-      // 1. Upload full photo
-      final fullPhotoRef = FirebaseStorage.instance
-          .ref()
-          .child('candidate_photos/full/$candidateId.jpg');
-      await fullPhotoRef.putFile(fullPhoto);
-      final fullPhotoUrl = await fullPhotoRef.getDownloadURL();
+      debugPrint('Create candidate POST → $baseUrl/api/candidates');
+      final response = await http.post(
+        Uri.parse("$baseUrl/api/candidates"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "candidateId": candidateId,
+          "fullName": fullName,
+          "phone": phone,
+          "country": country,
+          "jobCategory": jobCategory,
+          "skills": skills,
+          "experience": experience,
+          "expectedSalary": salary,
+          "videoUrl": videoUrl ?? "",
+        }),
+      );
 
-      // 2. Upload ID/passport photo
-      final idPhotoRef = FirebaseStorage.instance
-          .ref()
-          .child('candidate_photos/id/$candidateId.jpg');
-      await idPhotoRef.putFile(idPhoto);
-      final idPhotoUrl = await idPhotoRef.getDownloadURL();
+      debugPrint(
+          'Create candidate response: ${response.statusCode} ${response.body}');
+      final data = jsonDecode(response.body);
 
-      // 3. Upload video if provided
-      String? videoUrl;
-      if (videoFile != null) {
-        final videoRef = FirebaseStorage.instance
-            .ref()
-            .child('candidate_videos/$candidateId.mp4');
-        await videoRef.putFile(videoFile);
-        videoUrl = await videoRef.getDownloadURL();
+      if (response.statusCode >= 200 &&
+          response.statusCode < 300 &&
+          data['success'] == true) {
+        return true;
+      } else {
+        throw Exception(data["error"] ?? "Failed to create candidate");
       }
-
-      // 4. Save all info to Firestore
-      await FirebaseFirestore.instance
-          .collection('candidates_marketplace')
-          .doc(candidateId)
-          .set({
-        'resume': resumeText,
-        'full_photo_url': fullPhotoUrl,
-        'id_photo_url': idPhotoUrl,
-        'video_url': videoUrl ?? '',
-        'created_at': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
     } catch (e) {
-      throw Exception("Upload failed: $e");
+      throw Exception("Candidate upload failed: $e");
     }
   }
 
-  /// Upload only video and return URL (optional helper)
-  static Future<String> uploadVideo({
-    required String candidateId,
-    required File videoFile,
-  }) async {
-    final storageRef = FirebaseStorage.instance
-        .ref()
-        .child('candidate_videos/$candidateId.mp4');
+  /// ✅ FETCH CANDIDATES (MARKETPLACE)
+  static Future<List<Map<String, dynamic>>> getCandidates() async {
+    try {
+      final response = await http.get(
+        Uri.parse("$baseUrl/api/candidates/deployed"),
+      );
 
-    final uploadTask = storageRef.putFile(videoFile);
+      debugPrint(
+          'Fetch candidates response: ${response.statusCode} ${response.body}');
+      final data = jsonDecode(response.body);
 
-    final snapshot = await uploadTask.whenComplete(() {});
-    final videoUrl = await snapshot.ref.getDownloadURL();
-
-    // Update Firestore with video URL
-    await FirebaseFirestore.instance
-        .collection('candidates_marketplace')
-        .doc(candidateId)
-        .set({
-      'video_url': videoUrl,
-      'updated_at': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
-
-    return videoUrl;
+      if (response.statusCode == 200 && data['success'] == true) {
+        return List<Map<String, dynamic>>.from(data['data'] ?? []);
+      } else {
+        throw Exception("Failed to fetch candidates");
+      }
+    } catch (e) {
+      throw Exception("Error fetching candidates: $e");
+    }
   }
 }

@@ -1,7 +1,8 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:bliss_mobile/firebase_stub.dart';
 
 class CommunicationMonitorService {
-  static Future<void> flagBypassAttempt(String userId, String userType, String externalContact) async {
+  static Future<void> flagBypassAttempt(
+      String userId, String userType, String externalContact) async {
     await FirebaseFirestore.instance.collection('bypass_flags').add({
       'userId': userId,
       'userType': userType,
@@ -12,7 +13,8 @@ class CommunicationMonitorService {
     });
   }
 
-  static Future<void> logInternalCommunication(String fromUserId, String toUserId, String type) async {
+  static Future<void> logInternalCommunication(
+      String fromUserId, String toUserId, String type) async {
     await FirebaseFirestore.instance.collection('communication_logs').add({
       'fromUserId': fromUserId,
       'toUserId': toUserId,

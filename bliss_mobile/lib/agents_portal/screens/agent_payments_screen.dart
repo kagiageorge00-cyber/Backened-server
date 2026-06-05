@@ -71,7 +71,8 @@ class _AgentPaymentsScreenState extends State<AgentPaymentsScreen> {
             return const Center(child: CircularProgressIndicator());
           }
           if (snapshot.hasError) {
-            return Center(child: Text('Error loading payments: ${snapshot.error}'));
+            return Center(
+                child: Text('Error loading payments: ${snapshot.error}'));
           }
           final payments = snapshot.data ?? <Map<String, dynamic>>[];
           if (payments.isEmpty) {
@@ -84,7 +85,8 @@ class _AgentPaymentsScreenState extends State<AgentPaymentsScreen> {
               final payment = payments[index];
               final paymentId = payment['paymentId']?.toString() ?? '';
               return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8.0, vertical: 10),
                 child: Container(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(12),

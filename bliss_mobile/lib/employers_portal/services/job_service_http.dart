@@ -1,13 +1,12 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import '../models/job_model.dart';
+import '../../models/job_model.dart';
 import '../../services/activity_log_service.dart';
 import '../../services/backend_auth.dart';
 import '../models/user_role.dart';
 
 class JobService {
-  static const String _baseUrl =
-      'https://backened-server.onrender.com/api/jobs';
+  static const String _baseUrl = 'https://backend-server.onrender.com/api/jobs';
 
   // Create job
   Future<String> createJob(Job job) async {
@@ -22,7 +21,7 @@ class JobService {
         type: 'job_creation',
         actorId: BackendAuth.userId ?? job.employerId,
         actorRole: UserRole.employer.value,
-        description: 'Created job: ${job.title}',
+        description: 'Created job: ${job.jobTitle}',
         details: job.toJson(),
       );
       return data['data']['id'] ?? '';

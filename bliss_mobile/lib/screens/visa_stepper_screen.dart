@@ -1,7 +1,7 @@
 // lib/screens/visa_stepper_screen.dart
 import 'package:flutter/material.dart';
 import 'package:bliss_mobile/widgets/logo.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:bliss_mobile/firebase_stub.dart';
 import 'package:file_picker/file_picker.dart';
 
 /// Stepper-based Visa Application Screen
@@ -96,7 +96,8 @@ class _VisaStepperScreenState extends State<VisaStepperScreen> {
   Future<void> submitApplication() async {
     if (!_formKey.currentState!.validate()) return;
     if (selectedCountry == null || selectedVisaType == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Select country and visa type")));
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Select country and visa type")));
       return;
     }
 
@@ -123,7 +124,9 @@ class _VisaStepperScreenState extends State<VisaStepperScreen> {
     };
 
     try {
-      await FirebaseFirestore.instance.collection('visa_applications').add(data);
+      await FirebaseFirestore.instance
+          .collection('visa_applications')
+          .add(data);
       setState(() {
         uploadedFiles.clear();
         selectedCountry = null;
@@ -131,9 +134,11 @@ class _VisaStepperScreenState extends State<VisaStepperScreen> {
         _currentStep = 0;
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Application submitted. Our team will contact you.")));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text("Application submitted. Our team will contact you.")));
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error submitting: $e")));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text("Error submitting: $e")));
     } finally {
       setState(() => _submitting = false);
     }
@@ -161,13 +166,15 @@ class _VisaStepperScreenState extends State<VisaStepperScreen> {
         onStepContinue: () {
           if (_currentStep == 0) {
             if (selectedCountry == null) {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please choose a country")));
+              ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("Please choose a country")));
               return;
             }
           }
           if (_currentStep == 1) {
             if (selectedVisaType == null) {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please choose a visa type")));
+              ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("Please choose a visa type")));
               return;
             }
           }
@@ -195,14 +202,17 @@ class _VisaStepperScreenState extends State<VisaStepperScreen> {
               children: [
                 DropdownButtonFormField<String>(
                   initialValue: selectedCountry,
-                  items: countries.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+                  items: countries
+                      .map((c) => DropdownMenuItem(value: c, child: Text(c)))
+                      .toList(),
                   onChanged: (v) {
                     setState(() {
                       selectedCountry = v;
                       selectedVisaType = null;
                     });
                   },
-                  decoration: const InputDecoration(labelText: "Select country"),
+                  decoration:
+                      const InputDecoration(labelText: "Select country"),
                 ),
                 const SizedBox(height: 8),
                 if (selectedCountry != null)
@@ -210,11 +220,16 @@ class _VisaStepperScreenState extends State<VisaStepperScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const SizedBox(height: 8),
-                      Text("Official fee (site): ${COUNTRY_DATA[selectedCountry]!['official_amount']}"),
-                      Text("Our calculated fee (50%): ${computeFee(selectedCountry!).toStringAsFixed(2)}"),
+                      Text(
+                          "Official fee (site): ${COUNTRY_DATA[selectedCountry]!['official_amount']}"),
+                      Text(
+                          "Our calculated fee (50%): ${computeFee(selectedCountry!).toStringAsFixed(2)}"),
                       const SizedBox(height: 8),
-                      const Text("Required documents:", style: TextStyle(fontWeight: FontWeight.bold)),
-                      for (final doc in (COUNTRY_DATA[selectedCountry]!['required_docs'] as List))
+                      const Text("Required documents:",
+                          style: TextStyle(fontWeight: FontWeight.bold)),
+                      for (final doc
+                          in (COUNTRY_DATA[selectedCountry]!['required_docs']
+                              as List))
                         Text("• $doc"),
                     ],
                   ),
@@ -229,13 +244,19 @@ class _VisaStepperScreenState extends State<VisaStepperScreen> {
             title: const Text("Visa Type"),
             content: Column(
               children: [
-                if (selectedCountry == null) const Text("Select a country first"),
+                if (selectedCountry == null)
+                  const Text("Select a country first"),
                 if (selectedCountry != null)
                   DropdownButtonFormField<String>(
                     initialValue: selectedVisaType,
-                    items: (COUNTRY_DATA[selectedCountry]!['visa_types'] as List).map((t) => DropdownMenuItem(value: t as String, child: Text(t))).toList(),
+                    items:
+                        (COUNTRY_DATA[selectedCountry]!['visa_types'] as List)
+                            .map((t) => DropdownMenuItem(
+                                value: t as String, child: Text(t)))
+                            .toList(),
                     onChanged: (v) => setState(() => selectedVisaType = v),
-                    decoration: const InputDecoration(labelText: "Select visa type"),
+                    decoration:
+                        const InputDecoration(labelText: "Select visa type"),
                   ),
               ],
             ),
@@ -269,19 +290,25 @@ class _VisaStepperScreenState extends State<VisaStepperScreen> {
                   const SizedBox(height: 8),
                   TextFormField(
                     decoration: const InputDecoration(labelText: "Full Name"),
-                    validator: (v) => (v == null || v.trim().isEmpty) ? "Enter full name" : null,
+                    validator: (v) => (v == null || v.trim().isEmpty)
+                        ? "Enter full name"
+                        : null,
                     onSaved: (v) => fullName = v!.trim(),
                   ),
                   const SizedBox(height: 8),
                   TextFormField(
                     decoration: const InputDecoration(labelText: "Email"),
-                    validator: (v) => (v == null || !v.contains("@")) ? "Enter valid email" : null,
+                    validator: (v) => (v == null || !v.contains("@"))
+                        ? "Enter valid email"
+                        : null,
                     onSaved: (v) => email = v!.trim(),
                   ),
                   const SizedBox(height: 8),
                   TextFormField(
                     decoration: const InputDecoration(labelText: "Phone"),
-                    validator: (v) => (v == null || v.trim().length < 7) ? "Enter phone" : null,
+                    validator: (v) => (v == null || v.trim().length < 7)
+                        ? "Enter phone"
+                        : null,
                     onSaved: (v) => phone = v!.trim(),
                   ),
                 ],
@@ -302,24 +329,29 @@ class _VisaStepperScreenState extends State<VisaStepperScreen> {
                 ElevatedButton.icon(
                   onPressed: () => pickFile('passport', ['pdf', 'jpg', 'png']),
                   icon: const Icon(Icons.upload_file),
-                  label: Text(uploadedFiles['passport']?.name ?? 'Upload Passport/ID'),
+                  label: Text(
+                      uploadedFiles['passport']?.name ?? 'Upload Passport/ID'),
                 ),
                 const SizedBox(height: 8),
                 ElevatedButton.icon(
                   onPressed: () => pickFile('photo', ['jpg', 'png']),
                   icon: const Icon(Icons.photo),
-                  label: Text(uploadedFiles['photo']?.name ?? 'Upload Passport Photo'),
+                  label: Text(
+                      uploadedFiles['photo']?.name ?? 'Upload Passport Photo'),
                 ),
                 const SizedBox(height: 8),
                 ElevatedButton.icon(
                   onPressed: () => pickFile('bank', ['pdf', 'jpg', 'png']),
                   icon: const Icon(Icons.attach_file),
-                  label: Text(uploadedFiles['bank']?.name ?? 'Upload Bank Statement'),
+                  label: Text(
+                      uploadedFiles['bank']?.name ?? 'Upload Bank Statement'),
                 ),
                 const SizedBox(height: 16),
-                Text("Calculated fee: ${selectedCountry != null ? computeFee(selectedCountry!).toStringAsFixed(2) : 'N/A'}"),
+                Text(
+                    "Calculated fee: ${selectedCountry != null ? computeFee(selectedCountry!).toStringAsFixed(2) : 'N/A'}"),
                 const SizedBox(height: 8),
-                if (_submitting) const Center(child: CircularProgressIndicator()),
+                if (_submitting)
+                  const Center(child: CircularProgressIndicator()),
                 const SizedBox(height: 8),
                 ElevatedButton(
                   onPressed: _submitting ? null : submitApplication,

@@ -122,7 +122,7 @@ async function handleSubmitPayment(req, res) {
                 <p>We appreciate your patience!</p>
                 <p style="color: #666; font-size: 12px; margin-top: 30px; border-top: 1px solid #ddd; padding-top: 20px;">
                   Bliss Connect Team<br/>
-                  <a href="https://blisssconnection12.netlify.app" style="color: #4CAF50; text-decoration: none;">Visit our website</a>
+                  <a href="https://blisssconnect12.netlify.app" style="color: #4CAF50; text-decoration: none;">Visit our website</a>
                 </p>
               </div>
             </div>`
@@ -144,6 +144,7 @@ async function handleSubmitPayment(req, res) {
 }
 
 router.post('/payments', handleSubmitPayment);
+router.post('/submitPayment', handleSubmitPayment);
 
 module.exports = router;
 module.exports.handleSubmitPayment = handleSubmitPayment;

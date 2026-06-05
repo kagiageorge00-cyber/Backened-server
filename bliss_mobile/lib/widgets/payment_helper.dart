@@ -152,14 +152,6 @@ Future<bool> showUnifiedPaymentDialog(
                           }),
                         );
 
-                        await agentPaymentService.createPayment(
-                          userId: id,
-                          type: PaymentType.employerPayment,
-                          amount: amount,
-                          reference: transactionRef,
-                          status: PaymentStatus.completed,
-                        );
-
                         Navigator.of(context).pop(true);
                         return;
                       }

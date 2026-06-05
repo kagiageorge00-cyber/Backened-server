@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:bliss_mobile/firebase_stub.dart';
 
 class EmployerCommunicationScreen extends StatefulWidget {
   final String employerId;
@@ -12,10 +12,12 @@ class EmployerCommunicationScreen extends StatefulWidget {
   });
 
   @override
-  State<EmployerCommunicationScreen> createState() => _EmployerCommunicationScreenState();
+  State<EmployerCommunicationScreen> createState() =>
+      _EmployerCommunicationScreenState();
 }
 
-class _EmployerCommunicationScreenState extends State<EmployerCommunicationScreen> {
+class _EmployerCommunicationScreenState
+    extends State<EmployerCommunicationScreen> {
   List<Map<String, dynamic>> candidates = [];
   bool isLoading = true;
 
@@ -117,21 +119,27 @@ class _EmployerCommunicationScreenState extends State<EmployerCommunicationScree
                               child: CircleAvatar(
                                 backgroundColor: Colors.blue.shade100,
                                 child: Text(
-                                  candidate['name']?.toString().substring(0, 1).toUpperCase() ?? 'C',
+                                  candidate['name']
+                                          ?.toString()
+                                          .substring(0, 1)
+                                          .toUpperCase() ??
+                                      'C',
                                   style: const TextStyle(color: Colors.blue),
                                 ),
                               ),
                             ),
                             title: Text(
                               candidate['name'] ?? 'Unknown Candidate',
-                              style: const TextStyle(fontWeight: FontWeight.w600),
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w600),
                             ),
                             subtitle: Text(candidate['phone'] ?? ''),
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 IconButton(
-                                  icon: const Icon(Icons.chat, color: Colors.blue),
+                                  icon: const Icon(Icons.chat,
+                                      color: Colors.blue),
                                   onPressed: () {
                                     // Navigate to chat with candidate
                                     Navigator.pushNamed(
@@ -147,7 +155,8 @@ class _EmployerCommunicationScreenState extends State<EmployerCommunicationScree
                                   },
                                 ),
                                 IconButton(
-                                  icon: const Icon(Icons.schedule, color: Colors.green),
+                                  icon: const Icon(Icons.schedule,
+                                      color: Colors.green),
                                   onPressed: () {
                                     // Navigate to schedule interview
                                     Navigator.pushNamed(

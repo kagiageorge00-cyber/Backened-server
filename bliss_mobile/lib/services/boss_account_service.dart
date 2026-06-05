@@ -1,4 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:bliss_mobile/firebase_stub.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
@@ -7,7 +7,8 @@ class BossAccountService {
   // Hardcoded credentials for offline support
   static const String _bossUsername = 'boss';
   static const String _bossPassword = 'boss123';
-  static final String _bossHashedPassword = sha256.convert(utf8.encode(_bossPassword)).toString();
+  static final String _bossHashedPassword =
+      sha256.convert(utf8.encode(_bossPassword)).toString();
 
   static Future<void> initializeBossAccount() async {
     try {
@@ -33,7 +34,10 @@ class BossAccountService {
 
     // Try to check against Firestore
     try {
-      final doc = await FirebaseFirestore.instance.collection('staff').doc(username).get();
+      final doc = await FirebaseFirestore.instance
+          .collection('staff')
+          .doc(username)
+          .get();
       if (doc.exists) {
         return doc.data()?['password'] == hashedPassword;
       }

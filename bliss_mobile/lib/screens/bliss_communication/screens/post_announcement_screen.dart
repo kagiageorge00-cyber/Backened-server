@@ -1,12 +1,11 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:bliss_mobile/firebase_stub.dart';
 import 'package:flutter/material.dart';
 
 class PostAnnouncementScreen extends StatefulWidget {
   const PostAnnouncementScreen({super.key});
 
   @override
-  State<PostAnnouncementScreen> createState() =>
-      _PostAnnouncementScreenState();
+  State<PostAnnouncementScreen> createState() => _PostAnnouncementScreenState();
 }
 
 class _PostAnnouncementScreenState extends State<PostAnnouncementScreen> {
@@ -32,7 +31,6 @@ class _PostAnnouncementScreenState extends State<PostAnnouncementScreen> {
       appBar: AppBar(
         title: const Text("Post Announcement"),
       ),
-
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -44,15 +42,14 @@ class _PostAnnouncementScreenState extends State<PostAnnouncementScreen> {
               decoration: const InputDecoration(hintText: "Enter title"),
             ),
             const SizedBox(height: 15),
-
-            const Text("Message", style: TextStyle(fontWeight: FontWeight.bold)),
+            const Text("Message",
+                style: TextStyle(fontWeight: FontWeight.bold)),
             TextField(
               controller: _messageController,
               maxLines: 5,
               decoration: const InputDecoration(hintText: "Enter message"),
             ),
             const SizedBox(height: 15),
-
             const Text("Target Audience",
                 style: TextStyle(fontWeight: FontWeight.bold)),
             DropdownButton<String>(
@@ -71,7 +68,6 @@ class _PostAnnouncementScreenState extends State<PostAnnouncementScreen> {
               },
             ),
             const SizedBox(height: 20),
-
             const Text("Attachments (optional)",
                 style: TextStyle(fontWeight: FontWeight.bold)),
             Column(
@@ -80,12 +76,12 @@ class _PostAnnouncementScreenState extends State<PostAnnouncementScreen> {
                 for (var file in _attachments)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 5),
-                    child: Text("• $file", style: const TextStyle(color: Colors.blue)),
+                    child: Text("• $file",
+                        style: const TextStyle(color: Colors.blue)),
                   ),
               ],
             ),
             const SizedBox(height: 10),
-
             ElevatedButton.icon(
               onPressed: () async {
                 await _addAttachment();
@@ -93,7 +89,6 @@ class _PostAnnouncementScreenState extends State<PostAnnouncementScreen> {
               icon: const Icon(Icons.attach_file),
               label: const Text("Add Attachment (URL)"),
             ),
-
             const SizedBox(height: 30),
             SizedBox(
               width: double.infinity,
@@ -120,8 +115,7 @@ class _PostAnnouncementScreenState extends State<PostAnnouncementScreen> {
           title: const Text("Add Attachment URL"),
           content: TextField(
             controller: urlController,
-            decoration: const InputDecoration(
-                hintText: "Enter file/image URL"),
+            decoration: const InputDecoration(hintText: "Enter file/image URL"),
           ),
           actions: [
             TextButton(

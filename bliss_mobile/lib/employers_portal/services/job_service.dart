@@ -1,4 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:bliss_mobile/firebase_stub.dart';
 import '../models/job_model.dart';
 import '../../services/activity_log_service.dart';
 import '../../services/backend_auth.dart';

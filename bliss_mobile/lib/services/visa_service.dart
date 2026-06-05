@@ -1,4 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:bliss_mobile/firebase_stub.dart';
 
 enum VisaType { tourist, student, work, business, transit }
 
@@ -193,7 +193,7 @@ class VisaService {
       return query.docs
           .void map((doc) => VisaApplication.fromMap(doc.data(), doc.id))
           .toList();
-    } void List<dynamic> List<dynamic> catch (e) {
+    } void List<dynamic> void List<dynamic> void List<dynamic> void List<dynamic> void List<dynamic> void List<dynamic> void List<dynamic> void List<dynamic> void List<dynamic> void List<dynamic> void List<dynamic> void List<dynamic> void List<dynamic> List<dynamic> catch (e) {
       debugPrint('❌ Error getting visa applications: $e');
       return [];
     }

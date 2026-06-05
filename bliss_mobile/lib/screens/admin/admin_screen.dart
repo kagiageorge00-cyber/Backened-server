@@ -11,7 +11,7 @@ class AdminScreen extends StatefulWidget {
 class _AdminScreenState extends State<AdminScreen> {
   List candidates = [];
   List pendingPayments = [];
-  bool loading = true;
+  bool loading = false;
   String? error;
   bool showMarketplace = false;
   bool isLoggedIn = AdminService.isLoggedIn();
@@ -36,7 +36,8 @@ class _AdminScreenState extends State<AdminScreen> {
 
     if (!success) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("❌ Invalid credentials. Use: boss / boss123")),
+        const SnackBar(
+            content: Text("❌ Invalid credentials. Use: boss / boss123")),
       );
       return;
     }
@@ -73,7 +74,7 @@ class _AdminScreenState extends State<AdminScreen> {
 
     try {
       final data = await AdminService.getCandidates();
-      
+
       if (data.isEmpty && !AdminService.isLoggedIn()) {
         // Token might have expired
         setState(() {
@@ -213,69 +214,83 @@ class _AdminScreenState extends State<AdminScreen> {
 
     return Scaffold(
       appBar: AppBar(title: const Text("Admin Login")),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.admin_panel_settings, size: 80, color: Colors.blue),
-            const SizedBox(height: 20),
-            const Text(
-              "Admin Panel",
-              style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 30),
-            TextField(
-              controller: usernameController,
-              decoration: InputDecoration(
-                labelText: "Username",
-                hintText: "boss",
-                prefixIcon: const Icon(Icons.person),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: passwordController,
-              obscureText: true,
-              decoration: InputDecoration(
-                labelText: "Password",
-                hintText: "••••••••",
-                prefixIcon: const Icon(Icons.lock),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton(
-                onPressed: loading
-                    ? null
-                    : () {
-                        final username = usernameController.text.trim();
-                        final password = passwordController.text;
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 500),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const SizedBox(height: 40),
+                const Icon(Icons.admin_panel_settings,
+                    size: 80, color: Colors.blue),
+                const SizedBox(height: 20),
+                const Text(
+                  "Admin Panel",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 30),
+                TextField(
+                  controller: usernameController,
+                  decoration: InputDecoration(
+                    labelText: "Username",
+                    hintText: "boss",
+                    prefixIcon: const Icon(Icons.person),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: passwordController,
+                  obscureText: true,
+                  decoration: InputDecoration(
+                    labelText: "Password",
+                    hintText: "••••••••",
+                    prefixIcon: const Icon(Icons.lock),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed: loading
+                        ? null
+                        : () {
+                            final username = usernameController.text.trim();
+                            final password = passwordController.text;
 
-                        if (username.isEmpty || password.isEmpty) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text("Please enter credentials")),
-                          );
-                          return;
-                        }
+                            if (username.isEmpty || password.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                    content: Text("Please enter credentials")),
+                              );
+                              return;
+                            }
 
-                        adminLogin(username, password);
-                      },
-                child: loading
-                    ? const CircularProgressIndicator()
-                    : const Text("Login", style: TextStyle(fontSize: 18)),
-              ),
+                            adminLogin(username, password);
+                          },
+                    child: loading
+                        ? const CircularProgressIndicator()
+                        : const Text("Login", style: TextStyle(fontSize: 18)),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  "Enter your admin username and password.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey, fontSize: 12),
+                ),
+                const SizedBox(height: 40),
+              ],
             ),
-            const SizedBox(height: 20),
-            const Text(
-              "Default: boss / boss123",
-              style: TextStyle(color: Colors.grey, fontSize: 12),
-            ),
-          ],
+          ),
         ),
       ),
     );

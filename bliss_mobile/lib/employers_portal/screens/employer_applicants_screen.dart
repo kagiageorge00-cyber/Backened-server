@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:bliss_mobile/widgets/logo.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:bliss_mobile/firebase_stub.dart';
 
 class EmployerApplicantsScreen extends StatelessWidget {
   final String employerId;
@@ -66,7 +66,8 @@ class EmployerApplicantsScreen extends StatelessWidget {
               final applicant = applicants[index];
 
               return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8.0, vertical: 10),
                 child: Container(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(12),
@@ -85,7 +86,8 @@ class EmployerApplicantsScreen extends StatelessWidget {
                         applicant['candidateName'] ?? "Unknown",
                         style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
-                      subtitle: Text("Status: ${applicant['status'] ?? 'Pending'}"),
+                      subtitle:
+                          Text("Status: ${applicant['status'] ?? 'Pending'}"),
                       trailing: const Icon(Icons.arrow_forward),
                       onTap: () {
                         Navigator.pushNamed(

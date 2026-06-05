@@ -1,10 +1,12 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:bliss_mobile/firebase_stub.dart';
 import '../models/application_model.dart';
 
 class ApplicantsService {
   final CollectionReference _applicationsRef;
 
-  ApplicantsService() : _applicationsRef = FirebaseFirestore.instance.collection('applications');
+  ApplicantsService()
+      : _applicationsRef =
+            FirebaseFirestore.instance.collection('applications');
 
   /// Get all applications for a specific employer
   Stream<List<ApplicationModel>> getApplicationsByEmployer(String employerId) {
@@ -18,7 +20,8 @@ class ApplicantsService {
   }
 
   /// Get all applications for a specific candidate
-  Stream<List<ApplicationModel>> getApplicationsByCandidate(String candidateId) {
+  Stream<List<ApplicationModel>> getApplicationsByCandidate(
+      String candidateId) {
     return _applicationsRef
         .where('candidateId', isEqualTo: candidateId)
         .orderBy('appliedAt', descending: true)
@@ -38,13 +41,16 @@ class ApplicantsService {
   }
 
   /// Update application status (applied, interview, hired, rejected)
-  Future<void> updateApplicationStatus(String applicationId, String status) async {
+  Future<void> updateApplicationStatus(
+      String applicationId, String status) async {
     await _applicationsRef.doc(applicationId).update({'status': status});
   }
 
   /// Unlock candidate documents after hire fees are paid
   Future<void> unlockCandidateDocuments(String applicationId) async {
-    await _applicationsRef.doc(applicationId).update({'documentsUnlocked': true});
+    await _applicationsRef
+        .doc(applicationId)
+        .update({'documentsUnlocked': true});
   }
 
   /// Reject candidate and send back to candidate marketplace

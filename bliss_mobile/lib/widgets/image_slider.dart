@@ -85,6 +85,12 @@ class _ImageSliderState extends State<ImageSlider> {
                       Image.asset(
                         slide.image,
                         fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Image.asset(
+                            'assets/images/background.png',
+                            fit: BoxFit.cover,
+                          );
+                        },
                       ),
                       Container(
                         decoration: BoxDecoration(

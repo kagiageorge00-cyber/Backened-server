@@ -1,16 +1,64 @@
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import '../config/app_config.dart';
 import '../models/job_model.dart';
 
 class JobService {
-  Future<List<Job>> getJobs() async {
-    await Future.delayed(const Duration(seconds: 1)); // simulate loading
+  final String _base = AppConfig.backendUrl;
 
+  Future<List<Job>> getJobs() async {
+    try {
+      final resp = await http.get(
+        Uri.parse('$_base/api/jobs'),
+        headers: {"Content-Type": "application/json"},
+      );
+
+      if (resp.statusCode == 200) {
+        final data = jsonDecode(resp.body);
+
+        if (data['success'] == true && data['jobs'] != null) {
+          return (data['jobs'] as List)
+              .map<Job>((j) => Job.fromMap(j))
+              .toList();
+        }
+      }
+
+      return _fallbackJobs();
+    } catch (e) {
+      print("❌ Job fetch error: $e");
+      return _fallbackJobs();
+    }
+  }
+
+  Future<List<Job>> getFeaturedJobs() async {
+    final jobs = await getJobs();
+    return jobs.where((j) => j.featured == true).toList();
+  }
+
+  Future<List<Job>> getJobsByCountry(String country) async {
+    final jobs = await getJobs();
+    return jobs
+        .where((j) =>
+            j.country.toLowerCase() == country.toLowerCase())
+        .toList();
+  }
+
+  Future<List<Job>> getJobsByCategory(String category) async {
+    final jobs = await getJobs();
+    return jobs
+        .where((j) =>
+            j.jobTitle.toLowerCase().contains(category.toLowerCase()))
+        .toList();
+  }
+
+  // ✅ fallback
+  List<Job> _fallbackJobs() {
     return [
-      // Dubai Housemaids
       Job(
         id: '1',
         employerId: 'emp1',
         jobTitle: 'Housemaid',
-        companyName: 'bliss connect',
+        companyName: 'Bliss Connect',
         location: 'Dubai',
         country: 'UAE',
         salary: 1000,
@@ -20,226 +68,6 @@ class JobService {
         experienceLevel: 'Fresher',
         vacancies: 30,
         featured: true,
-        localOrInternational: 'International',
-      ),
-      Job(
-        id: '2',
-        employerId: 'emp1',
-        jobTitle: 'Housemaid',
-        companyName: 'bliss connect',
-        location: 'Dubai',
-        country: 'UAE',
-        salary: 1200,
-        currency: 'AED',
-        candidateCommission: 80000,
-        employerFee: 1000,
-        experienceLevel: 'Experienced',
-        vacancies: 30,
-        featured: true,
-        localOrInternational: 'International',
-      ),
-
-      // Qatar Housemaids
-      Job(
-        id: '3',
-        employerId: 'emp2',
-        jobTitle: 'Housemaid',
-        companyName: 'bliss connect',
-        location: 'Doha',
-        country: 'Qatar',
-        salary: 1000,
-        currency: 'QAR',
-        candidateCommission: 80000,
-        employerFee: 1000,
-        experienceLevel: 'Fresher',
-        vacancies: 20,
-        featured: false,
-        localOrInternational: 'International',
-      ),
-      Job(
-        id: '4',
-        employerId: 'emp2',
-        jobTitle: 'Housemaid',
-        companyName: 'bliss connect',
-        location: 'Doha',
-        country: 'Qatar',
-        salary: 1100,
-        currency: 'QAR',
-        candidateCommission: 80000,
-        employerFee: 1000,
-        experienceLevel: 'Experienced',
-        vacancies: 20,
-        featured: false,
-        localOrInternational: 'International',
-      ),
-
-      // Oman Housemaids
-      Job(
-        id: '5',
-        employerId: 'emp3',
-        jobTitle: 'Housemaid',
-        companyName: 'bliss connect',
-        location: 'Muscat',
-        country: 'Oman',
-        salary: 90,
-        currency: 'OMR',
-        candidateCommission: 0,
-        employerFee: 2000,
-        experienceLevel: 'Fresher',
-        vacancies: 15,
-        featured: false,
-        localOrInternational: 'International',
-      ),
-      Job(
-        id: '6',
-        employerId: 'emp3',
-        jobTitle: 'Housemaid',
-        companyName: 'bliss connect',
-        location: 'Muscat',
-        country: 'Oman',
-        salary: 100,
-        currency: 'OMR',
-        candidateCommission: 0,
-        employerFee: 2000,
-        experienceLevel: 'Experienced',
-        vacancies: 15,
-        featured: false,
-        localOrInternational: 'International',
-      ),
-
-      // Jordan Housemaids
-      Job(
-        id: '7',
-        employerId: 'emp4',
-        jobTitle: 'Housemaid',
-        companyName: 'bliss connect',
-        location: 'Amman',
-        country: 'Jordan',
-        salary: 225,
-        currency: 'USD',
-        candidateCommission: 0,
-        employerFee: 2500,
-        experienceLevel: 'Fresher',
-        vacancies: 10,
-        featured: false,
-        localOrInternational: 'International',
-      ),
-      Job(
-        id: '8',
-        employerId: 'emp4',
-        jobTitle: 'Housemaid',
-        companyName: 'bliss connect',
-        location: 'Amman',
-        country: 'Jordan',
-        salary: 250,
-        currency: 'USD',
-        candidateCommission: 0,
-        employerFee: 2500,
-        experienceLevel: 'Experienced',
-        vacancies: 10,
-        featured: false,
-        localOrInternational: 'International',
-      ),
-
-      // Bahrain Housemaids
-      Job(
-        id: '9',
-        employerId: 'emp5',
-        jobTitle: 'Housemaid',
-        companyName: 'bliss connect',
-        location: 'Manama',
-        country: 'Bahrain',
-        salary: 100,
-        currency: 'BHD',
-        candidateCommission: 0,
-        employerFee: 2500,
-        experienceLevel: 'Fresher',
-        vacancies: 10,
-        featured: false,
-        localOrInternational: 'International',
-      ),
-      Job(
-        id: '10',
-        employerId: 'emp5',
-        jobTitle: 'Housemaid',
-        companyName: 'bliss connect',
-        location: 'Manama',
-        country: 'Bahrain',
-        salary: 110,
-        currency: 'BHD',
-        candidateCommission: 0,
-        employerFee: 2500,
-        experienceLevel: 'Experienced',
-        vacancies: 10,
-        featured: false,
-        localOrInternational: 'International',
-      ),
-
-      // Iraq Housemaids
-      Job(
-        id: '11',
-        employerId: 'emp6',
-        jobTitle: 'Housemaid',
-        companyName: 'bliss connect',
-        location: 'Baghdad',
-        country: 'Iraq',
-        salary: 250,
-        currency: 'USD',
-        candidateCommission: 0,
-        employerFee: 2500,
-        experienceLevel: 'Fresher',
-        vacancies: 10,
-        featured: false,
-        localOrInternational: 'International',
-      ),
-      Job(
-        id: '12',
-        employerId: 'emp6',
-        jobTitle: 'Housemaid',
-        companyName: 'bliss connect',
-        location: 'Baghdad',
-        country: 'Iraq',
-        salary: 300,
-        currency: 'USD',
-        candidateCommission: 0,
-        employerFee: 2500,
-        experienceLevel: 'Experienced',
-        vacancies: 10,
-        featured: false,
-        localOrInternational: 'International',
-      ),
-
-      // Lebanon Housemaids
-      Job(
-        id: '13',
-        employerId: 'emp7',
-        jobTitle: 'Housemaid',
-        companyName: 'bliss connect',
-        location: 'Beirut',
-        country: 'Lebanon',
-        salary: 200,
-        currency: 'USD',
-        candidateCommission: 0,
-        employerFee: 2500,
-        experienceLevel: 'Fresher',
-        vacancies: 10,
-        featured: false,
-        localOrInternational: 'International',
-      ),
-      Job(
-        id: '14',
-        employerId: 'emp7',
-        jobTitle: 'Housemaid',
-        companyName: 'bliss connect',
-        location: 'Beirut',
-        country: 'Lebanon',
-        salary: 250,
-        currency: 'USD',
-        candidateCommission: 0,
-        employerFee: 2500,
-        experienceLevel: 'Experienced',
-        vacancies: 10,
-        featured: false,
         localOrInternational: 'International',
       ),
     ];

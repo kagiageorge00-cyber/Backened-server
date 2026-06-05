@@ -4,7 +4,7 @@ import '../config/app_config.dart';
 
 Future<void> makePayment() async {
   final response = await http.post(
-    Uri.parse('${AppConfig.backendUrl}/payment'),
+    Uri.parse('${AppConfig.backendUrl}/api/payments/payment'),
     headers: {'Content-Type': 'application/json'},
     body: jsonEncode({
       'userId': 1,

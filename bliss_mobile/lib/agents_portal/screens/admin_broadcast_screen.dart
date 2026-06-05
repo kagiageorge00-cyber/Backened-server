@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import '../../config/app_config.dart';
 import '../constants/colors.dart';
 
 class AdminBroadcastScreen extends StatefulWidget {
@@ -31,13 +32,23 @@ class _AdminBroadcastScreenState extends State<AdminBroadcastScreen> {
           children: [
             const Text('Select Audience:',
                 style: TextStyle(fontWeight: FontWeight.bold)),
-            Row(
-              children: [
-                _audienceRadio('candidates', 'Candidates'),
-                _audienceRadio('employers', 'Employers'),
-                _audienceRadio('agents', 'Agents'),
-                _audienceRadio('all', 'All users'),
+            DropdownButtonFormField<String>(
+              initialValue: _audience,
+              decoration: InputDecoration(
+                labelText: 'Audience',
+                border:
+                    OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                filled: true,
+                fillColor: AppColors.surface,
+              ),
+              items: const [
+                DropdownMenuItem(
+                    value: 'candidates', child: Text('Candidates')),
+                DropdownMenuItem(value: 'employers', child: Text('Employers')),
+                DropdownMenuItem(value: 'agents', child: Text('Agents')),
+                DropdownMenuItem(value: 'all', child: Text('All users')),
               ],
+              onChanged: (value) => setState(() => _audience = value ?? 'all'),
             ),
             const SizedBox(height: 20),
             const Text('Message:',
@@ -83,8 +94,11 @@ class _AdminBroadcastScreenState extends State<AdminBroadcastScreen> {
                         if (message.isEmpty) return;
                         setState(() => _sending = true);
                         try {
+                          debugPrint(
+                              'Broadcast POST → ${AppConfig.backendUrl}/api/bulk-message');
                           final response = await http.post(
-                            Uri.parse('http://localhost:3000/api/bulk-message'),
+                            Uri.parse(
+                                '${AppConfig.backendUrl}/api/bulk-message'),
                             headers: {'Content-Type': 'application/json'},
                             body: jsonEncode({
                               'userType': _audience == 'all'
@@ -131,19 +145,6 @@ class _AdminBroadcastScreenState extends State<AdminBroadcastScreen> {
           ],
         ),
       ),
-    );
-  }
-
-  Widget _audienceRadio(String value, String label) {
-    return Row(
-      children: [
-        Radio<String>(
-          value: value,
-          groupValue: _audience,
-          onChanged: (val) => setState(() => _audience = val!),
-        ),
-        Text(label),
-      ],
     );
   }
 }

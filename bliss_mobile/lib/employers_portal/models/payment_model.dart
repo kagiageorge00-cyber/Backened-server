@@ -1,5 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 class PaymentModel {
   final String id;
   final String candidateId;
@@ -37,11 +35,10 @@ class PaymentModel {
     this.verifiedAt,
   }) : createdAt = createdAt ?? DateTime.now();
 
-  // Convert Firestore document to PaymentModel
-  factory PaymentModel.fromDocument(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
+  // ✅ FROM BACKEND (JSON → Model)
+  factory PaymentModel.fromMap(Map<String, dynamic> data, String id) {
     return PaymentModel(
-      id: doc.id,
+      id: id,
       candidateId: data['candidateId'] ?? '',
       candidateName: data['candidateName'] ?? '',
       employerId: data['employerId'] ?? '',
@@ -55,15 +52,15 @@ class PaymentModel {
       autoVerified: data['autoVerified'] ?? false,
       manuallyVerified: data['manuallyVerified'] ?? false,
       createdAt: data['createdAt'] != null
-          ? (data['createdAt'] as Timestamp).toDate()
+          ? DateTime.parse(data['createdAt'])
           : DateTime.now(),
       verifiedAt: data['verifiedAt'] != null
-          ? (data['verifiedAt'] as Timestamp).toDate()
+          ? DateTime.parse(data['verifiedAt'])
           : null,
     );
   }
 
-  // Convert PaymentModel to Map<String, dynamic> for Firestore
+  // ✅ TO BACKEND (Model → JSON)
   Map<String, dynamic> toMap() {
     return {
       'candidateId': candidateId,
@@ -78,8 +75,8 @@ class PaymentModel {
       'transactionId': transactionId,
       'autoVerified': autoVerified,
       'manuallyVerified': manuallyVerified,
-      'createdAt': Timestamp.fromDate(createdAt),
-      'verifiedAt': verifiedAt != null ? Timestamp.fromDate(verifiedAt!) : null,
+      'createdAt': createdAt.toIso8601String(),
+      'verifiedAt': verifiedAt?.toIso8601String(),
     };
   }
 }

@@ -1,69 +1,79 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:bliss_mobile/config/app_config.dart';
 
 class PaymentService {
-  // final FirestoreService _firestoreService = FirestoreService();
+  static final String _base = AppConfig.backendUrl;
 
   // ------------------------
-  // Add new payment record
+  // Create Payment
   // ------------------------
   Future<String> createPayment({
     required String name,
     required String phone,
     required String transactionCode,
+    required double amount,
   }) async {
-    final response = await http.post(
-      Uri.parse('https://backened-server.onrender.com/submitPayment'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        "name": name,
-        "phone": phone,
-        "transactionCode": transactionCode,
-      }),
-    );
-    print("STATUS: ${response.statusCode}");
-    print("BODY: ${response.body}");
-    final data = jsonDecode(response.body);
-    if (response.statusCode == 200 && data['success'] == true) {
-      return data['paymentId'] ?? '';
-    } else {
-      throw Exception(data['error'] ?? data['message'] ?? 'Payment failed');
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$_base/submitPayment'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              "name": name,
+              "phone": phone,
+              "transactionCode": transactionCode,
+              "amount": amount,
+            }),
+          )
+          .timeout(const Duration(seconds: 15));
+
+      print("STATUS: ${response.statusCode}");
+      print("BODY: ${response.body}");
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200 && data['success'] == true) {
+        return data['paymentId'] ?? '';
+      } else {
+        throw Exception(
+          data['error'] ?? data['message'] ?? 'Payment failed',
+        );
+      }
+    } catch (e) {
+      throw Exception('Payment error: $e');
     }
   }
 
   // ------------------------
-  // Mark payment as completed
+  // Verify Payment (optional backend endpoint)
   // ------------------------
-  // TODO: Implement completePayment using backend endpoint if available
+  Future<bool> verifyPayment(String paymentId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_base/payments/$paymentId'),
+      );
 
-  // ------------------------
-  // Mark payment as failed
-  // ------------------------
-  // TODO: Implement failPayment using backend endpoint if available
-
-  // ------------------------
-  // Calculate agent commission
-  // ------------------------
-  double calculateAgentCommission(double employerPaymentAmount) {
-    const double commissionRate = 0.20; // 20% commission
-    return employerPaymentAmount * commissionRate;
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['status'] == 'completed';
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
   }
 
   // ------------------------
-  // Calculate net income for bliss connect
+  // Commission Calculations
   // ------------------------
-  double calculateBlissIncome(double employerPaymentAmount) {
-    const double commissionRate = 0.20; // 20% commission
-    return employerPaymentAmount * commissionRate;
+  double calculateAgentCommission(double amount) {
+    const rate = 0.20;
+    return amount * rate;
   }
 
-  // ------------------------
-  // Get all payments for a user (agent/employer)
-  // ------------------------
-  // TODO: Implement getUserPayments using backend endpoint
-
-  // ------------------------
-  // Get all payments (admin)
-  // ------------------------
-  // TODO: Implement getAllPayments using backend endpoint
+  double calculateBlissIncome(double amount) {
+    const rate = 0.20;
+    return amount * rate;
+  }
 }

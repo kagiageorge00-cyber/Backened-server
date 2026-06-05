@@ -143,7 +143,12 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen> {
                           filled: true,
                           fillColor: Colors.white,
                         ),
-                        style: TextStyle(color: Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black87, fontSize: 16),
+                        style: TextStyle(
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.white
+                                    : Colors.black87,
+                            fontSize: 16),
                       ),
                       const SizedBox(height: 12),
                       TextFormField(
@@ -152,16 +157,27 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen> {
                           filled: true,
                           fillColor: Colors.white,
                         ),
-                        style: TextStyle(color: Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black87, fontSize: 16),
+                        style: TextStyle(
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.white
+                                    : Colors.black87,
+                            fontSize: 16),
                       ),
                       const SizedBox(height: 12),
                       TextFormField(
                         controller: _companyController,
-                        decoration: AppStyles.inputDecoration('Company Name').copyWith(
+                        decoration:
+                            AppStyles.inputDecoration('Company Name').copyWith(
                           filled: true,
                           fillColor: Colors.white,
                         ),
-                        style: TextStyle(color: Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black87, fontSize: 16),
+                        style: TextStyle(
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.white
+                                    : Colors.black87,
+                            fontSize: 16),
                       ),
                     ],
                   ),
@@ -199,7 +215,8 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen> {
                     SwitchListTile(
                       tileColor: Colors.white,
                       title: const Text('Push Notifications'),
-                      subtitle: const Text('Receive push notifications on your device'),
+                      subtitle: const Text(
+                          'Receive push notifications on your device'),
                       value: _notificationsEnabled,
                       onChanged: (value) {
                         setState(() => _notificationsEnabled = value);

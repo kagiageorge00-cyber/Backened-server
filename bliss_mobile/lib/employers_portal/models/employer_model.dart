@@ -1,6 +1,4 @@
 // lib/employers_portal/models/employer_model.dart
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 class Employer {
   final String id;
   final String? companyName;
@@ -34,7 +32,7 @@ class Employer {
     this.updatedAt,
   });
 
-  /// Convert Firestore Map → Employer
+  /// ✅ FROM BACKEND (JSON)
   factory Employer.fromMap(Map<String, dynamic> map, String id) {
     return Employer(
       id: id,
@@ -46,19 +44,18 @@ class Employer {
       suspended: map['suspended'] ?? false,
       status: map['status'] ?? 'active',
       walletBalance: (map['walletBalance'] ?? 0).toDouble(),
-      totalHires: (map['totalHires'] ?? 0),
-      totalInterviews: (map['totalInterviews'] ?? 0),
+      totalHires: map['totalHires'] ?? 0,
+      totalInterviews: map['totalInterviews'] ?? 0,
       documents: Map<String, dynamic>.from(map['documents'] ?? {}),
       createdAt: map['createdAt'] != null
-          ? (map['createdAt'] as Timestamp).toDate()
+          ? DateTime.tryParse(map['createdAt']) ?? DateTime.now()
           : DateTime.now(),
-      updatedAt: map['updatedAt'] != null
-          ? (map['updatedAt'] as Timestamp).toDate()
-          : null,
+      updatedAt:
+          map['updatedAt'] != null ? DateTime.tryParse(map['updatedAt']) : null,
     );
   }
 
-  /// Convert Employer → Map for Firestore
+  /// ✅ TO BACKEND (JSON)
   Map<String, dynamic> toMap() {
     return {
       'companyName': companyName,
@@ -72,12 +69,12 @@ class Employer {
       'totalHires': totalHires,
       'totalInterviews': totalInterviews,
       'documents': documents,
-      'createdAt': Timestamp.fromDate(createdAt),
-      'updatedAt': updatedAt != null ? Timestamp.fromDate(updatedAt!) : null,
+      'createdAt': createdAt.toIso8601String(),
+      'updatedAt': updatedAt?.toIso8601String(),
     };
   }
 
-  /// Clone with updates
+  /// ✅ COPY WITH
   Employer copyWith({
     String? companyName,
     String? email,

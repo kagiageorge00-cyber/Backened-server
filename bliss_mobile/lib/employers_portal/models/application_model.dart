@@ -1,4 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:bliss_mobile/firebase_stub.dart';
 
 class ApplicationModel {
   final String id;
@@ -10,21 +10,21 @@ class ApplicationModel {
   final String employerName;
 
   // Application status
-  final bool applicationPaid; // Did candidate pay registration / application fee?
+  final bool applicationPaid;
   final DateTime applicationDate;
-  final String applicationStatus; // Pending, Submitted, Reviewed, Rejected
+  final String applicationStatus;
 
   // Interview
   final bool interviewScheduled;
   final DateTime? interviewDate;
-  final String interviewStatus; // Pending, Passed, Failed
+  final String interviewStatus;
 
   // Hire
   final bool isHired;
   final bool hireFeesPaid;
   final DateTime? hireDate;
 
-  // Candidate documents (unlocked only after hire fees are paid)
+  // Documents
   final Map<String, String> documents;
 
   ApplicationModel({
@@ -47,11 +47,10 @@ class ApplicationModel {
     this.documents = const {},
   });
 
-  // Convert Firestore document to ApplicationModel
-  factory ApplicationModel.fromDocument(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
+  // ✅ FROM BACKEND (JSON)
+  factory ApplicationModel.fromMap(Map<String, dynamic> data, String id) {
     return ApplicationModel(
-      id: doc.id,
+      id: id,
       candidateId: data['candidateId'] ?? '',
       candidateName: data['candidateName'] ?? '',
       jobId: data['jobId'] ?? '',
@@ -59,23 +58,28 @@ class ApplicationModel {
       employerId: data['employerId'] ?? '',
       employerName: data['employerName'] ?? '',
       applicationPaid: data['applicationPaid'] ?? false,
-      applicationDate: (data['applicationDate'] as Timestamp).toDate(),
+      applicationDate:
+          DateTime.tryParse(data['applicationDate'] ?? '') ?? DateTime.now(),
       applicationStatus: data['applicationStatus'] ?? 'Pending',
       interviewScheduled: data['interviewScheduled'] ?? false,
       interviewDate: data['interviewDate'] != null
-          ? (data['interviewDate'] as Timestamp).toDate()
+          ? DateTime.tryParse(data['interviewDate'])
           : null,
       interviewStatus: data['interviewStatus'] ?? 'Pending',
       isHired: data['isHired'] ?? false,
       hireFeesPaid: data['hireFeesPaid'] ?? false,
-      hireDate: data['hireDate'] != null
-          ? (data['hireDate'] as Timestamp).toDate()
-          : null,
+      hireDate:
+          data['hireDate'] != null ? DateTime.tryParse(data['hireDate']) : null,
       documents: Map<String, String>.from(data['documents'] ?? {}),
     );
   }
 
-  // Convert ApplicationModel to Map<String, dynamic> for Firestore
+  factory ApplicationModel.fromDocument(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>? ?? {};
+    return ApplicationModel.fromMap(data, doc.id);
+  }
+
+  // ✅ TO BACKEND (JSON)
   Map<String, dynamic> toMap() {
     return {
       'candidateId': candidateId,
@@ -85,14 +89,14 @@ class ApplicationModel {
       'employerId': employerId,
       'employerName': employerName,
       'applicationPaid': applicationPaid,
-      'applicationDate': Timestamp.fromDate(applicationDate),
+      'applicationDate': applicationDate.toIso8601String(),
       'applicationStatus': applicationStatus,
       'interviewScheduled': interviewScheduled,
-      'interviewDate': interviewDate != null ? Timestamp.fromDate(interviewDate!) : null,
+      'interviewDate': interviewDate?.toIso8601String(),
       'interviewStatus': interviewStatus,
       'isHired': isHired,
       'hireFeesPaid': hireFeesPaid,
-      'hireDate': hireDate != null ? Timestamp.fromDate(hireDate!) : null,
+      'hireDate': hireDate?.toIso8601String(),
       'documents': documents,
     };
   }

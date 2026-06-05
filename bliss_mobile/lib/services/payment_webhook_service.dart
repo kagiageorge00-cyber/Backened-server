@@ -1,4 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:bliss_mobile/firebase_stub.dart';
 import 'financial_reconciliation_service.dart';
 
 class PaymentWebhookService {
@@ -72,10 +72,7 @@ class PaymentWebhookService {
           '❌ [Stripe Webhook] Payment failed: $paymentIntentId - $failureReason');
 
       // Update payment metadata status to failed
-      await _firestore
-          .collection('payment_metadata')
-          .doc(metadataId)
-          .update({
+      await _firestore.collection('payment_metadata').doc(metadataId).update({
         'status': 'failed',
         'failureReason': failureReason,
         'failedAt': DateTime.now().toIso8601String(),
@@ -158,10 +155,7 @@ class PaymentWebhookService {
           '❌ [Flutterwave Webhook] Payment failed: $transactionId - $failureReason');
 
       // Update payment metadata status to failed
-      await _firestore
-          .collection('payment_metadata')
-          .doc(metadataId)
-          .update({
+      await _firestore.collection('payment_metadata').doc(metadataId).update({
         'status': 'failed',
         'failureReason': failureReason,
         'failedAt': DateTime.now().toIso8601String(),

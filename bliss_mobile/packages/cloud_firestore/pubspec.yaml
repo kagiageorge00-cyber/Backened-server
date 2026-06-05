@@ -1,0 +1,9 @@
+name: cloud_firestore
+version: 0.0.1
+description: Local stub for cloud_firestore
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter

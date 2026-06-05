@@ -1,5 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 class MarketplaceModel {
   final String id;
   final String candidateId;
@@ -7,7 +5,7 @@ class MarketplaceModel {
   final double hireFee;
   final bool hirePaid;
   final bool documentsUnlocked;
-  final String status; // e.g., "deployed", "available"
+  final String status;
   final DateTime? deploymentDate;
   final DateTime postedAt;
 
@@ -23,7 +21,26 @@ class MarketplaceModel {
     required this.postedAt,
   });
 
-  /// Convert MarketplaceModel → Map for Firestore
+  /// ✅ FROM BACKEND (JSON)
+  factory MarketplaceModel.fromMap(Map<String, dynamic> data, String id) {
+    return MarketplaceModel(
+      id: id,
+      candidateId: data['candidateId'] ?? '',
+      employerId: data['employerId'] ?? '',
+      hireFee: (data['hireFee'] ?? 0).toDouble(),
+      hirePaid: data['hirePaid'] ?? false,
+      documentsUnlocked: data['documentsUnlocked'] ?? false,
+      status: data['status'] ?? 'available',
+      deploymentDate: data['deploymentDate'] != null
+          ? DateTime.tryParse(data['deploymentDate'])
+          : null,
+      postedAt: data['postedAt'] != null
+          ? DateTime.tryParse(data['postedAt']) ?? DateTime.now()
+          : DateTime.now(),
+    );
+  }
+
+  /// ✅ TO BACKEND (JSON)
   Map<String, dynamic> toMap() {
     return {
       'candidateId': candidateId,
@@ -37,23 +54,27 @@ class MarketplaceModel {
     };
   }
 
-  /// Convert Firestore document → MarketplaceModel
-  factory MarketplaceModel.fromDocument(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>? ?? {};
+  /// ✅ COPY WITH
+  MarketplaceModel copyWith({
+    String? candidateId,
+    String? employerId,
+    double? hireFee,
+    bool? hirePaid,
+    bool? documentsUnlocked,
+    String? status,
+    DateTime? deploymentDate,
+    DateTime? postedAt,
+  }) {
     return MarketplaceModel(
-      id: doc.id,
-      candidateId: data['candidateId'] ?? '',
-      employerId: data['employerId'] ?? '',
-      hireFee: (data['hireFee'] ?? 0).toDouble(),
-      hirePaid: data['hirePaid'] ?? false,
-      documentsUnlocked: data['documentsUnlocked'] ?? false,
-      status: data['status'] ?? 'available',
-      deploymentDate: data['deploymentDate'] != null
-          ? DateTime.parse(data['deploymentDate'])
-          : null,
-      postedAt: data['postedAt'] != null
-          ? DateTime.parse(data['postedAt'])
-          : DateTime.now(),
+      id: id,
+      candidateId: candidateId ?? this.candidateId,
+      employerId: employerId ?? this.employerId,
+      hireFee: hireFee ?? this.hireFee,
+      hirePaid: hirePaid ?? this.hirePaid,
+      documentsUnlocked: documentsUnlocked ?? this.documentsUnlocked,
+      status: status ?? this.status,
+      deploymentDate: deploymentDate ?? this.deploymentDate,
+      postedAt: postedAt ?? this.postedAt,
     );
   }
 }

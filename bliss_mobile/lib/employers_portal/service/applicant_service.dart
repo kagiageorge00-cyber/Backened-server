@@ -1,6 +1,6 @@
 // lib/employers_portal/services/applicants_service.dart
 
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:bliss_mobile/firebase_stub.dart';
 import '../models/application_model.dart';
 
 class ApplicantsService {
@@ -9,15 +9,19 @@ class ApplicantsService {
 
   /// Create a new application
   Future<void> createApplication(ApplicationModel application) async {
-    await _db.collection(collection).doc(application.id).set(application.toMap());
+    await _db
+        .collection(collection)
+        .doc(application.id)
+        .set(application.toMap());
   }
 
   /// Update the status of an application
-  Future<void> updateApplicationStatus(String applicationId, String status) async {
-    await _db
-        .collection(collection)
-        .doc(applicationId)
-        .update({'applicationStatus': status, 'lastUpdated': FieldValue.serverTimestamp()});
+  Future<void> updateApplicationStatus(
+      String applicationId, String status) async {
+    await _db.collection(collection).doc(applicationId).update({
+      'applicationStatus': status,
+      'lastUpdated': FieldValue.serverTimestamp()
+    });
   }
 
   /// Update interview details
@@ -29,7 +33,8 @@ class ApplicantsService {
   }) async {
     await _db.collection(collection).doc(applicationId).update({
       'interviewScheduled': scheduled,
-      'interviewDate': interviewDate != null ? Timestamp.fromDate(interviewDate) : null,
+      'interviewDate':
+          interviewDate != null ? Timestamp.fromDate(interviewDate) : null,
       'interviewStatus': interviewStatus,
       'lastUpdated': FieldValue.serverTimestamp(),
     });
@@ -51,7 +56,8 @@ class ApplicantsService {
   }
 
   /// Add or update candidate documents
-  Future<void> updateDocuments(String applicationId, Map<String, String> documents) async {
+  Future<void> updateDocuments(
+      String applicationId, Map<String, String> documents) async {
     await _db.collection(collection).doc(applicationId).update({
       'documents': documents,
       'lastUpdated': FieldValue.serverTimestamp(),
@@ -70,7 +76,8 @@ class ApplicantsService {
   }
 
   /// Stream applications by candidate ID
-  Stream<List<ApplicationModel>> getApplicationsByCandidate(String candidateId) {
+  Stream<List<ApplicationModel>> getApplicationsByCandidate(
+      String candidateId) {
     return _db
         .collection(collection)
         .where('candidateId', isEqualTo: candidateId)

@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:bliss_mobile/widgets/logo.dart';
 import '../services/bliss_communication_service.dart';
 import '../models/support_ticket_model.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-
+import 'package:bliss_mobile/firebase_stub.dart';
 
 class CreateTicketScreen extends StatefulWidget {
   const CreateTicketScreen({super.key});
@@ -30,14 +29,14 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
     });
 
     final ticket = SupportTicketModel(
-  ticketId: '', // Firestore will assign the ID
-  createdBy: userId,
-  role: role,
-  message: _messageController.text.trim(),
-  status: 'open',
-  adminResponse: '',
-  createdAt: Timestamp.fromDate(DateTime.now()),
-  updatedAt: Timestamp.fromDate(DateTime.now()),
+      ticketId: '', // Firestore will assign the ID
+      createdBy: userId,
+      role: role,
+      message: _messageController.text.trim(),
+      status: 'open',
+      adminResponse: '',
+      createdAt: Timestamp.fromDate(DateTime.now()),
+      updatedAt: Timestamp.fromDate(DateTime.now()),
     );
 
     try {
@@ -94,8 +93,9 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
                   labelText: "Describe your issue",
                   border: OutlineInputBorder(),
                 ),
-                validator: (val) =>
-                    val == null || val.isEmpty ? "Please enter a message" : null,
+                validator: (val) => val == null || val.isEmpty
+                    ? "Please enter a message"
+                    : null,
                 maxLines: 5,
               ),
               const SizedBox(height: 20),

@@ -5,11 +5,6 @@ import '../widgets/image_slider.dart';
 import '../widgets/logo.dart';
 import '../theme_notifier.dart';
 
-// Screens used for explicit navigation
-import 'ticket_booking_screen.dart';
-import 'holiday_packages_screen.dart';
-import 'bliss_communication/screens/bliss_signup_screen.dart';
-
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -22,19 +17,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   final List<NavItem> navItems = [
     NavItem('Apply Job', Icons.work, '/apply', const Color(0xFF6366F1)),
-    NavItem('Visa & Ticketing', Icons.airplane_ticket, '/visaTicketProcessing',
-        const Color(0xFF14B8A6)),
-    NavItem('Travel Documents', Icons.description, '/travel_docs',
-        const Color(0xFFA855F7)),
     NavItem('Candidates Portal', Icons.people, '/candidates',
         const Color(0xFFF59E0B)),
-    NavItem('Employers Portal', Icons.business, '/employer-login',
-        const Color(0xFFEF4444)),
-    NavItem('Agents Portal', Icons.security, '/agentPortal',
-        const Color(0xFF3B82F6)),
-    NavItem('Staff Portal', Icons.admin_panel_settings, '/staffPortal',
-        const Color(0xFF8B5CF6)),
-    NavItem('Support', Icons.help, '/support', const Color(0xFF06B6D4)),
   ];
 
   @override
@@ -101,139 +85,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildTrustBadges(BuildContext context, bool isMobile) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          _buildBadge('🏆', '10K+ Users', 'Trusted by thousands'),
-          const SizedBox(width: 12),
-          _buildBadge('✓', 'Verified Safe', 'SSL Encrypted'),
-          const SizedBox(width: 12),
-          _buildBadge('⭐', '4.8 Rating', 'Highly Rated'),
-          const SizedBox(width: 12),
-          _buildBadge('🌍', 'Global Network', '150+ Countries'),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBadge(String icon, String title, String subtitle) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: Colors.grey.shade300),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(icon, style: const TextStyle(fontSize: 24)),
-          const SizedBox(height: 4),
-          Text(
-            title,
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-          ),
-          Text(
-            subtitle,
-            style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTrustSection(BuildContext context, bool isMobile) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Why Choose Bliss Connect?',
-          style: Theme.of(context)
-              .textTheme
-              .titleLarge
-              ?.copyWith(fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 16),
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: isMobile ? 1 : 3,
-            crossAxisSpacing: 16,
-            mainAxisSpacing: 16,
-            childAspectRatio: isMobile ? 1.3 : 1.2,
-          ),
-          itemCount: 3,
-          itemBuilder: (context, index) {
-            final reasons = [
-              {
-                'icon': Icons.verified_user,
-                'title': 'Secure & Verified',
-                'desc': 'All employers and agents are verified for your safety',
-              },
-              {
-                'icon': Icons.support_agent,
-                'title': '24/7 Support',
-                'desc': 'Dedicated support team ready to help anytime',
-              },
-              {
-                'icon': Icons.trending_up,
-                'title': 'Success Stories',
-                'desc': '10,000+ people found opportunities through us',
-              },
-            ];
-            final reason = reasons[index];
-            return _buildReasonCard(context, reason);
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildReasonCard(BuildContext context, Map<String, dynamic> reason) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 8)
-        ],
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            reason['icon'] as IconData,
-            color: Theme.of(context).colorScheme.primary,
-            size: 36,
-          ),
-          const SizedBox(height: 12),
-          Text(
-            reason['title'] as String,
-            style: Theme.of(context)
-                .textTheme
-                .titleSmall
-                ?.copyWith(fontWeight: FontWeight.bold),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            reason['desc'] as String,
-            style: Theme.of(context)
-                .textTheme
-                .bodySmall
-                ?.copyWith(color: Colors.grey.shade600),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildSidebar() {
     return Container(
       decoration: const BoxDecoration(
@@ -265,18 +116,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           _sidebarMenuItem(Icons.home, "Home", "/home"),
           _sidebarMenuItem(Icons.work, "Apply Job", "/apply"),
-          _sidebarMenuItem(Icons.airplane_ticket, "Visa & Ticketing",
-              "/visaTicketProcessing"),
-          _sidebarMenuItem(
-              Icons.description, "Travel Documents", "/travel_docs"),
           _sidebarMenuItem(Icons.people, "Candidates Portal", "/candidates"),
-          _sidebarMenuItem(
-              Icons.business, "Employers Portal", "/employer-login"),
-          _sidebarMenuItem(Icons.security, "Agents Portal", "/agentPortal"),
-          _sidebarMenuItem(
-              Icons.admin_panel_settings, "Staff Portal", "/staffPortal"),
-          _sidebarMenuItem(Icons.message, "Messages", "/messages"),
-          _sidebarMenuItem(Icons.help, "Support", "/support"),
           const Divider(color: Colors.white24),
           Padding(
             padding: const EdgeInsets.all(16),
@@ -330,88 +170,8 @@ class _HomeScreenState extends State<HomeScreen> {
         Navigator.pop(context);
 
         // Map special labels to concrete screens using MaterialPageRoute
-        if (label == 'Home') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const HomeScreen()),
-          );
-          return;
-        }
-
-        if (label == 'Register') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const BlissSignupScreen()),
-          );
-          return;
-        }
-
-        if (label == 'Flight Search') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-                builder: (context) => const TicketBookingScreen()),
-          );
-          return;
-        }
-
-        if (label == 'Hotel Search') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-                builder: (context) => const HolidayPackagesScreen()),
-          );
-          return;
-        }
-
-        // fallback to existing named routes for other items
         Navigator.pushNamed(context, route);
       },
-    );
-  }
-
-  Widget _buildNavItem(NavItem item) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () {
-            if (item.label == 'Apply Job') {
-              _showTermsAndPoliciesDialog();
-            } else {
-              Navigator.pushNamed(context, item.route);
-            }
-          },
-          borderRadius: BorderRadius.circular(12),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: item.color.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(item.icon, color: item.color, size: 20),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    item.label,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodyMedium
-                        ?.copyWith(fontWeight: FontWeight.w500),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
     );
   }
 
@@ -550,7 +310,7 @@ class _HomeScreenState extends State<HomeScreen> {
       crossAxisCount: 2,
       crossAxisSpacing: 12,
       mainAxisSpacing: 12,
-      childAspectRatio: isMobile ? 3.0 : 4.0,
+      childAspectRatio: isMobile ? 2.0 : 4.0,
       children: navItems.map((item) {
         return _QuickAccessCard(
           item: item,
@@ -564,12 +324,6 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       }).toList(),
     );
-  }
-
-  Widget _buildQuickAccessCard(NavItem item) {
-    // kept for compatibility but replaced by _QuickAccessCard
-    return _QuickAccessCard(
-        item: item, onTap: () => Navigator.pushNamed(context, item.route));
   }
 }
 
@@ -593,8 +347,6 @@ class _QuickAccessCardState extends State<_QuickAccessCard> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final blue = const Color(0xFF0D47A1);
-    final green = const Color(0xFF2E7D32);
-
     final color = widget.item.color;
 
     final scale = _pressed ? 0.98 : (_hover ? 1.03 : 1.0);
@@ -624,7 +376,7 @@ class _QuickAccessCardState extends State<_QuickAccessCard> {
                 borderRadius: BorderRadius.circular(12),
                 boxShadow: [
                   BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
+                      color: Colors.black.withAlpha(13),
                       blurRadius: 8,
                       offset: const Offset(0, 4)),
                 ],
@@ -636,7 +388,7 @@ class _QuickAccessCardState extends State<_QuickAccessCard> {
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: color.withOpacity(0.08),
+                      color: color.withAlpha(20),
                       shape: BoxShape.circle,
                     ),
                     child: Icon(
@@ -664,118 +416,6 @@ class _QuickAccessCardState extends State<_QuickAccessCard> {
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildPromoCard(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            Theme.of(context).colorScheme.primary,
-            Theme.of(context).colorScheme.secondary,
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withOpacity(0.15),
-              blurRadius: 12,
-              offset: const Offset(0, 8))
-        ],
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.star, color: Colors.white, size: 48),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Exclusive Offer!',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Get 20% off processing fees when you complete your profile today!',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodyMedium
-                      ?.copyWith(color: Colors.white70),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFeaturedSection(BuildContext context, bool isMobile) {
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: isMobile ? 1 : 3,
-        crossAxisSpacing: 16,
-        mainAxisSpacing: 16,
-        childAspectRatio: isMobile ? 1.2 : 1.1,
-      ),
-      itemCount: 3,
-      itemBuilder: (context, index) {
-        final features = [
-          {
-            'title': '10K+ Jobs',
-            'icon': Icons.work,
-            'color': Color(0xFF6366F1)
-          },
-          {
-            'title': 'Visa Support',
-            'icon': Icons.verified_user,
-            'color': Color(0xFF14B8A6)
-          },
-          {
-            'title': '24/7 Support',
-            'icon': Icons.support_agent,
-            'color': Color(0xFFA855F7)
-          },
-        ];
-        final feature = features[index];
-        return Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 8)
-            ],
-            border: Border.all(color: Colors.grey.shade200),
-          ),
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(feature['icon'] as IconData,
-                  color: feature['color'] as Color, size: 40),
-              const SizedBox(height: 12),
-              Text(
-                feature['title'] as String,
-                style: Theme.of(context)
-                    .textTheme
-                    .titleSmall
-                    ?.copyWith(fontWeight: FontWeight.bold),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 }

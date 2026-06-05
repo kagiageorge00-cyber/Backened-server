@@ -3,9 +3,6 @@
 import 'package:flutter/material.dart';
 import '../models/candidate_model.dart';
 import '../services/payment_service.dart';
-import '../agents_portal/services/payment_service.dart'
-    as agent_payment_service;
-import '../agents_portal/models/payment_model.dart';
 
 class PaymentsScreen extends StatefulWidget {
   static const routeName = '/payments';
@@ -32,13 +29,10 @@ class PaymentsScreen extends StatefulWidget {
 }
 
 class _PaymentsScreenState extends State<PaymentsScreen> {
-  String paymentMethod = 'mpesa'; // default
+  String paymentMethod = 'mpesa';
   bool paymentConfirmed = false;
   bool isLoading = false;
 
-  final PaymentService _paymentService = PaymentService();
-  final agent_payment_service.PaymentService _agentPaymentService =
-      agent_payment_service.PaymentService();
   final TextEditingController _phoneController = TextEditingController();
 
   @override
@@ -47,46 +41,50 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     super.dispose();
   }
 
-  Future<void> _recordAgentPayment(String intentId,
-      {PaymentStatus status = PaymentStatus.pending}) async {
-    await _agentPaymentService.createPayment(
-      userId: widget.candidate.id,
-      type: PaymentType.employerPayment,
-      amount: widget.amount,
-      reference: intentId,
-      status: status,
-    );
-  }
-
+  /// MAIN PAYMENT FUNCTION
   Future<void> _pay() async {
+    if (paymentMethod == 'mpesa' && _phoneController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter phone number')),
+      );
+      return;
+    }
+
+    if (paymentMethod == 'card') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text(
+                'Card payments are not yet supported here. Please choose MPESA.')),
+      );
+      return;
+    }
+
     setState(() => isLoading = true);
 
     try {
-      final intentId = await _paymentService.createPaymentIntent(
-        candidateId: widget.candidate.id,
+      final paymentId = await PaymentService.createPayment(
+        name: widget.candidate.fullName,
+        phone: _phoneController.text,
         amount: widget.amount,
-        paymentMethod: paymentMethod == 'card' ? 'card' : paymentMethod,
-        title: widget.title,
       );
 
-      final success = await _paymentService.submitPaymentBackend(
-        intentId: intentId,
-        candidateId: widget.candidate.id,
-        amount: widget.amount,
-        title: widget.title,
-      );
-
-      if (success) {
-        await _recordAgentPayment(intentId, status: PaymentStatus.completed);
-        setState(() => paymentConfirmed = true);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Payment Successful!')),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Payment failed.')),
-        );
+      if (paymentId == null || paymentId.isEmpty) {
+        throw Exception('Payment creation failed');
       }
+
+      final verifySuccess = await PaymentService.verifyPayment(
+        _phoneController.text,
+      );
+
+      if (!verifySuccess) {
+        throw Exception('Payment verification failed');
+      }
+
+      setState(() => paymentConfirmed = true);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Payment Successful!')),
+      );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $e')),
@@ -104,67 +102,84 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
       return;
     }
 
-    Navigator.pop(context, true); // Send confirmation back
+    Navigator.pop(context, true);
   }
 
   @override
   Widget build(BuildContext context) {
+    final amountLabel = widget.amount == 10
+        ? 'USD ${widget.amount.toStringAsFixed(0)}'
+        : 'KES ${widget.amount.toStringAsFixed(0)}';
+
     return Scaffold(
-      appBar: AppBar(title: Text(widget.title)),
+      appBar: AppBar(
+        title: Text(widget.title),
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Payment Amount: KES ${widget.amount}',
+              'Payment Amount: $amountLabel',
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
-            const SizedBox(height: 16),
-            const Text('Choose Payment Method:'),
+            const SizedBox(height: 20),
+            const Text(
+              'Choose Payment Method:',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
             RadioListTile(
-              title: const Text('MPESA Paybill / Account'),
+              title: const Text('MPESA'),
               value: 'mpesa',
               groupValue: paymentMethod,
               onChanged: (value) =>
                   setState(() => paymentMethod = value.toString()),
             ),
             RadioListTile(
-              title: const Text('Visa / MasterCard / Flutterwave'),
+              title: const Text('Card / Flutterwave'),
               value: 'card',
               groupValue: paymentMethod,
               onChanged: (value) =>
                   setState(() => paymentMethod = value.toString()),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 10),
             if (paymentMethod == 'mpesa') ...[
-              const Text('Paybill: 600100'),
-              const Text('Account No: 0100011879308'),
-              const SizedBox(height: 8),
+              const Text(
+                'Send KES 1,300 or USD 10 to +254798242350',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Use the M-Pesa number above for the candidate registration fee, then enter your phone number below.',
+              ),
+              const SizedBox(height: 10),
               TextField(
                 controller: _phoneController,
                 keyboardType: TextInputType.phone,
                 decoration: const InputDecoration(
-                  labelText: 'Enter your mobile number',
-                  hintText: '07XXXXXXXX',
+                  labelText: 'Phone Number',
+                  hintText: '+254701234567',
                   border: OutlineInputBorder(),
                 ),
               ),
-              const SizedBox(height: 10),
-            ] else if (paymentMethod == 'card') ...[
-              const SizedBox(height: 8),
-              const Text(
-                  'You will be redirected to a secure card payment gateway.'),
             ],
-            const SizedBox(height: 10),
+            if (paymentMethod == 'card') ...[
+              const SizedBox(height: 10),
+              const Text('You will be redirected to secure payment.'),
+            ],
+            const SizedBox(height: 20),
             isLoading
                 ? const Center(child: CircularProgressIndicator())
-                : ElevatedButton(
-                    onPressed: _pay,
-                    child: Text(
-                      paymentMethod == 'mpesa'
-                          ? 'Pay with MPESA'
-                          : 'Pay with Card / Flutterwave',
+                : SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: _pay,
+                      child: Text(
+                        paymentMethod == 'mpesa'
+                            ? 'Pay with MPESA'
+                            : 'Pay with Card',
+                      ),
                     ),
                   ),
             const Spacer(),

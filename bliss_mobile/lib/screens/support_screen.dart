@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import '../../config/app_config.dart';
 import '../services/backend_auth.dart';
 
 class SupportScreen extends StatefulWidget {
@@ -25,15 +27,22 @@ class _SupportScreenState extends State<SupportScreen> {
     setState(() => _submitting = true);
     try {
       final userId = BackendAuth.userId ?? 'anonymous';
-      await FirebaseFirestore.instance.collection('tickets').add({
-        'userId': userId,
-        'userEmail': 'anonymous',
-        'subject': _subjectController.text.trim(),
-        'description': _ticketController.text.trim(),
-        'status': 'open',
-        'priority': 'normal',
-        'createdAt': FieldValue.serverTimestamp(),
-      });
+      final uri = Uri.parse('${AppConfig.backendUrl}/api/tickets');
+      final resp = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'userId': userId,
+          'userEmail': 'anonymous',
+          'subject': _subjectController.text.trim(),
+          'description': _ticketController.text.trim(),
+          'status': 'open',
+          'priority': 'normal',
+        }),
+      );
+      if (resp.statusCode != 200 && resp.statusCode != 201) {
+        throw Exception('Ticket submission failed');
+      }
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Ticket submitted successfully')),

@@ -1,49 +1,6 @@
-import 'dart:io';
-import 'dart:typed_data';
-// import 'package:firebase_storage/firebase_storage.dart';
+import 'package:bliss_mobile/services/upload_service.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-
-/// Unified file upload service for all modules (candidates, jobs, docs, chat, etc.)
-class UnifiedFileUploadService {
-  // static final FirebaseStorage _storage = FirebaseStorage.instance;
-
-  /// Upload a file (mobile/native) to [storagePath] and return download URL.
-  static Future<String> uploadFile({
-    required File file,
-    required String storagePath,
-    void Function(double progress)? onProgress,
-  }) async {
-    final ref = _storage.ref().child(storagePath);
-    final uploadTask = ref.putFile(file);
-    uploadTask.snapshotEvents.listen((event) {
-      if (onProgress != null && event.totalBytes > 0) {
-        onProgress(event.bytesTransferred / event.totalBytes);
-      }
-    });
-    final snapshot = await uploadTask;
-    // TODO: Replace with backend upload logic
-    return '';
-  }
-
-  /// Upload raw bytes (web) to [storagePath] and return download URL.
-  static Future<String> uploadBytes({
-    required Uint8List bytes,
-    required String storagePath,
-    void Function(double progress)? onProgress,
-  }) async {
-    final ref = _storage.ref().child(storagePath);
-    final uploadTask = ref.putData(bytes);
-    uploadTask.snapshotEvents.listen((event) {
-      if (onProgress != null && event.totalBytes > 0) {
-        onProgress(event.bytesTransferred / event.totalBytes);
-      }
-    });
-    final snapshot = await uploadTask;
-    // TODO: Replace with backend upload logic
-    return '';
-  }
-}
 
 /// Professional file upload widget with progress, preview, and validation
 class ProfessionalFileUploadTile extends StatefulWidget {
@@ -96,24 +53,21 @@ class _ProfessionalFileUploadTileState
       _progress = 0;
     });
     try {
-      String fileName = '${DateTime.now().millisecondsSinceEpoch}_${file.name}';
-      String storagePath = '${widget.storageFolder}/$fileName';
-      String url;
+      final String? url;
       if (file.bytes != null) {
-        url = await UnifiedFileUploadService.uploadBytes(
+        url = await UploadService.uploadFile(
           bytes: file.bytes!,
-          storagePath: storagePath,
-          onProgress: (p) => setState(() => _progress = p),
+          fileName: '${DateTime.now().millisecondsSinceEpoch}_${file.name}',
         );
       } else if (file.path != null) {
-        url = await UnifiedFileUploadService.uploadFile(
-          file: File(file.path!),
-          storagePath: storagePath,
-          onProgress: (p) => setState(() => _progress = p),
+        url = await UploadService.uploadFile(
+          filePath: file.path!,
+          fileName: file.name,
         );
       } else {
         throw Exception('Invalid file');
       }
+      if (url == null) throw Exception('Upload returned null URL');
       setState(() {
         _uploadedUrl = url;
         _progress = 1;

@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../../services/backend_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:bliss_mobile/firebase_stub.dart';
 import '../models/message_model.dart';
 import '../services/bliss_communication_service.dart';
 import '../widgets/chat_bubble.dart';

@@ -22,9 +22,9 @@ class _EmployerSettingsScreenState extends State<EmployerSettingsScreen> {
 
   Future<void> _pickLogo() async {
     // Implement image picker or file picker
-    // For now, we simulate
+    // For now, we simulate using the app logo
     setState(() {
-      _logoPath = 'assets/sample_logo.png'; // example
+      _logoPath = 'assets/images/logo.png'; // example
     });
   }
 
@@ -58,7 +58,9 @@ class _EmployerSettingsScreenState extends State<EmployerSettingsScreen> {
         elevation: 0,
         title: Text(
           "Employer Settings",
-          style: TextStyle(color: isDarkMode ? Colors.white : Colors.black87, fontWeight: FontWeight.bold),
+          style: TextStyle(
+              color: isDarkMode ? Colors.white : Colors.black87,
+              fontWeight: FontWeight.bold),
         ),
         centerTitle: true,
       ),
@@ -91,7 +93,8 @@ class _EmployerSettingsScreenState extends State<EmployerSettingsScreen> {
                     backgroundImage:
                         _logoPath != null ? AssetImage(_logoPath!) : null,
                     child: _logoPath == null
-                        ? const Icon(Icons.add_a_photo, size: 40, color: Colors.grey)
+                        ? const Icon(Icons.add_a_photo,
+                            size: 40, color: Colors.grey)
                         : null,
                   ),
                 ),
@@ -119,7 +122,8 @@ class _EmployerSettingsScreenState extends State<EmployerSettingsScreen> {
                     children: [
                       const Text(
                         "Company Name",
-                        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                        style: TextStyle(
+                            fontWeight: FontWeight.w600, fontSize: 14),
                       ),
                       const SizedBox(height: 8),
                       TextField(
@@ -139,10 +143,10 @@ class _EmployerSettingsScreenState extends State<EmployerSettingsScreen> {
                         ),
                       ),
                       const SizedBox(height: 16),
-
                       const Text(
                         "Company Email",
-                        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                        style: TextStyle(
+                            fontWeight: FontWeight.w600, fontSize: 14),
                       ),
                       const SizedBox(height: 8),
                       TextField(
@@ -163,10 +167,10 @@ class _EmployerSettingsScreenState extends State<EmployerSettingsScreen> {
                         ),
                       ),
                       const SizedBox(height: 16),
-
                       const Text(
                         "Deployment Type",
-                        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                        style: TextStyle(
+                            fontWeight: FontWeight.w600, fontSize: 14),
                       ),
                       const SizedBox(height: 8),
                       Row(
@@ -177,8 +181,8 @@ class _EmployerSettingsScreenState extends State<EmployerSettingsScreen> {
                               title: const Text("Company"),
                               value: 'company',
                               groupValue: deploymentType,
-                              onChanged: (value) =>
-                                  setState(() => deploymentType = value.toString()),
+                              onChanged: (value) => setState(
+                                  () => deploymentType = value.toString()),
                             ),
                           ),
                           Expanded(
@@ -187,8 +191,8 @@ class _EmployerSettingsScreenState extends State<EmployerSettingsScreen> {
                               title: const Text("Individual"),
                               value: 'individual',
                               groupValue: deploymentType,
-                              onChanged: (value) =>
-                                  setState(() => deploymentType = value.toString()),
+                              onChanged: (value) => setState(
+                                  () => deploymentType = value.toString()),
                             ),
                           ),
                         ],

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart';
+import 'package:bliss_mobile/firebase_stub.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();

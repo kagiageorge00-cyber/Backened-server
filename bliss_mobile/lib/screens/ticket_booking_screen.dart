@@ -5,7 +5,7 @@ import 'package:bliss_mobile/services/pricing_service.dart';
 import 'package:bliss_mobile/services/financial_reconciliation_service.dart';
 import 'package:bliss_mobile/widgets/logo.dart';
 import 'package:bliss_mobile/utils/payment_helper.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:bliss_mobile/firebase_stub.dart';
 import 'package:intl/intl.dart';
 
 class TicketBookingScreen extends StatefulWidget {
@@ -29,7 +29,7 @@ class _TicketBookingScreenState extends State<TicketBookingScreen> {
   bool showResults = false;
   String? errorMessage;
   FlightOffer? selectedFlight;
-  
+
   // Insurance & Upsells
   List<Insurance> selectedInsurance = [];
   List<Upsell> selectedUpsells = [];
@@ -166,7 +166,8 @@ class _TicketBookingScreenState extends State<TicketBookingScreen> {
                   children: [
                     const Text(
                       'Enhance Your Trip',
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                      style:
+                          TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                     ),
                     IconButton(
                       icon: const Icon(Icons.close),
@@ -209,10 +210,12 @@ class _TicketBookingScreenState extends State<TicketBookingScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(insurance.name,
-                                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.bold)),
                                 Text(insurance.description),
                                 Text('Coverage: ${insurance.coverage}',
-                                    style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                                    style: const TextStyle(
+                                        fontSize: 12, color: Colors.grey)),
                               ],
                             ),
                           ),
@@ -263,7 +266,8 @@ class _TicketBookingScreenState extends State<TicketBookingScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text('${upsell.icon} ${upsell.name}',
-                                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.bold)),
                                 Text(upsell.description),
                               ],
                             ),
@@ -297,9 +301,8 @@ class _TicketBookingScreenState extends State<TicketBookingScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: _submitting
-                        ? null
-                        : () => _finalizeBooking(flight),
+                    onPressed:
+                        _submitting ? null : () => _finalizeBooking(flight),
                     child: Padding(
                       padding: const EdgeInsets.all(14.0),
                       child: _submitting
@@ -353,7 +356,8 @@ class _TicketBookingScreenState extends State<TicketBookingScreen> {
             const Text('Platform Fee & Service:'),
             Text(
               '${flight.currency} ${bookingTotal!.platformFee.toStringAsFixed(2)}',
-              style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.orange),
+              style: const TextStyle(
+                  fontWeight: FontWeight.bold, color: Colors.orange),
             ),
           ],
         ),
@@ -365,7 +369,8 @@ class _TicketBookingScreenState extends State<TicketBookingScreen> {
               const Text('Insurance:'),
               Text(
                 '${flight.currency} ${bookingTotal!.insurancePrice.toStringAsFixed(2)}',
-                style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue),
+                style: const TextStyle(
+                    fontWeight: FontWeight.bold, color: Colors.blue),
               ),
             ],
           ),
@@ -378,7 +383,8 @@ class _TicketBookingScreenState extends State<TicketBookingScreen> {
               const Text('Add-ons:'),
               Text(
                 '${flight.currency} ${bookingTotal!.upsellsPrice.toStringAsFixed(2)}',
-                style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue),
+                style: const TextStyle(
+                    fontWeight: FontWeight.bold, color: Colors.blue),
               ),
             ],
           ),
@@ -414,9 +420,8 @@ class _TicketBookingScreenState extends State<TicketBookingScreen> {
       }
 
       // Create the flight booking
-      final bookingRef = await FirebaseFirestore.instance
-          .collection('flight_bookings')
-          .add({
+      final bookingRef =
+          await FirebaseFirestore.instance.collection('flight_bookings').add({
         'name': name,
         'email': email,
         'phone': phone,
@@ -457,11 +462,12 @@ class _TicketBookingScreenState extends State<TicketBookingScreen> {
       bool paymentSuccessful = false;
       if (mounted) {
         paymentSuccessful = await PaymentHelper.showPaymentDialog(
-          context: context,
-          amount: bookingTotal!.totalPrice,
-          description: 'Flight Booking - ${flight.id}',
-          reference: 'FLIGHT_${bookingRef.id}',
-        ) ?? false;
+              context: context,
+              amount: bookingTotal!.totalPrice,
+              description: 'Flight Booking - ${flight.id}',
+              reference: 'FLIGHT_${bookingRef.id}',
+            ) ??
+            false;
       }
 
       if (paymentSuccessful) {
@@ -537,7 +543,9 @@ class _TicketBookingScreenState extends State<TicketBookingScreen> {
           ],
         ),
       ),
-      body: showResults ? _buildFlightResults(dateFormat) : _buildSearchForm(dateFormat),
+      body: showResults
+          ? _buildFlightResults(dateFormat)
+          : _buildSearchForm(dateFormat),
     );
   }
 
@@ -597,7 +605,8 @@ class _TicketBookingScreenState extends State<TicketBookingScreen> {
                       const SizedBox(height: 8),
                       Text(
                         'Last ticketing: ${flight.lastTicketingDate}',
-                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                        style:
+                            const TextStyle(fontSize: 12, color: Colors.grey),
                       ),
                       const SizedBox(height: 12),
                       Row(
@@ -764,9 +773,8 @@ class _TicketBookingScreenState extends State<TicketBookingScreen> {
                   labelText: "Phone",
                   border: OutlineInputBorder(),
                 ),
-                validator: (v) => (v == null || v.trim().length < 7)
-                    ? "Enter phone"
-                    : null,
+                validator: (v) =>
+                    (v == null || v.trim().length < 7) ? "Enter phone" : null,
                 onSaved: (v) => phone = v!.trim(),
               ),
               const SizedBox(height: 24),

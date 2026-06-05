@@ -1,18 +1,22 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import '../config/app_config.dart';
+import '../services/job_application_payment_service.dart';
 import '../widgets/page_card_scaffold.dart';
 import '../widgets/brand_loader.dart';
 
 class JobApplicationPaymentScreen extends StatefulWidget {
   final String candidateId;
   final String jobId;
+  final String fullName;
+  final String phoneNumber;
+  final String email;
 
   const JobApplicationPaymentScreen({
     super.key,
     required this.candidateId,
     required this.jobId,
+    required this.fullName,
+    required this.phoneNumber,
+    required this.email,
   });
 
   @override
@@ -69,56 +73,34 @@ class _JobApplicationPaymentScreenState
     setState(() => _isLoading = true);
 
     try {
-      // POST simplified payload required by backend
-      final response = await http
-          .post(
-            Uri.parse('${AppConfig.backendUrl}/submitPayment'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'name': _fullNameController.text,
-              'phone': _phoneNumberController.text,
-              'transactionCode': _transactionCodeController.text,
-              'paymentMethod': _selectedPaymentMethod,
-              'amount': mpesaAmount,
-              'currency': currency,
-              'bankAccountName': bankAccountName,
-              'bankName': bankName,
-              'bankAccountNumber': bankAccountNumber,
-            }),
-          )
-          .timeout(const Duration(seconds: 30));
+      final service = JobApplicationPaymentService();
+      final result = await service.submitPayment(
+        candidateId: widget.candidateId,
+        jobId: widget.jobId,
+        fullName: widget.fullName.isNotEmpty
+            ? widget.fullName
+            : _fullNameController.text,
+        phoneNumber: widget.phoneNumber.isNotEmpty
+            ? widget.phoneNumber
+            : _phoneNumberController.text,
+        email: widget.email,
+        paymentMethod: _selectedPaymentMethod,
+        amount: mpesaAmount,
+        transactionCode: _transactionCodeController.text,
+      );
 
       setState(() => _isLoading = false);
 
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        final responseData = jsonDecode(response.body);
-        if (responseData['success'] == true) {
-          _showSuccessDialog();
-          return;
-        } else {
-          String message = responseData['message'] ??
-              responseData['error'] ??
-              'Payment submission failed';
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(message)),
-          );
-        }
-      } else {
-        String message = 'Payment submission failed';
-        try {
-          final errorData = jsonDecode(response.body);
-          if (errorData is Map && errorData['message'] != null) {
-            message = errorData['message'].toString();
-          }
-        } catch (_) {
-          // non-JSON or empty response body - keep generic message
-        }
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(message),
-          ),
-        );
+      if (result['success'] == true) {
+        _showSuccessDialog();
+        return;
       }
+
+      final message =
+          result['message'] ?? result['error'] ?? 'Payment submission failed';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message.toString())),
+      );
     } catch (e) {
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -133,7 +115,8 @@ class _JobApplicationPaymentScreenState
       barrierDismissible: false,
       builder: (context) => AlertDialog(
         title: const Text('✅ Payment Submitted'),
-        content: const Text('Payment submitted. Await confirmation.'),
+        content: const Text(
+            'Payment submitted. Admin approval is required before you can continue registration.'),
         actions: [
           TextButton(
             onPressed: () {

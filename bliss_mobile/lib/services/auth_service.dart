@@ -1,262 +1,196 @@
-import 'package:flutter/foundation.dart';
 import '../models/user.dart';
 import 'backend_auth.dart';
 import 'backend_register_service.dart';
-import '../models/user_role.dart';
-import '../agents_portal/services/activity_log_service.dart';
-import 'session_service.dart';
 
 class AuthService {
   static final AuthService _instance = AuthService._internal();
-
-  factory AuthService() {
-    return _instance;
-  }
-
+  factory AuthService() => _instance;
   AuthService._internal();
 
-  /// Load session on app start
+  // ================================
+  // AUTO LOGIN
+  // ================================
   Future<bool> tryAutoLogin() async {
     final ok = await BackendAuth.loadSession();
-    if (!ok) {
+
+    if (!ok || BackendAuth.isTokenExpired) {
       await logout();
       return false;
     }
-    // Optionally: validate token with backend here
-    if (BackendAuth.isTokenExpired) {
-      await logout();
-      return false;
-    }
+
     return true;
   }
 
-  /// Refresh token and persist
-  Future<void> refreshToken(String newToken, DateTime expiry) async {
-    await BackendAuth.refreshToken(newToken, expiry);
-  }
-
-  /// Secure logout
+  // ================================
+  // LOGOUT
+  // ================================
   Future<void> logout() async {
     await BackendAuth.clear();
   }
 
-  // Stream of current user with role (single-value stream from backend session)
-  Stream<User?> get authStateChanges {
-    final uid = BackendAuth.userId;
-    if (uid == null) return Stream.value(null);
-    return Stream.fromFuture(getUserFromBackend(uid));
-  }
-
-  // Get current user (sync - may be null)
-  User? get currentUser {
+  // ================================
+  // CURRENT USER
+  // ================================
+  Future<User?> getCurrentUser() async {
     final uid = BackendAuth.userId;
     if (uid == null) return null;
-    // Use getCurrentUserAsync for full data
-    return null;
+
+    return await _getUser(uid);
   }
 
-  // Get current user async
-  Future<User?> getCurrentUserAsync() async {
-    final uid = BackendAuth.userId;
-    if (uid == null) return null;
-    return await getUserFromBackend(uid);
-  }
-
-  // Get user from backend
-  Future<User?> getUserFromBackend(String uid) async {
+  // ================================
+  // INTERNAL FETCH USER
+  // ================================
+  Future<User?> _getUser(String userId) async {
     try {
-      // Replace with your actual GET /api/users/:id endpoint
-      final res = await BackendRegisterService.getUserById(uid);
+      final res = await BackendRegisterService.getUserById(userId);
+
       if (res.success && res.data != null) {
-        return User.fromMap(res.data!, uid);
+        return User.fromMap(res.data, userId);
       }
+
       return null;
-    } catch (e) {
-      debugPrint('❌ Error getting user from backend: $e');
+    } catch (_) {
       return null;
     }
   }
 
-  // Sign up with email and password
-  Future<User?> signUpWithEmail({
-    required String email,
-    required String password,
-    required String displayName,
-    required UserRole role,
-  }) async {
-    try {
-      // Register on backend
-      final res = await BackendRegisterService.register(
-          name: displayName,
-          email: email,
-          password: password,
-          extra: {'role': role.value});
-      if (!res.success || res.id == null) {
-        throw Exception(res.error ?? 'register_failed');
-      }
-
-      final backendId = res.id!.toString();
-      // Fetch user from backend after registration
-      final user = await getUserFromBackend(backendId);
-      BackendAuth.setSession(id: backendId);
-      debugPrint('✅ User signed up (backend): $email');
-      return user;
-    } catch (e) {
-      debugPrint('❌ Sign up error: $e');
-      rethrow;
-    }
-  }
-
-  // Login with email and password
-  Future<User?> loginWithEmail({
-    required String email,
+  // ================================
+  // LOGIN (Candidate ID + Password)
+  // ================================
+  Future<User> login({
+    required String candidateId,
     required String password,
   }) async {
     try {
-      final res =
-          await BackendRegisterService.login(email: email, password: password);
-      if (!res.success || res.id == null) {
-        throw Exception(res.error ?? 'login_failed');
+      final res = await BackendRegisterService.loginWithId(
+        candidateId: candidateId,
+        password: password,
+      );
+
+      if (!res.success || res.user == null) {
+        throw Exception(res.error ?? "Login failed");
       }
 
-      final backendId = res.id!.toString();
-      final user = await getUserFromBackend(backendId);
-      // Assume backend returns token expiry in res.expiry (ISO string)
-      final expiry = (res.expiry != null && res.expiry != '')
-          ? DateTime.tryParse(res.expiry!)
-          : DateTime.now().add(const Duration(hours: 2));
+      final userId = res.user['_id'].toString();
+
+      // ✅ Save session
       await BackendAuth.setSession(
-          id: backendId, authToken: res.code, expiry: expiry);
-      debugPrint('✅ User logged in (backend): $email');
+        id: userId,
+        authToken: res.token ?? "token",
+        expiry: DateTime.now().add(const Duration(days: 7)),
+      );
 
-      // Log login activity
-      if (user != null) {
-        await ActivityLogService.log(
-          type: 'login',
-          actorId: user.uid,
-          actorRole: user.role.value,
-          description: 'User logged in',
-          details: {'email': email},
-        );
+      final user = await _getUser(userId);
+
+      if (user == null) {
+        throw Exception("Failed to load user");
       }
 
       return user;
     } catch (e) {
-      debugPrint('❌ Login error: $e');
-      rethrow;
+      throw Exception("Login error: $e");
     }
   }
 
-  // Update user role (admin only)
-  Future<void> updateUserRole({
-    required String userId,
-    required UserRole newRole,
+  // ================================
+  // REGISTER (AFTER PAYMENT FLOW)
+  // ================================
+  Future<Map<String, dynamic>> register({
+    required String name,
+    required String phone,
+    required String email,
+    required String country,
+    required String skills,
+    required String experience,
+    required String photoUrl,
   }) async {
     try {
-      // Check if current user is admin
-      final currentUser = await getCurrentUserAsync();
-      if (currentUser?.role != UserRole.admin) {
-        throw Exception('Only admins can update user roles');
-      }
-      // Replace with backend update user role endpoint
-      await BackendRegisterService.updateUserRole(
-          userId: userId, newRole: newRole.value);
-      debugPrint('✅ User role updated: $userId → ${newRole.value}');
-      // Log admin action
-      await ActivityLogService.log(
-        type: 'admin_action',
-        actorId: currentUser?.uid ?? '',
-        actorRole: currentUser?.role.value ?? '',
-        description: 'Updated user role',
-        details: {'userId': userId, 'newRole': newRole.value},
+      final res = await BackendRegisterService.registerCandidate(
+        name: name,
+        phone: phone,
+        email: email,
+        country: country,
+        skills: skills,
+        experience: experience,
+        photoUrl: photoUrl,
       );
+
+      if (!res.success || res.user == null) {
+        throw Exception(res.error ?? "Registration failed");
+      }
+
+      final userId = res.user['_id'].toString();
+
+      // ✅ Save session immediately
+      await BackendAuth.setSession(
+        id: userId,
+        authToken: res.token ?? "token",
+        expiry: DateTime.now().add(const Duration(days: 7)),
+      );
+
+      final user = await _getUser(userId);
+
+      return {
+        "user": user,
+        "candidateId": res.candidateId,
+        "password": res.password,
+      };
     } catch (e) {
-      debugPrint('❌ Error updating user role: $e');
-      rethrow;
+      throw Exception("Register error: $e");
     }
   }
 
-  // Verify KYC (admin only)
-  Future<void> verifyKYC({required String userId}) async {
-    try {
-      final currentUser = await getCurrentUserAsync();
-      if (currentUser?.role != UserRole.admin) {
-        throw Exception('Only admins can verify KYC');
-      }
-
-      await _firestore.collection('users').doc(userId).update({
-        'kycVerified': true,
-      });
-
-      debugPrint('✅ KYC verified for user: $userId');
-
-      // Log admin action
-      await ActivityLogService.log(
-        type: 'admin_action',
-        actorId: currentUser?.uid ?? '',
-        actorRole: currentUser?.role.value ?? '',
-        description: 'Verified KYC for user',
-        details: {'userId': userId},
-      );
-    } catch (e) {
-      debugPrint('❌ Error verifying KYC: $e');
-      rethrow;
-    }
-  }
-
-  // Check if user has permission for action
-  Future<bool> hasPermission(String action) async {
-    final user = await getCurrentUserAsync();
+  // ================================
+  // VERIFY STATUS CHECK (IMPORTANT)
+  // ================================
+  Future<bool> isUserVerified() async {
+    final user = await getCurrentUser();
     if (user == null) return false;
 
-    switch (action) {
-      case 'view_financial_dashboard':
-        return user.role.isAdmin;
-      case 'post_jobs':
-        return user.role.isEmployer || user.role.isAdmin;
-      case 'manage_candidates':
-        return user.role.isAgent || user.role.isAdmin;
-      case 'apply_for_jobs':
-        return user.role.isCandidate;
-      case 'manage_staff':
-        return user.role.isStaff || user.role.isAdmin;
-      default:
-        return false;
-    }
+    // backend should return:
+    // isVerified: true
+    return user.isVerified == true;
   }
 
-  // Get all users with specific role (admin only)
-  Future<List<User>> getUsersByRole(UserRole role) async {
+  // ================================
+  // ADMIN: UPDATE ROLE
+  // ================================
+  Future<void> updateUserRole({
+    required String userId,
+    required String role,
+  }) async {
+    await BackendRegisterService.updateUserRole(
+      userId: userId,
+      newRole: role,
+    );
+  }
+
+  // ================================
+  // ADMIN: GET USERS BY ROLE
+  // ================================
+  Future<List<User>> getUsersByRole(String role) async {
     try {
-      final currentUser = await getCurrentUserAsync();
-      if (currentUser?.role != UserRole.admin) {
-        throw Exception('Only admins can query users');
-      }
+      final res = await BackendRegisterService.getUsersByRole(role);
 
-      final query = await _firestore
-          .collection('users')
-          .where('role', isEqualTo: role.value)
-          .get();
+      if (!res.success || res.data == null) return [];
 
-      return query.docs.map((doc) => User.fromMap(doc.data(), doc.id)).toList();
-    } catch (e) {
-      debugPrint('❌ Error getting users by role: $e');
+      return (res.data as List)
+          .map((u) => User.fromMap(u, u['_id'].toString()))
+          .toList();
+    } catch (_) {
       return [];
     }
   }
 
-  // Delete account
-  Future<void> deleteAccount({required String uid}) async {
-    try {
-      // Delete from Firestore first
-      await _firestore.collection('users').doc(uid).delete();
+  // ================================
+  // DELETE ACCOUNT
+  // ================================
+  Future<void> deleteAccount(String userId) async {
+    await BackendRegisterService.deleteUser(userId: userId);
 
-      // Clear backend session if this was the current user
-      if (BackendAuth.userId == uid) BackendAuth.clear();
-      debugPrint('✅ Account deleted: $uid');
-    } catch (e) {
-      debugPrint('❌ Error deleting account: $e');
-      rethrow;
+    if (BackendAuth.userId == userId) {
+      await BackendAuth.clear();
     }
   }
 }

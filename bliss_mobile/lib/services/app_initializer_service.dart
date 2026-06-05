@@ -1,4 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:bliss_mobile/firebase_stub.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
 
@@ -55,14 +55,20 @@ class AppInitializerService {
       const password = 'boss123';
 
       // Check if candidate account already exists
-      final doc = await _firestore.collection('candidate_portal_users').doc(candidateId).get();
+      final doc = await _firestore
+          .collection('candidate_portal_users')
+          .doc(candidateId)
+          .get();
       if (doc.exists) {
         print('✅ Test candidate account already exists');
         return;
       }
 
       // Create candidate account
-      await _firestore.collection('candidate_portal_users').doc(candidateId).set({
+      await _firestore
+          .collection('candidate_portal_users')
+          .doc(candidateId)
+          .set({
         'id': candidateId,
         'password': password,
         'name': 'Boss Candidate',
@@ -83,8 +89,9 @@ class AppInitializerService {
   static Future<void> initializeEmployerTestAccount() async {
     try {
       const employerId = 'boss_employer';
-      
-      final doc = await _firestore.collection('employers').doc(employerId).get();
+
+      final doc =
+          await _firestore.collection('employers').doc(employerId).get();
       if (doc.exists) {
         print('✅ Employer test account already exists');
         return;

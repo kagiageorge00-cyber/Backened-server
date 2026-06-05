@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:bliss_mobile/widgets/logo.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-// Using backend-only auth: do not create Firebase users here.
+
 import '../../services/backend_register_service.dart';
 import '../../services/backend_auth.dart';
 
@@ -23,9 +22,10 @@ class _EmployerSignUpScreenState extends State<EmployerSignUpScreen> {
   final _whatsappController = TextEditingController();
   final _countryController = TextEditingController();
 
-  String _accountType = 'Individual'; // default
+  final String _accountType = 'Individual';
   bool _loading = false;
 
+  /// ✅ EMAIL SIGN UP (BACKEND ONLY)
   Future<void> _signUpWithEmail() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -34,115 +34,96 @@ class _EmployerSignUpScreenState extends State<EmployerSignUpScreen> {
     try {
       final res = await BackendRegisterService.register(
         name: _fullNameController.text.trim(),
+        phone: _whatsappController.text.trim(), // REQUIRED
+        userType: 'employer', // REQUIRED
         email: _emailController.text.trim(),
+        password: _passwordController.text.trim(),
         extra: {
           'companyName': _companyNameController.text.trim(),
-          'whatsappNumber': _whatsappController.text.trim(),
           'country': _countryController.text.trim(),
           'accountType': _accountType,
         },
       );
 
       if (!res.success || res.id == null) {
-        final msg = res.error ?? 'Registration failed';
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(msg)));
-        return;
+        throw Exception(res.error ?? 'Registration failed');
       }
 
       final backendId = res.id!.toString();
 
-      await FirebaseFirestore.instance
-          .collection('employers')
-          .doc(backendId)
-          .set({
-        'fullName': _fullNameController.text.trim(),
-        'companyName': _companyNameController.text.trim(),
-        'email': _emailController.text.trim(),
-        'whatsappNumber': _whatsappController.text.trim(),
-        'country': _countryController.text.trim(),
-        'accountType': _accountType,
-        'backendId': backendId,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
+      // ✅ SET SESSION ONLY
+      await BackendAuth.setSession(id: backendId);
 
-      // set backend session
-      BackendAuth.setSession(id: backendId);
-
-      Navigator.pushReplacementNamed(context, '/employersPortal', arguments: {
-        'employerId': backendId,
-        'employerName': _fullNameController.text.trim(),
-        'companyName': _companyNameController.text.trim(),
-      });
+      Navigator.pushReplacementNamed(
+        context,
+        '/employersPortal',
+        arguments: {
+          'employerId': backendId,
+          'employerName': _fullNameController.text.trim(),
+          'companyName': _companyNameController.text.trim(),
+        },
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
     } finally {
       setState(() => _loading = false);
     }
   }
 
+  /// ✅ GOOGLE SIGN UP (BACKEND ONLY)
   Future<void> _signUpWithGoogle() async {
     setState(() => _loading = true);
+
     try {
-      final GoogleSignIn googleSignIn = GoogleSignIn(
-        clientId:
-            '547511206892-53ecc5e187584427b4b6c9.apps.googleusercontent.com',
-      );
-      final googleUser = await googleSignIn.signIn();
+      final googleUser = await GoogleSignIn().signIn();
       if (googleUser == null) return;
 
-      // Try to find existing user by email
+      // check existing user
       final existing =
           await BackendRegisterService.getUserByEmail(googleUser.email);
-      int? employerId;
+
+      int? userId;
+
       if (existing.success && existing.id != null) {
-        employerId = existing.id;
+        userId = existing.id;
       } else {
         final res = await BackendRegisterService.register(
           name: googleUser.displayName ?? '',
+          phone: '', // optional
+          userType: 'employer',
           email: googleUser.email,
-          extra: {'companyName': '', 'accountType': _accountType},
+          extra: {
+            'companyName': '',
+            'accountType': _accountType,
+          },
         );
-        if (res.success) employerId = res.id;
+
+        if (!res.success || res.id == null) {
+          throw Exception(res.error ?? 'Google signup failed');
+        }
+
+        userId = res.id;
       }
-      final backendId = employerId?.toString() ??
-          (await BackendRegisterService.register(
-                  name: googleUser.displayName ?? '',
-                  email: googleUser.email,
-                  extra: {'companyName': '', 'accountType': _accountType}))
-              .id
-              ?.toString() ??
-          '0';
 
-      await FirebaseFirestore.instance
-          .collection('employers')
-          .doc(backendId)
-          .set({
-        'fullName': googleUser.displayName ?? '',
-        'companyName': '',
-        'email': googleUser.email,
-        'whatsappNumber': '',
-        'country': '',
-        'accountType': _accountType,
-        'backendId': backendId,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
+      final backendId = userId.toString();
 
-      // set backend session
-      BackendAuth.setSession(id: backendId);
+      await BackendAuth.setSession(id: backendId);
 
-      Navigator.pushReplacementNamed(context, '/employersPortal', arguments: {
-        'employerId': backendId,
-        'employerName': googleUser.displayName ?? '',
-        'companyName': '',
-      });
+      Navigator.pushReplacementNamed(
+        context,
+        '/employersPortal',
+        arguments: {
+          'employerId': backendId,
+          'employerName': googleUser.displayName ?? '',
+          'companyName': '',
+        },
+      );
     } catch (e) {
-      String message = 'Google sign-up failed. Please try again.';
-      if (e.toString().contains('network')) {
-        message = 'Network error. Please check your internet connection.';
-      } else if (e.toString().contains('cancelled')) {
-        message = 'Google sign-in was cancelled.';
-      }
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(message)));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Google sign-up failed')),
+      );
     } finally {
       setState(() => _loading = false);
     }
@@ -180,167 +161,52 @@ class _EmployerSignUpScreenState extends State<EmployerSignUpScreen> {
             ),
           ],
         ),
-        elevation: 0,
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
               padding: const EdgeInsets.all(20),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 600),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    children: [
-                      TextFormField(
-                        controller: _fullNameController,
-                        enabled: !_loading,
-                        decoration: InputDecoration(
-                          labelText: 'Full Name',
-                          hintText: 'John Doe',
-                          prefixIcon: const Icon(Icons.person),
-                        ),
-                        style: theme.textTheme.bodyLarge,
-                        validator: (val) =>
-                            val!.isEmpty ? 'Enter your full name' : null,
-                      ),
-                      const SizedBox(height: 18),
-                      TextFormField(
-                        controller: _companyNameController,
-                        enabled: !_loading,
-                        decoration: InputDecoration(
-                          labelText: 'Company Name',
-                          hintText: 'Your Company Inc.',
-                          prefixIcon: const Icon(Icons.business),
-                        ),
-                        style: theme.textTheme.bodyLarge,
-                      ),
-                      const SizedBox(height: 18),
-                      DropdownButtonFormField<String>(
-                        initialValue: _accountType,
-                        decoration: InputDecoration(
-                          labelText: 'Account Type',
-                          prefixIcon: const Icon(Icons.account_balance),
-                        ),
-                        items: const [
-                          DropdownMenuItem(
-                            value: 'Individual',
-                            child: Text('Individual'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'Company',
-                            child: Text('Company'),
-                          ),
-                        ],
-                        onChanged: (val) => setState(() => _accountType = val!),
-                      ),
-                      const SizedBox(height: 18),
-                      TextFormField(
-                        controller: _emailController,
-                        enabled: !_loading,
-                        keyboardType: TextInputType.emailAddress,
-                        decoration: InputDecoration(
-                          labelText: 'Email Address',
-                          hintText: 'your.email@company.com',
-                          prefixIcon: const Icon(Icons.email),
-                        ),
-                        style: theme.textTheme.bodyLarge,
-                        validator: (val) =>
-                            val!.isEmpty ? 'Enter your email' : null,
-                      ),
-                      const SizedBox(height: 18),
-                      TextFormField(
-                        controller: _passwordController,
-                        enabled: !_loading,
-                        obscureText: true,
-                        decoration: InputDecoration(
-                          labelText: 'Password',
-                          hintText: 'Min 6 characters',
-                          prefixIcon: const Icon(Icons.lock),
-                        ),
-                        style: theme.textTheme.bodyLarge,
-                        validator: (val) => val!.length < 6
-                            ? 'Password too short (min 6)'
-                            : null,
-                      ),
-                      const SizedBox(height: 18),
-                      TextFormField(
-                        controller: _whatsappController,
-                        enabled: !_loading,
-                        keyboardType: TextInputType.phone,
-                        decoration: InputDecoration(
-                          labelText: 'WhatsApp Number',
-                          hintText: '+1 234 567 8900',
-                          prefixIcon: const Icon(Icons.phone),
-                        ),
-                        style: theme.textTheme.bodyLarge,
-                      ),
-                      const SizedBox(height: 18),
-                      TextFormField(
-                        controller: _countryController,
-                        enabled: !_loading,
-                        decoration: InputDecoration(
-                          labelText: 'Country of Residence',
-                          hintText: 'Nigeria, USA, etc.',
-                          prefixIcon: const Icon(Icons.public),
-                        ),
-                        style: theme.textTheme.bodyLarge,
-                      ),
-                      const SizedBox(height: 28),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: _loading ? null : _signUpWithEmail,
-                          child: const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 12),
-                            child: Text(
-                              'Finish Sign Up',
-                              style: TextStyle(fontSize: 16),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed: _loading ? null : _signUpWithGoogle,
-                          icon: const Icon(Icons.login),
-                          label: const Text('Sign Up with Google'),
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            'Already have an account? ',
-                            style: theme.textTheme.bodyMedium,
-                          ),
-                          TextButton(
-                            onPressed: () =>
-                                Navigator.pushNamed(context, '/employer-login'),
-                            style: TextButton.styleFrom(
-                              padding: EdgeInsets.zero,
-                            ),
-                            child: Text(
-                              'Login',
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: theme.colorScheme.primary,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  children: [
+                    _buildField(_fullNameController, 'Full Name', Icons.person),
+                    _buildField(
+                        _companyNameController, 'Company Name', Icons.business),
+                    _buildField(_emailController, 'Email', Icons.email),
+                    _buildField(_passwordController, 'Password', Icons.lock,
+                        obscure: true),
+                    _buildField(_whatsappController, 'WhatsApp', Icons.phone),
+                    _buildField(_countryController, 'Country', Icons.public),
+                    const SizedBox(height: 20),
+                    ElevatedButton(
+                      onPressed: _loading ? null : _signUpWithEmail,
+                      child: const Text('Finish Sign Up'),
+                    ),
+                    OutlinedButton(
+                      onPressed: _loading ? null : _signUpWithGoogle,
+                      child: const Text('Sign Up with Google'),
+                    ),
+                  ],
                 ),
               ),
             ),
+    );
+  }
+
+  Widget _buildField(TextEditingController c, String label, IconData icon,
+      {bool obscure = false}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: TextFormField(
+        controller: c,
+        obscureText: obscure,
+        decoration: InputDecoration(
+          labelText: label,
+          prefixIcon: Icon(icon),
+        ),
+        validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+      ),
     );
   }
 }

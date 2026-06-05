@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:bliss_mobile/firebase_stub.dart';
 import '../widgets/payment_helper.dart';
 // import 'package:file_picker/file_picker.dart'; // Uncomment if using file_picker
 
@@ -10,7 +10,8 @@ class TravelDocumentsScreen extends StatefulWidget {
   _TravelDocumentsScreenState createState() => _TravelDocumentsScreenState();
 }
 
-class _TravelDocumentsScreenState extends State<TravelDocumentsScreen> with SingleTickerProviderStateMixin {
+class _TravelDocumentsScreenState extends State<TravelDocumentsScreen>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
   // Controllers for forms
@@ -18,15 +19,27 @@ class _TravelDocumentsScreenState extends State<TravelDocumentsScreen> with Sing
   final TextEditingController _birthFeeController = TextEditingController();
   final TextEditingController _medicalNameController = TextEditingController();
   final TextEditingController _medicalPhoneController = TextEditingController();
-  final TextEditingController _invitationNameController = TextEditingController();
-  final TextEditingController _invitationPhoneController = TextEditingController();
-  final TextEditingController _workPermitNameController = TextEditingController();
-  final TextEditingController _workPermitPhoneController = TextEditingController();
+  final TextEditingController _invitationNameController =
+      TextEditingController();
+  final TextEditingController _invitationPhoneController =
+      TextEditingController();
+  final TextEditingController _workPermitNameController =
+      TextEditingController();
+  final TextEditingController _workPermitPhoneController =
+      TextEditingController();
 
   String _invitationCountry = 'Select Country';
   String _workPermitCountry = 'Select Country';
 
-  final List<String> countries = ['Kenya', 'UAE', 'USA', 'Canada', 'UK', 'Germany', 'Turkey'];
+  final List<String> countries = [
+    'Kenya',
+    'UAE',
+    'USA',
+    'Canada',
+    'UK',
+    'Germany',
+    'Turkey'
+  ];
 
   @override
   void initState() {
@@ -87,21 +100,27 @@ class _TravelDocumentsScreenState extends State<TravelDocumentsScreen> with Sing
       payerPhone: phone,
       amount: amount,
       title: title,
-      associatedId: 'TD_${documentType}_${DateTime.now().millisecondsSinceEpoch}',
+      associatedId:
+          'TD_${documentType}_${DateTime.now().millisecondsSinceEpoch}',
     );
 
     if (success) {
       // Save booking to Firestore
       try {
-        await FirebaseFirestore.instance.collection('travel_document_bookings').add({
+        await FirebaseFirestore.instance
+            .collection('travel_document_bookings')
+            .add({
           'documentType': documentType,
           'candidateName': fullName.trim(),
           'phoneNumber': phone,
           'amount': amount,
           'status': 'paid',
           'createdAt': FieldValue.serverTimestamp(),
-          'country': documentType == 'invitation' ? _invitationCountry : 
-                    documentType == 'work_permit' ? _workPermitCountry : null,
+          'country': documentType == 'invitation'
+              ? _invitationCountry
+              : documentType == 'work_permit'
+                  ? _workPermitCountry
+                  : null,
         });
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -125,7 +144,8 @@ class _TravelDocumentsScreenState extends State<TravelDocumentsScreen> with Sing
       }
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Payment cancelled'), backgroundColor: Colors.orange),
+        const SnackBar(
+            content: Text('Payment cancelled'), backgroundColor: Colors.orange),
       );
     }
   }
@@ -176,16 +196,20 @@ class _TravelDocumentsScreenState extends State<TravelDocumentsScreen> with Sing
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Passport Application', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                const Text('Passport Application',
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 12),
-                const Text('Additional e-Citizen Fee (if applicable)', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                const Text('Additional e-Citizen Fee (if applicable)',
+                    style: TextStyle(fontSize: 12, color: Colors.grey)),
                 const SizedBox(height: 8),
                 TextField(
                   controller: _passportFeeController,
                   keyboardType: TextInputType.number,
                   decoration: InputDecoration(
                     labelText: 'E-Citizen Fee (KES)',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8)),
                     prefixIcon: const Icon(Icons.currency_exchange),
                   ),
                 ),
@@ -209,7 +233,8 @@ class _TravelDocumentsScreenState extends State<TravelDocumentsScreen> with Sing
                       Expanded(
                         child: Text(
                           'Total fee: KES ${calculatePassportTotal().toStringAsFixed(0)}\nIncludes gov fee + platform fee',
-                          style: TextStyle(fontSize: 12, color: Colors.blue.shade700),
+                          style: TextStyle(
+                              fontSize: 12, color: Colors.blue.shade700),
                         ),
                       ),
                     ],
@@ -224,7 +249,8 @@ class _TravelDocumentsScreenState extends State<TravelDocumentsScreen> with Sing
                       fullName: 'Passport Applicant',
                       phoneNumber: '',
                       amount: calculatePassportTotal(),
-                      title: 'Passport Application - KES ${calculatePassportTotal().toStringAsFixed(0)}',
+                      title:
+                          'Passport Application - KES ${calculatePassportTotal().toStringAsFixed(0)}',
                     ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blue.shade700,
@@ -243,16 +269,20 @@ class _TravelDocumentsScreenState extends State<TravelDocumentsScreen> with Sing
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Birth Certificate', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                const Text('Birth Certificate',
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 12),
-                const Text('Application Fee', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                const Text('Application Fee',
+                    style: TextStyle(fontSize: 12, color: Colors.grey)),
                 const SizedBox(height: 8),
                 TextField(
                   controller: _birthFeeController,
                   keyboardType: TextInputType.number,
                   decoration: InputDecoration(
                     labelText: 'Application Fee (KES)',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8)),
                     prefixIcon: const Icon(Icons.currency_exchange),
                   ),
                 ),
@@ -276,7 +306,8 @@ class _TravelDocumentsScreenState extends State<TravelDocumentsScreen> with Sing
                       Expanded(
                         child: Text(
                           'Total fee: KES ${calculateBirthTotal().toStringAsFixed(0)}\nStandard processing',
-                          style: TextStyle(fontSize: 12, color: Colors.green.shade700),
+                          style: TextStyle(
+                              fontSize: 12, color: Colors.green.shade700),
                         ),
                       ),
                     ],
@@ -291,7 +322,8 @@ class _TravelDocumentsScreenState extends State<TravelDocumentsScreen> with Sing
                       fullName: 'Birth Cert Applicant',
                       phoneNumber: '',
                       amount: calculateBirthTotal(),
-                      title: 'Birth Certificate - KES ${calculateBirthTotal().toStringAsFixed(0)}',
+                      title:
+                          'Birth Certificate - KES ${calculateBirthTotal().toStringAsFixed(0)}',
                     ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.green.shade700,
@@ -310,14 +342,18 @@ class _TravelDocumentsScreenState extends State<TravelDocumentsScreen> with Sing
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Medical Examination', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-                const Text('GAMCA / Normal Medical', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                const Text('Medical Examination',
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                const Text('GAMCA / Normal Medical',
+                    style: TextStyle(fontSize: 12, color: Colors.grey)),
                 const SizedBox(height: 16),
                 TextField(
                   controller: _medicalNameController,
                   decoration: InputDecoration(
                     labelText: 'Full Name',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8)),
                     prefixIcon: const Icon(Icons.person),
                   ),
                 ),
@@ -328,7 +364,8 @@ class _TravelDocumentsScreenState extends State<TravelDocumentsScreen> with Sing
                   decoration: InputDecoration(
                     labelText: 'Phone Number',
                     hintText: '07XXXXXXXX',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8)),
                     prefixIcon: const Icon(Icons.phone),
                   ),
                 ),
@@ -352,7 +389,8 @@ class _TravelDocumentsScreenState extends State<TravelDocumentsScreen> with Sing
                       Expanded(
                         child: Text(
                           'Medical Fee: KES 7,500\nBooking appointment included',
-                          style: TextStyle(fontSize: 12, color: Colors.orange.shade700),
+                          style: TextStyle(
+                              fontSize: 12, color: Colors.orange.shade700),
                         ),
                       ),
                     ],
@@ -386,7 +424,9 @@ class _TravelDocumentsScreenState extends State<TravelDocumentsScreen> with Sing
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Invitation Letter', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                const Text('Invitation Letter',
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 12),
                 DropdownButton<String>(
                   value: _invitationCountry,
@@ -401,7 +441,8 @@ class _TravelDocumentsScreenState extends State<TravelDocumentsScreen> with Sing
                   controller: _invitationNameController,
                   decoration: InputDecoration(
                     labelText: 'Full Name',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8)),
                     prefixIcon: const Icon(Icons.person),
                   ),
                 ),
@@ -412,7 +453,8 @@ class _TravelDocumentsScreenState extends State<TravelDocumentsScreen> with Sing
                   decoration: InputDecoration(
                     labelText: 'Phone Number',
                     hintText: '07XXXXXXXX',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8)),
                     prefixIcon: const Icon(Icons.phone),
                   ),
                 ),
@@ -436,7 +478,8 @@ class _TravelDocumentsScreenState extends State<TravelDocumentsScreen> with Sing
                       Expanded(
                         child: Text(
                           'Invitation Fee: KES 30,000\nProcessing time: 5-7 days',
-                          style: TextStyle(fontSize: 12, color: Colors.purple.shade700),
+                          style: TextStyle(
+                              fontSize: 12, color: Colors.purple.shade700),
                         ),
                       ),
                     ],
@@ -470,7 +513,9 @@ class _TravelDocumentsScreenState extends State<TravelDocumentsScreen> with Sing
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Work Permit Application', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                const Text('Work Permit Application',
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 12),
                 DropdownButton<String>(
                   value: _workPermitCountry,
@@ -485,7 +530,8 @@ class _TravelDocumentsScreenState extends State<TravelDocumentsScreen> with Sing
                   controller: _workPermitNameController,
                   decoration: InputDecoration(
                     labelText: 'Full Name',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8)),
                     prefixIcon: const Icon(Icons.person),
                   ),
                 ),
@@ -496,7 +542,8 @@ class _TravelDocumentsScreenState extends State<TravelDocumentsScreen> with Sing
                   decoration: InputDecoration(
                     labelText: 'Phone Number',
                     hintText: '07XXXXXXXX',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8)),
                     prefixIcon: const Icon(Icons.phone),
                   ),
                 ),
@@ -520,7 +567,8 @@ class _TravelDocumentsScreenState extends State<TravelDocumentsScreen> with Sing
                       Expanded(
                         child: Text(
                           'Work Permit Fee: KES 90,000\nProcessing time: 7-14 days',
-                          style: TextStyle(fontSize: 12, color: Colors.red.shade700),
+                          style: TextStyle(
+                              fontSize: 12, color: Colors.red.shade700),
                         ),
                       ),
                     ],

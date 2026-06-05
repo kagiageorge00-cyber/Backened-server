@@ -1,6 +1,6 @@
 // lib/employers_portal/services/marketplace_service.dart
 
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:bliss_mobile/firebase_stub.dart';
 import '../models/job_model.dart';
 
 class MarketplaceService {

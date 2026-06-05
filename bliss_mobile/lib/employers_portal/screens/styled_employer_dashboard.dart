@@ -1,7 +1,7 @@
 // styled_employer_dashboard.dart
 import 'package:flutter/material.dart';
 import 'dart:async';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:bliss_mobile/firebase_stub.dart';
 
 // your existing screens (aliased where you previously aliased them)
 import 'employer_post_job_screen.dart' as post_job_screen;
@@ -72,17 +72,19 @@ class _StyledEmployerDashboardState extends State<StyledEmployerDashboard> {
         timer.cancel();
         return;
       }
-      
+
       int nextPage = _currentPage + 1;
       if (nextPage >= 7) {
         nextPage = 0;
       }
-      
-      _pageController.animateToPage(
+
+      _pageController
+          .animateToPage(
         nextPage,
         duration: const Duration(milliseconds: 500),
         curve: Curves.easeInOut,
-      ).then((_) {
+      )
+          .then((_) {
         if (mounted) {
           setState(() {
             _currentPage = nextPage;
@@ -282,428 +284,446 @@ class _StyledEmployerDashboardState extends State<StyledEmployerDashboard> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                    // header row
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(child: _welcomeHeader()),
-                        if (isWide)
-                          Row(
-                            children: [
-                              _miniIconButton(Icons.search, onTap: () {
-                                // TODO: Implement search
-                              }),
-                              const SizedBox(width: 8),
-                              _miniIconButton(Icons.message, onTap: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => EmployerCommunicationScreen(
-                                      employerId: widget.employerId,
-                                      employerName: widget.employerName,
-                                    ),
-                                  ),
-                                );
-                              }),
-                              const SizedBox(width: 8),
-                              _miniIconButton(Icons.notifications_none,
-                                  onTap: () {
-                                // TODO: Implement notifications
-                              }),
-                              const SizedBox(width: 8),
-                              _profileAvatarSmall(accent),
-                            ],
-                          ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 18),
-                    StreamBuilder<QuerySnapshot>(
-                      stream: FirebaseFirestore.instance
-                          .collection('candidates')
-                          .where('employerId', isEqualTo: widget.employerId)
-                          .snapshots(),
-                      builder: (context, snapshot) {
-                        if (!snapshot.hasData) {
-                          return const Center(
-                              child: CircularProgressIndicator(color: Colors.white));
-                        }
-                        final docs = snapshot.data!.docs;
-                        final total = docs.length;
-                        final applied = docs
-                            .where((d) => d['hasApplied'] == true)
-                            .length;
-                        final interview = docs
-                            .where((d) => d['interviewScheduled'] == true)
-                            .length;
-                        final hired = docs
-                            .where((d) => d['isHired'] == true)
-                            .length;
-                        final unpaid = docs
-                            .where((d) => d['isHired'] == true && d['hirePaid'] != true)
-                            .length;
-                        final unlocked = docs
-                            .where((d) => d['documentsUnlocked'] == true)
-                            .length;
-                        return Column(
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: _pipelineCard(
-                                      'Total Applicants', total, Colors.blue),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: _pipelineCard(
-                                      'Applied', applied, Colors.purple),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: _pipelineCard(
-                                      'Interview', interview, Colors.orange),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: _pipelineCard(
-                                      'Hired', hired, Colors.green),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: _pipelineCard(
-                                      'Hire Due', unpaid, Colors.red),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: _pipelineCard(
-                                      'Docs Unlocked', unlocked, Colors.teal),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 14),
-                          ],
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 18),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Card(
-                            color: Colors.white.withOpacity(0.05),
-                            child: ListTile(
-                              leading: const Icon(Icons.handshake, color: Colors.white),
-                              title: const Text('Hire Agent', style: TextStyle(color: Colors.white)),
-                              subtitle: const Text('Get a dedicated recruiter', style: TextStyle(color: Colors.white70)),
-                              trailing: TextButton(
-                                onPressed: () {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Hire agent request sent.')), 
-                                  );
-                                },
-                                child: const Text('Hire', style: TextStyle(color: Colors.white)),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Card(
-                            color: Colors.white.withOpacity(0.05),
-                            child: ListTile(
-                              leading: const Icon(Icons.support_agent, color: Colors.white),
-                              title: const Text('Support & Tickets', style: TextStyle(color: Colors.white)),
-                              subtitle: const Text('Open support ticket', style: TextStyle(color: Colors.white70)),
-                              trailing: IconButton(
-                                icon: const Icon(Icons.arrow_forward, color: Colors.white),
-                                onPressed: () {
-                                  Navigator.pushNamed(context, '/support');
-                                },
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 18),
-
-                    // Employer Slides Carousel
-                    SizedBox(
-                      height: 280,
-                      child: PageView(
-                        controller: _pageController,
-                        onPageChanged: (index) {
-                          setState(() {
-                            _currentPage = index;
-                          });
-                        },
+                      // header row
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          'assets/images/employerslide1.jpeg',
-                          'assets/images/employerslide2.jpeg',
-                          'assets/images/employerslide3.jpeg',
-                          'assets/images/employerslide4.jpeg',
-                          'assets/images/employerslide5.jpeg',
-                          'assets/images/employerslide6.jpeg',
-                          'assets/images/employerslide7.jpeg',
-                        ]
-                            .map((slide) => Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 8.0),
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(12),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.black.withOpacity(0.3),
-                                          blurRadius: 8,
-                                        )
-                                      ],
+                          Expanded(child: _welcomeHeader()),
+                          if (isWide)
+                            Row(
+                              children: [
+                                _miniIconButton(Icons.search, onTap: () {
+                                  // TODO: Implement search
+                                }),
+                                const SizedBox(width: 8),
+                                _miniIconButton(Icons.message, onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          EmployerCommunicationScreen(
+                                        employerId: widget.employerId,
+                                        employerName: widget.employerName,
+                                      ),
                                     ),
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(12),
-                                      child: Image.asset(
-                                        slide,
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (_, __, ___) => Container(
-                                          color: Colors.grey[700],
-                                          child: const Center(
-                                            child: Text('Employer Slide',
-                                                style: TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 16,
-                                                  fontWeight: FontWeight.bold,
-                                                )),
+                                  );
+                                }),
+                                const SizedBox(width: 8),
+                                _miniIconButton(Icons.notifications_none,
+                                    onTap: () {
+                                  // TODO: Implement notifications
+                                }),
+                                const SizedBox(width: 8),
+                                _profileAvatarSmall(accent),
+                              ],
+                            ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 18),
+                      StreamBuilder<QuerySnapshot>(
+                        stream: FirebaseFirestore.instance
+                            .collection('candidates')
+                            .where('employerId', isEqualTo: widget.employerId)
+                            .snapshots(),
+                        builder: (context, snapshot) {
+                          if (!snapshot.hasData) {
+                            return const Center(
+                                child: CircularProgressIndicator(
+                                    color: Colors.white));
+                          }
+                          final docs = snapshot.data!.docs;
+                          final total = docs.length;
+                          final applied =
+                              docs.where((d) => d['hasApplied'] == true).length;
+                          final interview = docs
+                              .where((d) => d['interviewScheduled'] == true)
+                              .length;
+                          final hired =
+                              docs.where((d) => d['isHired'] == true).length;
+                          final unpaid = docs
+                              .where((d) =>
+                                  d['isHired'] == true && d['hirePaid'] != true)
+                              .length;
+                          final unlocked = docs
+                              .where((d) => d['documentsUnlocked'] == true)
+                              .length;
+                          return Column(
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _pipelineCard(
+                                        'Total Applicants', total, Colors.blue),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: _pipelineCard(
+                                        'Applied', applied, Colors.purple),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _pipelineCard(
+                                        'Interview', interview, Colors.orange),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: _pipelineCard(
+                                        'Hired', hired, Colors.green),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _pipelineCard(
+                                        'Hire Due', unpaid, Colors.red),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: _pipelineCard(
+                                        'Docs Unlocked', unlocked, Colors.teal),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 14),
+                            ],
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 18),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Card(
+                              color: Colors.white.withOpacity(0.05),
+                              child: ListTile(
+                                leading: const Icon(Icons.handshake,
+                                    color: Colors.white),
+                                title: const Text('Hire Agent',
+                                    style: TextStyle(color: Colors.white)),
+                                subtitle: const Text(
+                                    'Get a dedicated recruiter',
+                                    style: TextStyle(color: Colors.white70)),
+                                trailing: TextButton(
+                                  onPressed: () {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                          content:
+                                              Text('Hire agent request sent.')),
+                                    );
+                                  },
+                                  child: const Text('Hire',
+                                      style: TextStyle(color: Colors.white)),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Card(
+                              color: Colors.white.withOpacity(0.05),
+                              child: ListTile(
+                                leading: const Icon(Icons.support_agent,
+                                    color: Colors.white),
+                                title: const Text('Support & Tickets',
+                                    style: TextStyle(color: Colors.white)),
+                                subtitle: const Text('Open support ticket',
+                                    style: TextStyle(color: Colors.white70)),
+                                trailing: IconButton(
+                                  icon: const Icon(Icons.arrow_forward,
+                                      color: Colors.white),
+                                  onPressed: () {
+                                    Navigator.pushNamed(context, '/support');
+                                  },
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 18),
+
+                      // Employer Slides Carousel
+                      SizedBox(
+                        height: 280,
+                        child: PageView(
+                          controller: _pageController,
+                          onPageChanged: (index) {
+                            setState(() {
+                              _currentPage = index;
+                            });
+                          },
+                          children: [
+                            'assets/images/employerslide1.jpeg',
+                            'assets/images/employerslide2.jpeg',
+                            'assets/images/employerslide3.jpeg',
+                            'assets/images/employerslide4.jpeg',
+                            'assets/images/employerslide5.jpeg',
+                            'assets/images/employerslide6.jpeg',
+                            'assets/images/employerslide7.jpeg',
+                          ]
+                              .map((slide) => Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8.0),
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(12),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color:
+                                                Colors.black.withOpacity(0.3),
+                                            blurRadius: 8,
+                                          )
+                                        ],
+                                      ),
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(12),
+                                        child: Image.asset(
+                                          slide,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (_, __, ___) =>
+                                              Container(
+                                            color: Colors.grey[700],
+                                            child: const Center(
+                                              child: Text('Employer Slide',
+                                                  style: TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 16,
+                                                    fontWeight: FontWeight.bold,
+                                                  )),
+                                            ),
                                           ),
                                         ),
                                       ),
                                     ),
-                                  ),
-                                ))
-                            .toList(),
-                      ),
-                    ),
-
-                    const SizedBox(height: 12),
-                    // Page Indicators
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: List.generate(
-                          7,
-                          (index) => Container(
-                                width: 8,
-                                height: 8,
-                                margin:
-                                    const EdgeInsets.symmetric(horizontal: 4),
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: _currentPage == index
-                                      ? accent
-                                      : Colors.white.withOpacity(0.3),
-                                ),
-                              )),
-                    ),
-                    Expanded(
-                      child: Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.02),
-                          borderRadius: BorderRadius.circular(16),
-                          border:
-                              Border.all(color: Colors.white.withOpacity(0.03)),
+                                  ))
+                              .toList(),
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text('Your Jobs',
-                                    style: TextStyle(
-                                        color: Colors.white70,
-                                        fontWeight: FontWeight.w700)),
-                                TextButton.icon(
-                                  onPressed: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) => post_job_screen
-                                            .EmployerPostJobScreen(
-                                          employerId: widget.employerId,
-                                          employerName: widget.employerName,
-                                          companyName: widget.companyName,
+                      ),
+
+                      const SizedBox(height: 12),
+                      // Page Indicators
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: List.generate(
+                            7,
+                            (index) => Container(
+                                  width: 8,
+                                  height: 8,
+                                  margin:
+                                      const EdgeInsets.symmetric(horizontal: 4),
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: _currentPage == index
+                                        ? accent
+                                        : Colors.white.withOpacity(0.3),
+                                  ),
+                                )),
+                      ),
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.02),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                                color: Colors.white.withOpacity(0.03)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text('Your Jobs',
+                                      style: TextStyle(
+                                          color: Colors.white70,
+                                          fontWeight: FontWeight.w700)),
+                                  TextButton.icon(
+                                    onPressed: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => post_job_screen
+                                              .EmployerPostJobScreen(
+                                            employerId: widget.employerId,
+                                            employerName: widget.employerName,
+                                            companyName: widget.companyName,
+                                          ),
                                         ),
-                                      ),
-                                    );
-                                  },
-                                  icon: const Icon(Icons.add,
-                                      color: Colors.white70),
-                                  label: const Text('Post a job',
-                                      style: TextStyle(color: Colors.white70)),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 10),
-                            Expanded(
-                              child: StreamBuilder<QuerySnapshot>(
-                                stream: FirebaseFirestore.instance
-                                    .collection('jobs')
-                                    .where('employerId',
-                                        isEqualTo: widget.employerId)
-                                    .orderBy('createdAt', descending: true)
-                                    .snapshots(),
-                                builder: (context, snapshot) {
-                                  if (snapshot.connectionState ==
-                                      ConnectionState.waiting) {
-                                    return const Center(
-                                        child: CircularProgressIndicator());
-                                  }
-
-                                  if (!snapshot.hasData ||
-                                      snapshot.data!.docs.isEmpty) {
-                                    return const Center(
-                                      child: Text(
-                                          'No jobs posted yet. Post your first job!'),
-                                    );
-                                  }
-
-                                  final docs = snapshot.data!.docs;
-                                  return ListView.separated(
-                                    itemCount: docs.length,
-                                    separatorBuilder: (_, __) =>
-                                        const SizedBox(height: 12),
-                                    itemBuilder: (context, idx) {
-                                      final doc = docs[idx];
-                                      final data =
-                                          doc.data() as Map<String, dynamic>;
-                                      final title =
-                                          data['jobTitle'] as String? ??
-                                              'Job Opening';
-                                      final salary =
-                                          data['salary']?.toString() ?? 'N/A';
-                                      final isSelected =
-                                          selectedJobId == doc.id;
-
-                                      return _jobCard(
-                                        jobId: doc.id,
-                                        title: title,
-                                        salary: '\$$salary',
-                                        selected: isSelected,
-                                        accent: accent,
-                                        onTap: () {
-                                          setState(() {
-                                            selectedJobId = doc.id;
-                                            selectedJobTitle = title;
-                                          });
-                                        },
-                                        onViewApplicants: () {
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (_) =>
-                                                  ApplicantsListScreen(
-                                                jobId: doc.id,
-                                                jobTitle: title,
-                                              ),
-                                            ),
-                                          );
-                                        },
-                                        onScheduleInterview: () {
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (_) =>
-                                                  ScheduleInterviewScreen(
-                                                candidateName: 'Candidate',
-                                                candidateId: 'candidate',
-                                              ),
-                                            ),
-                                          );
-                                        },
-                                        onReviewJob: () {
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (_) => ReviewJobScreen(
-                                                jobTitle: title,
-                                                jobCategory: data['jobType'] ??
-                                                    'General',
-                                                location: data['location'] ??
-                                                    'Unknown',
-                                                salary: '\$$salary',
-                                                description:
-                                                    data['jobDescription'] ??
-                                                        '',
-                                                requirements:
-                                                    data['requirements'] ?? '',
-                                              ),
-                                            ),
-                                          );
-                                        },
-                                        onGenerateOffer: () {
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (_) =>
-                                                  const offer_letter_screen
-                                                      .GenerateOfferLetterScreen(),
-                                            ),
-                                          );
-                                        },
-                                        onGenerateContract: () {
-                                          if (selectedJobId == null ||
-                                              selectedJobTitle == null) {
-                                            ScaffoldMessenger.of(context)
-                                                .showSnackBar(
-                                              const SnackBar(
-                                                  content: Text(
-                                                      'Please select a job first')),
-                                            );
-                                            return;
-                                          }
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (_) =>
-                                                  GenerateWorkContractScreen(
-                                                employerId: widget.employerId,
-                                                jobId: doc.id,
-                                                jobTitle:
-                                                    selectedJobTitle ?? title,
-                                              ),
-                                            ),
-                                          );
-                                        },
-                                        onPayments: () {
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (_) =>
-                                                  applicants_screen.EmployerApplicantsScreen(
-                                                employerId: widget.employerId,
-                                              ),
-                                            ),
-                                          );
-                                        },
                                       );
                                     },
-                                  );
-                                },
+                                    icon: const Icon(Icons.add,
+                                        color: Colors.white70),
+                                    label: const Text('Post a job',
+                                        style:
+                                            TextStyle(color: Colors.white70)),
+                                  ),
+                                ],
                               ),
-                            ),
-                          ],
+                              const SizedBox(height: 10),
+                              Expanded(
+                                child: StreamBuilder<QuerySnapshot>(
+                                  stream: FirebaseFirestore.instance
+                                      .collection('jobs')
+                                      .where('employerId',
+                                          isEqualTo: widget.employerId)
+                                      .orderBy('createdAt', descending: true)
+                                      .snapshots(),
+                                  builder: (context, snapshot) {
+                                    if (snapshot.connectionState ==
+                                        ConnectionState.waiting) {
+                                      return const Center(
+                                          child: CircularProgressIndicator());
+                                    }
+
+                                    if (!snapshot.hasData ||
+                                        snapshot.data!.docs.isEmpty) {
+                                      return const Center(
+                                        child: Text(
+                                            'No jobs posted yet. Post your first job!'),
+                                      );
+                                    }
+
+                                    final docs = snapshot.data!.docs;
+                                    return ListView.separated(
+                                      itemCount: docs.length,
+                                      separatorBuilder: (_, __) =>
+                                          const SizedBox(height: 12),
+                                      itemBuilder: (context, idx) {
+                                        final doc = docs[idx];
+                                        final data =
+                                            doc.data() as Map<String, dynamic>;
+                                        final title =
+                                            data['jobTitle'] as String? ??
+                                                'Job Opening';
+                                        final salary =
+                                            data['salary']?.toString() ?? 'N/A';
+                                        final isSelected =
+                                            selectedJobId == doc.id;
+
+                                        return _jobCard(
+                                          jobId: doc.id,
+                                          title: title,
+                                          salary: '\$$salary',
+                                          selected: isSelected,
+                                          accent: accent,
+                                          onTap: () {
+                                            setState(() {
+                                              selectedJobId = doc.id;
+                                              selectedJobTitle = title;
+                                            });
+                                          },
+                                          onViewApplicants: () {
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (_) =>
+                                                    ApplicantsListScreen(
+                                                  jobId: doc.id,
+                                                  jobTitle: title,
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                          onScheduleInterview: () {
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (_) =>
+                                                    ScheduleInterviewScreen(
+                                                  candidateName: 'Candidate',
+                                                  candidateId: 'candidate',
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                          onReviewJob: () {
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (_) => ReviewJobScreen(
+                                                  jobTitle: title,
+                                                  jobCategory:
+                                                      data['jobType'] ??
+                                                          'General',
+                                                  location: data['location'] ??
+                                                      'Unknown',
+                                                  salary: '\$$salary',
+                                                  description:
+                                                      data['jobDescription'] ??
+                                                          '',
+                                                  requirements:
+                                                      data['requirements'] ??
+                                                          '',
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                          onGenerateOffer: () {
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (_) =>
+                                                    const offer_letter_screen
+                                                        .GenerateOfferLetterScreen(),
+                                              ),
+                                            );
+                                          },
+                                          onGenerateContract: () {
+                                            if (selectedJobId == null ||
+                                                selectedJobTitle == null) {
+                                              ScaffoldMessenger.of(context)
+                                                  .showSnackBar(
+                                                const SnackBar(
+                                                    content: Text(
+                                                        'Please select a job first')),
+                                              );
+                                              return;
+                                            }
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (_) =>
+                                                    GenerateWorkContractScreen(
+                                                  employerId: widget.employerId,
+                                                  jobId: doc.id,
+                                                  jobTitle:
+                                                      selectedJobTitle ?? title,
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                          onPayments: () {
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (_) => applicants_screen
+                                                    .EmployerApplicantsScreen(
+                                                  employerId: widget.employerId,
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                        );
+                                      },
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
+                    ],
+                  ),
                 ),
               ),
             )

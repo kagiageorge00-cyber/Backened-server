@@ -127,7 +127,7 @@ router.put('/:id/documents', async (req, res) => {
 
         // Generate portal password (if not exists)
         const portalPassword = candidate.password || Math.random().toString(36).substring(2, 10);
-        const portalUrl = `${process.env.FRONTEND_URL || 'https://blisssconnection12.netlify.app'}/candidatePortal?candidateId=${encodeURIComponent(candidate.uniqueCode)}`;
+        const portalUrl = `${process.env.FRONTEND_URL || 'https://blisssconnect12.netlify.app'}/candidatePortal?candidateId=${encodeURIComponent(candidate.uniqueCode)}`;
 
         console.log('📧 Sending registration confirmation to', candidate.email);
 
@@ -176,7 +176,7 @@ router.put('/:id/documents', async (req, res) => {
               
               <p style="color: #666; font-size: 12px; margin-top: 30px; text-align: center;">
                 Bliss Connect Team<br/>
-                <a href="https://blisssconnection12.netlify.app" style="color: #4CAF50; text-decoration: none;">Visit our website</a>
+                <a href="https://blisssconnect12.netlify.app" style="color: #4CAF50; text-decoration: none;">Visit our website</a>
               </p>
             </div>
           </div>
@@ -269,7 +269,7 @@ router.get('/form/data', async (req, res) => {
     return res.status(200).json({
       success: true,
       data: candidate,
-      formLink: `${process.env.FRONTEND_URL || 'https://blisssconnection12.netlify.app'}/candidate-form?candidateId=${candidateId}`
+      formLink: `${process.env.FRONTEND_URL || 'https://blisssconnect12.netlify.app'}/candidate-form?candidateId=${candidateId}`
     });
   } catch (error) {
     return sendError(res, 500, error.message || 'Failed to fetch candidate form data');

@@ -1,32 +1,57 @@
-// Script to add boss account to Firestore
-// This can be run from Firebase console or called from the app
-
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:bliss_mobile/config/app_config.dart';
 
 class BossAccountService {
-  static Future<void> addBossAccount() async {
+  static final String _base = AppConfig.backendUrl;
+
+  // ------------------------
+  // Create Boss Account
+  // ------------------------
+  static Future<bool> addBossAccount() async {
     try {
-      await FirebaseFirestore.instance.collection('staff').doc('boss001').set({
-        'username': 'boss',
-        'password': 'boss123', // Change this to a secure password in production
-        'name': 'Boss',
-        'role': 'admin',
-        'email': 'boss@bliss.com',
-        'createdAt': FieldValue.serverTimestamp(),
-        'permissions': ['all'], // Full access
-      });
-      print('Boss account added successfully');
+      final response = await http.post(
+        Uri.parse('$_base/staff/create'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          "username": "boss",
+          "password": "boss123",
+          "name": "Boss",
+          "role": "admin",
+          "email": "boss@bliss.com",
+          "permissions": ["all"],
+        }),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        print('Boss account added successfully');
+        return true;
+      } else {
+        print('Failed: ${response.body}');
+        return false;
+      }
     } catch (e) {
       print('Error adding boss account: $e');
+      return false;
     }
   }
 
-  // Call this from a debug screen or admin panel
+  // ------------------------
+  // Ensure Boss Exists
+  // ------------------------
   static Future<void> initializeBossAccount() async {
-    // Check if boss account already exists
-    final doc = await FirebaseFirestore.instance.collection('staff').doc('boss001').get();
-    if (!doc.exists) {
-      await addBossAccount();
+    try {
+      final response = await http.get(
+        Uri.parse('$_base/staff/boss001'),
+      );
+
+      if (response.statusCode == 404) {
+        await addBossAccount();
+      } else {
+        print('Boss already exists');
+      }
+    } catch (e) {
+      print('Error checking boss account: $e');
     }
   }
 }

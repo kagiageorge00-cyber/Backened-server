@@ -92,8 +92,7 @@ class _EmployersPortalScreenState extends State<EmployersPortalScreen> {
                 children: [
                   CircleAvatar(
                     radius: 25,
-                    backgroundImage:
-                        AssetImage('assets/images/company_logo.png'),
+                    backgroundImage: const AssetImage('assets/images/logo.png'),
                   ),
                   const SizedBox(height: 6),
                   Text(

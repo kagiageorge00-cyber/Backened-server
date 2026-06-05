@@ -1,6 +1,7 @@
 import 'user_role.dart';
 
 class User {
+  bool get isVerified => kycVerified;
   final String uid;
   final String email;
   final String? displayName;

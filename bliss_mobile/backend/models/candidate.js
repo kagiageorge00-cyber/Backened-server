@@ -6,7 +6,8 @@ const candidateSchema = new mongoose.Schema({
   email: String,
   phone: { type: String, unique: true },
   country: String,
-  skills: String,
+  nationality: String,
+  skills: [String], // Changed to array for multiple skills
   experience: String,
   photoUrl: String,
   videoUrl: String,
@@ -20,6 +21,20 @@ const candidateSchema = new mongoose.Schema({
     index: true,
   },
   password: String,
+  
+  // NEW FIELDS
+  maritalStatus: {
+    type: String,
+    enum: ['Single', 'Married', 'Divorced', 'Widowed', 'Separated'],
+  },
+  numberOfChildren: Number,
+  religion: String,
+  educationalLevel: {
+    type: String,
+    enum: ['Primary', 'Secondary', 'Vocational/Technical', 'Diploma', "Bachelor's Degree", "Master's Degree", 'PhD', 'Other'],
+  },
+  applicationDate: Date,
+  
   isVerified: {
     type: Boolean,
     default: false,

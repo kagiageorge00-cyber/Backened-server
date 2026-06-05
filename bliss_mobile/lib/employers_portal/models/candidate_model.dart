@@ -1,6 +1,4 @@
 // lib/employers_portal/models/candidate_model.dart
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 class CandidateModel {
   final String id;
   final String fullName;
@@ -12,19 +10,19 @@ class CandidateModel {
   final String gender;
   final String profileImageUrl;
 
-  // Application related
+  // Application
   final bool hasApplied;
   final bool applicationPaid;
   final DateTime? applicationDate;
 
-  // Documents (e.g., passport, CV, etc.)
+  // Documents
   final Map<String, String> documents;
   final bool documentsUnlocked;
 
   // Interview
   final bool interviewScheduled;
   final DateTime? interviewDate;
-  final String interviewStatus; // Pending / Passed / Failed
+  final String interviewStatus;
 
   // Hire
   final bool isHired;
@@ -32,8 +30,15 @@ class CandidateModel {
   final DateTime? hireDate;
 
   // Deployment
-  final String status; // available / deployed
+  final String status;
   final DateTime? deploymentDate;
+
+  // NEW FIELDS
+  final String nationality;
+  final String maritalStatus;
+  final int numberOfChildren;
+  final String religion;
+  final String educationalLevel;
 
   CandidateModel({
     required this.id,
@@ -58,16 +63,17 @@ class CandidateModel {
     this.hireDate,
     this.status = 'available',
     this.deploymentDate,
+    this.nationality = '',
+    this.maritalStatus = '',
+    this.numberOfChildren = 0,
+    this.religion = '',
+    this.educationalLevel = '',
   });
 
-  /// ------------------------------
-  /// Convert Firestore DocumentSnapshot → CandidateModel
-  /// ------------------------------
-  factory CandidateModel.fromDocument(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>? ?? {};
-
+  /// ✅ FROM BACKEND (JSON)
+  factory CandidateModel.fromMap(Map<String, dynamic> data, String id) {
     return CandidateModel(
-      id: doc.id,
+      id: id,
       fullName: data['fullName'] ?? '',
       email: data['email'] ?? '',
       phone: data['phone'] ?? '',
@@ -76,40 +82,35 @@ class CandidateModel {
       age: data['age'] ?? 0,
       gender: data['gender'] ?? '',
       profileImageUrl: data['profileImageUrl'] ?? '',
-
       hasApplied: data['hasApplied'] ?? false,
       applicationPaid: data['applicationPaid'] ?? false,
       applicationDate: data['applicationDate'] != null
-          ? (data['applicationDate'] as Timestamp).toDate()
+          ? DateTime.tryParse(data['applicationDate'])
           : null,
-
       documents: Map<String, String>.from(data['documents'] ?? {}),
       documentsUnlocked: data['documentsUnlocked'] ?? false,
-
       interviewScheduled: data['interviewScheduled'] ?? false,
       interviewDate: data['interviewDate'] != null
-          ? (data['interviewDate'] as Timestamp).toDate()
+          ? DateTime.tryParse(data['interviewDate'])
           : null,
       interviewStatus: data['interviewStatus'] ?? 'Pending',
-
       isHired: data['isHired'] ?? false,
       hirePaid: data['hirePaid'] ?? false,
-      hireDate: data['hireDate'] != null
-          ? (data['hireDate'] as Timestamp).toDate()
-          : null,
-
+      hireDate:
+          data['hireDate'] != null ? DateTime.tryParse(data['hireDate']) : null,
       status: data['status'] ?? 'available',
       deploymentDate: data['deploymentDate'] != null
-          ? (data['deploymentDate'] is Timestamp
-              ? (data['deploymentDate'] as Timestamp).toDate()
-              : DateTime.parse(data['deploymentDate'].toString()))
+          ? DateTime.tryParse(data['deploymentDate'])
           : null,
+      nationality: data['nationality'] ?? '',
+      maritalStatus: data['maritalStatus'] ?? '',
+      numberOfChildren: data['numberOfChildren'] ?? 0,
+      religion: data['religion'] ?? '',
+      educationalLevel: data['educationalLevel'] ?? '',
     );
   }
 
-  /// ------------------------------
-  /// Convert CandidateModel → Map for Firestore
-  /// ------------------------------
+  /// ✅ TO BACKEND (JSON)
   Map<String, dynamic> toMap() {
     return {
       'fullName': fullName,
@@ -120,34 +121,28 @@ class CandidateModel {
       'age': age,
       'gender': gender,
       'profileImageUrl': profileImageUrl,
-
       'hasApplied': hasApplied,
       'applicationPaid': applicationPaid,
-      'applicationDate':
-          applicationDate != null ? Timestamp.fromDate(applicationDate!) : null,
-
+      'applicationDate': applicationDate?.toIso8601String(),
       'documents': documents,
       'documentsUnlocked': documentsUnlocked,
-
       'interviewScheduled': interviewScheduled,
-      'interviewDate':
-          interviewDate != null ? Timestamp.fromDate(interviewDate!) : null,
+      'interviewDate': interviewDate?.toIso8601String(),
       'interviewStatus': interviewStatus,
-
       'isHired': isHired,
       'hirePaid': hirePaid,
-      'hireDate': hireDate != null ? Timestamp.fromDate(hireDate!) : null,
-
+      'hireDate': hireDate?.toIso8601String(),
       'status': status,
-      'deploymentDate': deploymentDate != null
-          ? Timestamp.fromDate(deploymentDate!)
-          : null,
+      'deploymentDate': deploymentDate?.toIso8601String(),
+      'nationality': nationality,
+      'maritalStatus': maritalStatus,
+      'numberOfChildren': numberOfChildren,
+      'religion': religion,
+      'educationalLevel': educationalLevel,
     };
   }
 
-  /// ------------------------------
-  /// Clone with updates
-  /// ------------------------------
+  /// ✅ COPY WITH
   CandidateModel copyWith({
     String? fullName,
     String? email,
@@ -170,6 +165,11 @@ class CandidateModel {
     DateTime? hireDate,
     String? status,
     DateTime? deploymentDate,
+    String? nationality,
+    String? maritalStatus,
+    int? numberOfChildren,
+    String? religion,
+    String? educationalLevel,
   }) {
     return CandidateModel(
       id: id,
@@ -194,6 +194,11 @@ class CandidateModel {
       hireDate: hireDate ?? this.hireDate,
       status: status ?? this.status,
       deploymentDate: deploymentDate ?? this.deploymentDate,
+      nationality: nationality ?? this.nationality,
+      maritalStatus: maritalStatus ?? this.maritalStatus,
+      numberOfChildren: numberOfChildren ?? this.numberOfChildren,
+      religion: religion ?? this.religion,
+      educationalLevel: educationalLevel ?? this.educationalLevel,
     );
   }
 }

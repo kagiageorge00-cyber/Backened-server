@@ -32,6 +32,13 @@ class CandidateModel {
   final String status; // available / deployed
   final DateTime? deploymentDate;
 
+  // NEW FIELDS
+  final String nationality;
+  final String maritalStatus;
+  final int numberOfChildren;
+  final String religion;
+  final String educationalLevel;
+
   CandidateModel({
     required this.candidateId,
     required this.fullName,
@@ -57,6 +64,11 @@ class CandidateModel {
     this.hireDate,
     this.status = 'available',
     this.deploymentDate,
+    this.nationality = '',
+    this.maritalStatus = '',
+    this.numberOfChildren = 0,
+    this.religion = '',
+    this.educationalLevel = '',
   });
 
   /// Factory to create from backend map
@@ -88,6 +100,11 @@ class CandidateModel {
       hireDate: _parseTimestampOrString(data['hireDate']),
       status: data['status'] ?? 'available',
       deploymentDate: _parseTimestampOrString(data['deploymentDate']),
+      nationality: data['nationality'] ?? '',
+      maritalStatus: data['maritalStatus'] ?? '',
+      numberOfChildren: data['numberOfChildren'] ?? 0,
+      religion: data['religion'] ?? '',
+      educationalLevel: data['educationalLevel'] ?? '',
     );
   }
 
@@ -117,6 +134,11 @@ class CandidateModel {
       'hireDate': hireDate?.toIso8601String(),
       'status': status,
       'deploymentDate': deploymentDate?.toIso8601String(),
+      'nationality': nationality,
+      'maritalStatus': maritalStatus,
+      'numberOfChildren': numberOfChildren,
+      'religion': religion,
+      'educationalLevel': educationalLevel,
     };
   }
 
@@ -145,6 +167,11 @@ class CandidateModel {
     DateTime? hireDate,
     String? status,
     DateTime? deploymentDate,
+    String? nationality,
+    String? maritalStatus,
+    int? numberOfChildren,
+    String? religion,
+    String? educationalLevel,
   }) {
     return CandidateModel(
       candidateId: candidateId,
@@ -171,6 +198,11 @@ class CandidateModel {
       hireDate: hireDate ?? this.hireDate,
       status: status ?? this.status,
       deploymentDate: deploymentDate ?? this.deploymentDate,
+      nationality: nationality ?? this.nationality,
+      maritalStatus: maritalStatus ?? this.maritalStatus,
+      numberOfChildren: numberOfChildren ?? this.numberOfChildren,
+      religion: religion ?? this.religion,
+      educationalLevel: educationalLevel ?? this.educationalLevel,
     );
   }
 

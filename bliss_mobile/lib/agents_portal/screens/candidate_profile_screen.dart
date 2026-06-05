@@ -40,7 +40,8 @@ class _CandidateProfileScreenState extends State<CandidateProfileScreen> {
 
     // Initialize video if available
     if (candidate.videoUrl.isNotEmpty) {
-      _videoController = VideoPlayerController.networkUrl(Uri.parse(candidate.videoUrl));
+      _videoController =
+          VideoPlayerController.networkUrl(Uri.parse(candidate.videoUrl));
       await _videoController!.initialize();
     }
 

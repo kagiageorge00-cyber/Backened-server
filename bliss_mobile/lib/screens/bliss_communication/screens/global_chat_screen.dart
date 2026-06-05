@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:bliss_mobile/firebase_stub.dart';
 import '../services/bliss_communication_service.dart';
 import '../models/message_model.dart';
 
@@ -120,11 +120,14 @@ class _GlobalChatScreenState extends State<GlobalChatScreen> {
     if (!isMe) {
       tickIcon = const Icon(Icons.done, size: 14, color: Colors.transparent);
     } else if (msg.read) {
-      tickIcon = const Icon(Icons.done_all, size: 16, color: Colors.lightBlueAccent); // Blue ✓✓
+      tickIcon = const Icon(Icons.done_all,
+          size: 16, color: Colors.lightBlueAccent); // Blue ✓✓
     } else if (msg.delivered) {
-      tickIcon = const Icon(Icons.done_all, size: 16, color: Colors.white70); // Grey ✓✓
+      tickIcon = const Icon(Icons.done_all,
+          size: 16, color: Colors.white70); // Grey ✓✓
     } else {
-      tickIcon = const Icon(Icons.done, size: 14, color: Colors.white70); // Single grey ✓
+      tickIcon = const Icon(Icons.done,
+          size: 14, color: Colors.white70); // Single grey ✓
     }
 
     return Align(
@@ -218,7 +221,6 @@ class _GlobalChatScreenState extends State<GlobalChatScreen> {
               },
             ),
           ),
-
           if (_otherTyping)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -233,7 +235,6 @@ class _GlobalChatScreenState extends State<GlobalChatScreen> {
                 ],
               ),
             ),
-
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
             color: Colors.white,

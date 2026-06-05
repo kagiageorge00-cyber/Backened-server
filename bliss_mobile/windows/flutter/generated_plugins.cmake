@@ -5,7 +5,6 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   agora_rtc_engine
   file_selector_windows
-  firebase_core
   flutter_inappwebview_windows
   flutter_secure_storage_windows
   iris_method_channel
@@ -15,6 +14,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST
+  jni
 )
 
 set(PLUGIN_BUNDLED_LIBRARIES)

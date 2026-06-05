@@ -1,47 +1,46 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:bliss_mobile/employers_portal/models/job_model.dart';
+import '../services/job_service.dart';
+import '../models/job_model.dart'; // ✅ ONLY THIS MODEL
 
 class JobMarketplaceScreen extends StatelessWidget {
   const JobMarketplaceScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final jobService = JobService();
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Job Marketplace"),
-        backgroundColor: Colors.blue,
-      ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('marketplace')
-            .orderBy('postedAt', descending: true)
-            .snapshots(),
+      appBar: AppBar(title: const Text("Job Marketplace")),
+      body: FutureBuilder<List<Job>>(
+        future: jobService.getJobs(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return const Center(child: Text('No jobs available.'));
+
+          if (snapshot.hasError) {
+            return const Center(child: Text("Error loading jobs"));
           }
-          final jobs = snapshot.data!.docs
-              .map((doc) => Job.fromDocument(doc))
-              .toList();
+
+          final jobs = snapshot.data ?? [];
+
+          if (jobs.isEmpty) {
+            return const Center(child: Text("No jobs available"));
+          }
+
           return ListView.builder(
-            padding: const EdgeInsets.all(20),
             itemCount: jobs.length,
-            itemBuilder: (context, index) {
-              final job = jobs[index];
+            itemBuilder: (_, i) {
+              final job = jobs[i];
+
               return Card(
-                elevation: 3,
-                margin: const EdgeInsets.only(bottom: 16),
+                margin: const EdgeInsets.all(10),
                 child: ListTile(
-                  title: Text(job.title),
-                  subtitle: Text('Location: ${job.location}\nSalary: ${job.salary}'),
-                  trailing: const Icon(Icons.arrow_forward_ios),
-                  onTap: () {
-                    // TODO: Open job details
-                  },
+                  title: Text(job.jobTitle),
+                  subtitle: Text(
+                    "${job.location}, ${job.country}\n"
+                    "Salary: ${job.salary} ${job.currency}",
+                  ),
                 ),
               );
             },

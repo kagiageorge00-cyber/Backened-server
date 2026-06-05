@@ -1,141 +1,83 @@
 import 'dart:io';
-import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:video_player/video_player.dart';
-import 'package:bliss_mobile/widgets/logo.dart';
-import '../services/candidate_video_service.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:http_parser/http_parser.dart';
+import '../config/app_config.dart';
 
-class VideoUploadScreen extends StatefulWidget {
-  final String candidateId;
-  final File fullPhoto; // required full photo
-  final File idPhoto; // required ID/passport photo
-  final String resumeText; // required resume text
+class CandidateVideoService {
+  // ✅ UPDATED: FULL PROFILE UPLOAD (video + photos + resume)
+  static Future<Map<String, dynamic>> uploadCandidateVideo({
+    required String userId,
+    required File videoFile,
+    required File fullPhoto,
+    required File idPhoto,
+    required String resumeText,
+  }) async {
+    final uri =
+        Uri.parse('${AppConfig.backendUrl}/api/upload-candidate/$userId');
 
-  const VideoUploadScreen({
-    super.key,
-    required this.candidateId,
-    required this.fullPhoto,
-    required this.idPhoto,
-    required this.resumeText,
-  });
+    final request = http.MultipartRequest('POST', uri)
+      ..files.add(await http.MultipartFile.fromPath(
+        'video',
+        videoFile.path,
+        contentType: MediaType('video', 'mp4'),
+      ))
+      ..files.add(await http.MultipartFile.fromPath(
+        'fullPhoto',
+        fullPhoto.path,
+        contentType: MediaType('image', 'jpeg'),
+      ))
+      ..files.add(await http.MultipartFile.fromPath(
+        'idPhoto',
+        idPhoto.path,
+        contentType: MediaType('image', 'jpeg'),
+      ))
+      ..fields['resumeText'] = resumeText;
 
-  @override
-  State<VideoUploadScreen> createState() => _VideoUploadScreenState();
-}
+    final streamedResponse = await request.send();
+    final response = await http.Response.fromStream(streamedResponse);
 
-class _VideoUploadScreenState extends State<VideoUploadScreen> {
-  File? _videoFile;
-  VideoPlayerController? _videoController;
-  bool _uploading = false;
-  final ImagePicker _picker = ImagePicker();
+    final data = jsonDecode(response.body);
 
-  @override
-  void initState() {
-    super.initState();
-    // Load a default demo video from assets (video8.mp4) so the screen shows a sample
-    _videoController = VideoPlayerController.asset('assets/videos/video8.mp4')
-      ..initialize().then((_) {
-        setState(() {});
-        _videoController!.setLooping(true);
-        _videoController!.play();
-      });
-  }
-
-  Future<void> _pickVideo() async {
-    final XFile? picked = await _picker.pickVideo(source: ImageSource.gallery);
-    if (picked != null) {
-      _videoFile = File(picked.path);
-      // dispose previous controller (asset) before switching to file controller
-      await _videoController?.pause();
-      _videoController?.dispose();
-      _videoController = VideoPlayerController.file(_videoFile!)
-        ..initialize().then((_) {
-          setState(() {});
-          _videoController!.setLooping(false);
-          _videoController!.play();
-        });
+    if (response.statusCode == 200 && data['success'] == true) {
+      return data;
+    } else {
+      throw Exception(data['error'] ?? 'Upload failed');
     }
   }
 
-  Future<void> _uploadAll() async {
-    if (_videoFile == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please select a video first")),
-      );
-      return;
-    }
+  // ✅ KEEP (unchanged)
+  static Future<void> reviewCandidateVideo({
+    required String userId,
+    required String action, // 'approve' or 'reject'
+  }) async {
+    final uri = Uri.parse('${AppConfig.backendUrl}/api/admin/review-video');
 
-    setState(() => _uploading = true);
-
-    try {
-      final result = await CandidateVideoService.uploadCandidateVideo(
-        userId: widget.candidateId,
-        videoFile: _videoFile!,
-      );
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text("Video uploaded successfully! Pending review.")),
-      );
-      Navigator.pop(context);
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Upload failed: $e")),
-      );
-    } finally {
-      setState(() => _uploading = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Row(
-          children: const [
-            Logo(height: 72, width: 72),
-            SizedBox(width: 8),
-            Text("Upload Introduction Video"),
-          ],
-        ),
-      ),
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xFF0F2027), Color(0xFF203A43), Color(0xFF2C5364)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (_videoController != null &&
-                _videoController!.value.isInitialized)
-              AspectRatio(
-                aspectRatio: _videoController!.value.aspectRatio,
-                child: VideoPlayer(_videoController!),
-              ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-                onPressed: _pickVideo, child: const Text("Pick Video")),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: _uploading ? null : _uploadAll,
-              child: _uploading
-                  ? const CircularProgressIndicator(color: Colors.white)
-                  : const Text("Upload & Publish Candidate"),
-            ),
-          ],
-        ),
-      ),
+    final resp = await http.post(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'userId': userId, 'action': action}),
     );
+
+    final data = jsonDecode(resp.body);
+
+    if (resp.statusCode != 200 || data['success'] != true) {
+      throw Exception(data['error'] ?? 'Review failed');
+    }
   }
 
-  @override
-  void dispose() {
-    _videoController?.dispose();
-    super.dispose();
+  // ✅ KEEP (unchanged)
+  static Future<List<dynamic>> getApprovedCandidates() async {
+    final uri =
+        Uri.parse('${AppConfig.backendUrl}/api/users/candidates-approved');
+
+    final resp = await http.get(uri);
+    final data = jsonDecode(resp.body);
+
+    if (resp.statusCode == 200 && data['success'] == true) {
+      return data['candidates'] as List<dynamic>;
+    } else {
+      throw Exception(data['error'] ?? 'Failed to fetch candidates');
+    }
   }
 }

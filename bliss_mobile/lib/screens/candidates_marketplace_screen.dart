@@ -1,15 +1,13 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
-import '../services/candidate_video_service.dart';
-import 'widgets/design_system.dart';
-import 'widgets/ats_pipeline.dart';
-import 'widgets/deployment.dart';
-import 'widgets/dashboard.dart';
+import 'package:http/http.dart' as http;
+import 'package:url_launcher/url_launcher.dart';
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  // Firebase initialization removed for backend migration
-  runApp(MyApp());
+import '../config/app_config.dart';
+
+void main() {
+  runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
@@ -18,10 +16,9 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Candidate Marketplace',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-      ),
+      debugShowCheckedModeBanner: false,
+      title: 'Bliss Connect',
+      theme: ThemeData(primarySwatch: Colors.blue),
       home: const CandidateMarketplaceScreen(),
     );
   }
@@ -31,13 +28,29 @@ class CandidateMarketplaceScreen extends StatefulWidget {
   const CandidateMarketplaceScreen({super.key});
 
   @override
-  State<CandidateMarketplaceScreen> createState() => _CandidateMarketplaceScreenState();
+  State<CandidateMarketplaceScreen> createState() =>
+      _CandidateMarketplaceScreenState();
 }
 
-class _CandidateMarketplaceScreenState extends State<CandidateMarketplaceScreen> {
-  String _search = '';
+class _CandidateMarketplaceScreenState
+    extends State<CandidateMarketplaceScreen> {
   final TextEditingController _searchController = TextEditingController();
-  bool _sortBySalaryDesc = true;
+
+  Future<List<Map<String, dynamic>>> _fetchCandidates() async {
+    final response = await http.get(
+      Uri.parse('${AppConfig.backendUrl}/api/candidates/deployed'),
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+
+      if (data['success'] == true) {
+        return List<Map<String, dynamic>>.from(data['data'] ?? []);
+      }
+    }
+
+    return [];
+  }
 
   @override
   void dispose() {
@@ -45,205 +58,78 @@ class _CandidateMarketplaceScreenState extends State<CandidateMarketplaceScreen>
     super.dispose();
   }
 
-  List<Map<String, dynamic>> _applyFilters(List<Map<String, dynamic>> candidates) {
-    final filtered = candidates.where((d) {
-      // TODO: implement actual filter logic (search, sort)
-      return true;
-    }).toList();
-    return filtered;
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        title: const Text("Bliss Candidate Marketplace"),
+        centerTitle: true,
+      ),
       body: FutureBuilder<List<Map<String, dynamic>>>(
         future: _fetchCandidates(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
-          if (snapshot.hasError) {
-            return const Center(child: Text('Error loading candidates'));
+
+          final candidates = (snapshot.data ?? []).where((candidate) {
+            final query = _searchController.text.toLowerCase();
+            if (query.isEmpty) return true;
+            final country =
+                (candidate['country'] ?? '').toString().toLowerCase();
+            final skills = (candidate['skills'] ?? '').toString().toLowerCase();
+            return country.contains(query) || skills.contains(query);
+          }).toList();
+
+          if (candidates.isEmpty) {
+            return const Center(child: Text("No deployed candidates found"));
           }
-          if (!snapshot.hasData || (snapshot.data as List).isEmpty) {
-            return SafeArea(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: const [
-                  Text('No candidates found', style: TextStyle(fontSize: 18)),
-                ],
+
+          return Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                child: TextField(
+                  controller: _searchController,
+                  onChanged: (_) => setState(() {}),
+                  decoration: const InputDecoration(
+                    prefixIcon: Icon(Icons.search),
+                    labelText: 'Search by country or skill',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
               ),
-            );
-          }
-
-              final candidates = snapshot.data as List<Map<String, dynamic>>;
-              final docs = _applyFilters(candidates);
-
-          return SafeArea(
-            child: CustomScrollView(
-              slivers: [
-                SliverAppBar(
-                  pinned: true,
-                  expandedHeight: 160,
-                  backgroundColor: Colors.transparent,
-                  flexibleSpace: FlexibleSpaceBar(
-                    titlePadding: const EdgeInsetsDirectional.only(start: 16, bottom: 12),
-                    title: const Text('Candidate Marketplace', style: TextStyle(fontSize: 16)),
-                    background: Container(
-                      decoration: const BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [Color(0xFF0F2027), Color(0xFF2C5364)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                      ),
-                      padding: const EdgeInsets.fromLTRB(16, 48, 16, 16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('Discover top talent', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 8),
-                          const Text('Fast, verified candidate videos and profiles to hire smarter.', style: TextStyle(color: Colors.white70)),
-                          const SizedBox(height: 12),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Container(
-                                  height: 42,
-                                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
-                                  child: TextField(
-                                    controller: _searchController,
-                                    onChanged: (v) => setState(() => _search = v),
-                                    decoration: const InputDecoration(
-                                      hintText: 'Search by name or skill (e.g. Sales, Java)',
-                                      prefixIcon: Icon(Icons.search),
-                                      border: InputBorder.none,
-                                      contentPadding: EdgeInsets.symmetric(vertical: 12),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              GestureDetector(
-                                onTap: () => setState(() => _sortBySalaryDesc = !_sortBySalaryDesc),
-                                child: Chip(
-                                  backgroundColor: Colors.white24,
-                                  label: Text(_sortBySalaryDesc ? 'Top Salary' : 'Lowest Salary', style: const TextStyle(color: Colors.white)),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Featured Candidates', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          height: 160,
-                          child: ListView.builder(
-                            scrollDirection: Axis.horizontal,
-                            itemCount: docs.length > 6 ? 6 : docs.length,
-                            itemBuilder: (context, i) {
-                              final data = docs[i];
-                              return Padding(
-                                padding: const EdgeInsets.only(right: 12),
-                                child: FeaturedTile(
-                                  name: data['fullName'] ?? 'No Name',
-                                  role: data['title'] ?? '',
-                                  photoUrl: data['photoUrl'] ?? '',
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        const Text('All Candidates', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 8),
-                      ],
-                    ),
-                  ),
-                ),
-
-                SliverList.builder(
-                  itemCount: docs.length,
+              Expanded(
+                child: ListView.builder(
+                  itemCount: candidates.length,
                   itemBuilder: (context, index) {
-                    final data = docs[index];
-                    final name = data['fullName'] ?? 'No Name';
-                    final country = data['country'] ?? 'Unknown';
-                    final salary = data['expectedSalary'] ?? 0;
-                    final skills = List<String>.from(data['skills'] ?? []);
-                    final videoUrl = data['videoUrl'] ?? '';
-
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      child: CandidateCard(
-                        name: name,
-                        country: country,
-                        salary: salary,
-                        skills: skills,
-                        videoUrl: videoUrl,
-                      ),
+                    final c = candidates[index];
+                    return CandidateCard(
+                      data: c,
+                      baseUrl: AppConfig.backendUrl,
                     );
                   },
-                  // Fetch candidates from backend
-                  Future<List<Map<String, dynamic>>> _fetchCandidates() async {
-                    final candidates = await CandidateVideoService.getApprovedCandidates();
-                    // Ensure all items are Map<String, dynamic>
-                    return candidates.map((e) => Map<String, dynamic>.from(e)).toList();
-                  }
                 ),
-              ],
-            ),
+              ),
+            ],
           );
         },
       ),
     );
   }
 }
-      // Fetch candidates from backend
-      Future<List<Map<String, dynamic>>> _fetchCandidates() async {
-        final response = await http.post(
-          Uri.parse('https://backened-server.onrender.com/candidates_marketplace'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({}), // Add filters if needed
-        );
-        print("STATUS: ${response.statusCode}");
-        print("BODY: ${response.body}");
-        if (response.statusCode == 200) {
-          final data = jsonDecode(response.body);
-          if (data['success'] == true && data['candidates'] is List) {
-            return List<Map<String, dynamic>>.from(data['candidates']);
-          } else {
-            throw Exception(data['error'] ?? data['message'] ?? 'Failed to load candidates');
-          }
-        } else {
-          throw Exception('Failed to load candidates');
-        }
-      }
 
+// ======================
+// CANDIDATE CARD
+// ======================
 class CandidateCard extends StatefulWidget {
-  final String name;
-  final String country;
-  final dynamic salary;
-  final List<String> skills;
-  final String videoUrl;
+  final Map<String, dynamic> data;
+  final String baseUrl;
 
   const CandidateCard({
     super.key,
-    required this.name,
-    required this.country,
-    required this.salary,
-    required this.skills,
-    required this.videoUrl,
+    required this.data,
+    required this.baseUrl,
   });
 
   @override
@@ -251,128 +137,182 @@ class CandidateCard extends StatefulWidget {
 }
 
 class _CandidateCardState extends State<CandidateCard> {
-  VideoPlayerController? _videoController;
+  VideoPlayerController? _controller;
 
   @override
   void initState() {
     super.initState();
-    if (widget.videoUrl.isNotEmpty) {
-      _videoController = VideoPlayerController.networkUrl(Uri.parse(widget.videoUrl))
+
+    final videoUrl = widget.data['videoUrl'] ?? '';
+
+    if (videoUrl.isNotEmpty) {
+      _controller = VideoPlayerController.networkUrl(Uri.parse(videoUrl))
         ..initialize().then((_) {
           setState(() {});
-          _videoController!.setLooping(true);
+          _controller!.setLooping(true);
         });
     }
   }
 
   @override
   void dispose() {
-    _videoController?.dispose();
+    _controller?.dispose();
     super.dispose();
+  }
+
+  // ======================
+  // WHATSAPP
+  // ======================
+  void _openWhatsApp(String phone) async {
+    final url = Uri.parse("https://wa.me/$phone");
+
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final name = widget.data['fullName'] ?? 'No Name';
+    final country = widget.data['country'] ?? '';
+    final skillsRaw = widget.data['skills'] ?? '';
+    final isVerified = widget.data['isVerified'] == true;
+    final photo = widget.data['photoUrl'] ?? '';
+    final phone = widget.data['phone'] ?? '';
+
+    final skills = skillsRaw.toString().split(',');
+
     return Card(
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      elevation: 6,
+      margin: const EdgeInsets.all(10),
+      elevation: 3,
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // HEADER
             Row(
               children: [
-                Container(
-                  width: 64,
-                  height: 64,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade200,
-                    borderRadius: BorderRadius.circular(12),
-                    image: null,
-                  ),
-                  child: const Icon(Icons.person, size: 36, color: Colors.grey),
+                CircleAvatar(
+                  radius: 28,
+                  backgroundImage:
+                      photo.isNotEmpty ? NetworkImage(photo) : null,
+                  child: photo.isEmpty ? const Icon(Icons.person) : null,
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(widget.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 4),
                       Row(
                         children: [
-                          Icon(Icons.location_on_outlined, size: 14, color: Colors.grey.shade600),
+                          Text(name,
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.bold, fontSize: 16)),
                           const SizedBox(width: 6),
-                          Text(widget.country, style: TextStyle(color: Colors.grey.shade700)),
-                          const SizedBox(width: 12),
-                          Text('•', style: TextStyle(color: Colors.grey.shade500)),
-                          const SizedBox(width: 8),
-                          Text('${widget.salary} ${widget.salary is num ? 'USD' : ''}', style: TextStyle(color: Colors.grey.shade700)),
+                          if (isVerified)
+                            const Icon(Icons.verified,
+                                color: Colors.green, size: 18),
                         ],
                       ),
+                      Text(country),
                     ],
                   ),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.more_vert),
-                  onPressed: () {},
-                ),
               ],
             ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 6,
-              children: widget.skills.take(6).map((s) => Chip(label: Text(s))).toList(),
-            ),
+
             const SizedBox(height: 10),
-            if (_videoController != null && _videoController!.value.isInitialized)
-              AspectRatio(
-                aspectRatio: _videoController!.value.aspectRatio,
-                child: ClipRRect(borderRadius: BorderRadius.circular(8), child: VideoPlayer(_videoController!)),
+
+            // SKILLS
+            Wrap(
+              spacing: 6,
+              children: skills.map((s) => Chip(label: Text(s.trim()))).toList(),
+            ),
+
+            const SizedBox(height: 10),
+
+            // PERSONAL & PROFESSIONAL INFORMATION
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(8),
               ),
-            if (_videoController != null)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  IconButton(
-                    icon: Icon(_videoController!.value.isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill, color: Theme.of(context).primaryColor, size: 28),
-                    onPressed: () {
-                      setState(() {
-                        _videoController!.value.isPlaying ? _videoController!.pause() : _videoController!.play();
-                      });
-                    },
-                  ),
+                  _infoRow("Nationality", widget.data['nationality'] ?? 'N/A'),
+                  _infoRow(
+                      "Marital Status", widget.data['maritalStatus'] ?? 'N/A'),
+                  _infoRow("Number of Children",
+                      (widget.data['numberOfChildren'] ?? 'N/A').toString()),
+                  _infoRow("Religion", widget.data['religion'] ?? 'N/A'),
+                  _infoRow("Educational Level",
+                      widget.data['educationalLevel'] ?? 'N/A'),
+                  if (widget.data['applicationDate'] != null)
+                    _infoRow(
+                        "Application Date",
+                        widget.data['applicationDate']
+                            .toString()
+                            .split(' ')[0]),
                 ],
               ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.star_border),
-                    label: const Text('Shortlist'),
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Candidate shortlisted')));
-                    },
-                  ),
+            ),
+
+            const SizedBox(height: 10),
+
+            // VIDEO
+            if (_controller != null && _controller!.value.isInitialized)
+              AspectRatio(
+                aspectRatio: _controller!.value.aspectRatio,
+                child: VideoPlayer(_controller!),
+              ),
+
+            if (_controller != null)
+              IconButton(
+                icon: Icon(
+                  _controller!.value.isPlaying ? Icons.pause : Icons.play_arrow,
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    icon: const Icon(Icons.send),
-                    label: const Text('Request Interview'),
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Interview requested')));
-                    },
-                  ),
-                ),
-              ],
+                onPressed: () {
+                  setState(() {
+                    _controller!.value.isPlaying
+                        ? _controller!.pause()
+                        : _controller!.play();
+                  });
+                },
+              ),
+
+            const SizedBox(height: 10),
+
+            // ACTION BUTTON
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: phone.isNotEmpty ? () => _openWhatsApp(phone) : null,
+                icon: const Icon(Icons.chat),
+                label: const Text("Contact on WhatsApp"),
+              ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // Helper method to display info rows
+  Widget _infoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          Text(value),
+        ],
       ),
     );
   }

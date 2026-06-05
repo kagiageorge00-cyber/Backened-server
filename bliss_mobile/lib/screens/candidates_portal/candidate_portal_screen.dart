@@ -10,6 +10,7 @@ import 'package:http/http.dart' as http;
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:bliss_mobile/theme_notifier.dart';
+import '../../config/app_config.dart';
 import '../../employers_portal/services/applicants_service.dart';
 import '../../employers_portal/models/application_model.dart';
 import '../../models/job_model.dart';
@@ -44,12 +45,13 @@ class _CandidatePortalScreenState extends State<CandidatePortalScreen>
   int _currentBannerPage = 0;
   String _jobFilter = 'All';
 
+  static const String candidateMpesaNumber = '+254798242350';
+  static const String candidatePaymentAmountKsh = 'KES 1,300';
+  static const String candidatePaymentAmountUsd = 'USD 10';
+
   // Login Controllers - Persist across rebuilds
   late final TextEditingController loginIdCtrl;
   late final TextEditingController loginPassCtrl;
-  late final TextEditingController regNameCtrl;
-  late final TextEditingController regPhoneCtrl;
-  late final TextEditingController regNextOfKinCtrl;
 
   @override
   void initState() {
@@ -60,9 +62,6 @@ class _CandidatePortalScreenState extends State<CandidatePortalScreen>
     // Initialize controllers
     loginIdCtrl = TextEditingController();
     loginPassCtrl = TextEditingController();
-    regNameCtrl = TextEditingController();
-    regPhoneCtrl = TextEditingController();
-    regNextOfKinCtrl = TextEditingController();
 
     _loadCandidateSession();
     _startBannerAutoPlay();
@@ -77,11 +76,22 @@ class _CandidatePortalScreenState extends State<CandidatePortalScreen>
           _currentBannerPage = 0;
         }
       });
-      _bannerController.animateToPage(
-        _currentBannerPage,
-        duration: const Duration(milliseconds: 500),
-        curve: Curves.easeInOut,
-      );
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+
+      if (_bannerController.hasClients) {
+        try {
+          _bannerController.animateToPage(
+            _currentBannerPage,
+            duration: const Duration(milliseconds: 500),
+            curve: Curves.easeInOut,
+          );
+        } catch (_) {
+          // ignore errors when controller briefly unavailable
+        }
+      }
     });
   }
 
@@ -103,7 +113,7 @@ class _CandidatePortalScreenState extends State<CandidatePortalScreen>
 
   Future<void> _loadCandidateProfile(String id) async {
     final response = await http.post(
-      Uri.parse('https://your-backend-url/api/candidate/profile'),
+      Uri.parse('${AppConfig.backendUrl}/api/candidate/profile'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'candidateId': id}),
     );
@@ -132,9 +142,6 @@ class _CandidatePortalScreenState extends State<CandidatePortalScreen>
     // Dispose controllers
     loginIdCtrl.dispose();
     loginPassCtrl.dispose();
-    regNameCtrl.dispose();
-    regPhoneCtrl.dispose();
-    regNextOfKinCtrl.dispose();
 
     super.dispose();
   }
@@ -302,8 +309,7 @@ class _CandidatePortalScreenState extends State<CandidatePortalScreen>
                                     _candidateProfile!['photoUrl'].isNotEmpty
                                 ? NetworkImage(_candidateProfile!['photoUrl'])
                                     as ImageProvider
-                                : const AssetImage(
-                                    'assets/images/profile_placeholder.png'),
+                                : const AssetImage('assets/images/logo.png'),
                           ),
                         ),
                         const SizedBox(width: 16),
@@ -996,98 +1002,7 @@ class _CandidatePortalScreenState extends State<CandidatePortalScreen>
                   loginIdCtrl.text.trim(), loginPassCtrl.text.trim()),
               child: const Text('Login'),
             ),
-            const SizedBox(height: 24),
-            const Divider(),
             const SizedBox(height: 12),
-            const Text('Register (KES 1,300)',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            TextField(
-              controller: regNameCtrl,
-              decoration: InputDecoration(
-                labelText: 'Full Name',
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: Colors.grey.shade300),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Colors.blue, width: 2),
-                ),
-              ),
-              style: TextStyle(
-                  color: Theme.of(context).brightness == Brightness.dark
-                      ? Colors.white
-                      : Colors.black87,
-                  fontSize: 16),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: regPhoneCtrl,
-              decoration: InputDecoration(
-                labelText: 'Phone',
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: Colors.grey.shade300),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Colors.blue, width: 2),
-                ),
-              ),
-              style: TextStyle(
-                  color: Theme.of(context).brightness == Brightness.dark
-                      ? Colors.white
-                      : Colors.black87,
-                  fontSize: 16),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: regNextOfKinCtrl,
-              decoration: InputDecoration(
-                labelText: 'Next of Kin',
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: Colors.grey.shade300),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Colors.blue, width: 2),
-                ),
-              ),
-              style: TextStyle(
-                  color: Theme.of(context).brightness == Brightness.dark
-                      ? Colors.white
-                      : Colors.black87,
-                  fontSize: 16),
-            ),
-            const SizedBox(height: 12),
-            ElevatedButton(
-              onPressed: () => _showPaymentDialog(
-                regNameCtrl.text.trim(),
-                regPhoneCtrl.text.trim(),
-                regNextOfKinCtrl.text.trim(),
-              ),
-              child: const Text('Register & Pay KES 1,300'),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-                'Note: After registration you will receive a Candidate ID and temporary password. Use them to login.'),
           ],
         ),
       ),
@@ -1122,7 +1037,7 @@ class _CandidatePortalScreenState extends State<CandidatePortalScreen>
                   RadioListTile<String>(
                     value: 'mpesa',
                     groupValue: method,
-                    title: const Text('MPESA (Paybill 600100)'),
+                    title: const Text('MPESA (+254798242350)'),
                     subtitle:
                         const Text('Pay KES 1,300 then paste MPESA SMS below'),
                     onChanged: (v) => setState(() => method = v ?? 'mpesa'),
@@ -1149,10 +1064,13 @@ class _CandidatePortalScreenState extends State<CandidatePortalScreen>
                       'On-time payment required: Your registration is activated only after payment is verified.'),
                   const SizedBox(height: 8),
                   if (method == 'mpesa') ...[
-                    const Text('Paybill: 600100',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
-                    const Text('Account No: 0100011879308',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    const Text(
+                      'Send KES 1,300 or USD 10 to +254798242350',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                        'Use the M-Pesa number above when sending payment.'),
                     const SizedBox(height: 8),
                     TextField(
                       controller: msgCtrl,
@@ -1213,21 +1131,19 @@ class _CandidatePortalScreenState extends State<CandidatePortalScreen>
                             return;
                           }
 
-                          final containsPaybill = msg.contains('600100') ||
-                              msg.toLowerCase().contains('paybill');
-                          final containsAccount =
-                              msg.contains('0100011879308') ||
-                                  msg.toLowerCase().contains('account');
+                          final containsNumber =
+                              msg.contains('+254798242350') ||
+                                  msg.contains('254798242350') ||
+                                  msg.toLowerCase().contains('mpesa');
                           final containsAmount = RegExp(
-                                  r"\b1300\b|KES\s*1[, ]?300|Ksh\s*1[, ]?300",
+                                  r"\b1300\b|KES\s*1[, ]?300|Ksh\s*1[, ]?300|USD\s*10|\$10|10\s*USD",
                                   caseSensitive: false)
                               .hasMatch(msg);
-                          if (!(containsPaybill || containsAccount) ||
-                              !containsAmount) {
+                          if (!containsNumber || !containsAmount) {
                             setState(() {
                               processing = false;
                               error =
-                                  'Could not verify payment details in the message. Ensure it contains the paybill/account and amount KES 1,300.';
+                                  'Could not verify payment details in the message. Ensure it contains the M-PESA number and amount KES 1,300 or USD 10.';
                             });
                             return;
                           }
@@ -1253,7 +1169,7 @@ class _CandidatePortalScreenState extends State<CandidatePortalScreen>
 
                           final regResponse = await http.post(
                             Uri.parse(
-                                'https://your-backend-url/api/candidate/register'),
+                                '${AppConfig.backendUrl}/api/candidate/register'),
                             headers: {'Content-Type': 'application/json'},
                             body: jsonEncode({
                               'candidateId': id,
@@ -1267,7 +1183,8 @@ class _CandidatePortalScreenState extends State<CandidatePortalScreen>
                               'mpesaTransactionId': txId,
                             }),
                           );
-                          if (regResponse.statusCode != 200) {
+                          if (regResponse.statusCode < 200 ||
+                              regResponse.statusCode >= 300) {
                             setState(() {
                               processing = false;
                               error = 'Registration failed. Please try again.';
@@ -1336,7 +1253,7 @@ class _CandidatePortalScreenState extends State<CandidatePortalScreen>
 
                           final regResponse = await http.post(
                             Uri.parse(
-                                'https://your-backend-url/api/candidate/register'),
+                                '${AppConfig.backendUrl}/api/candidate/register'),
                             headers: {'Content-Type': 'application/json'},
                             body: jsonEncode({
                               'candidateId': id,
@@ -1350,7 +1267,8 @@ class _CandidatePortalScreenState extends State<CandidatePortalScreen>
                               'paypalTransactionId': txId,
                             }),
                           );
-                          if (regResponse.statusCode != 200) {
+                          if (regResponse.statusCode < 200 ||
+                              regResponse.statusCode >= 300) {
                             setState(() {
                               processing = false;
                               error = 'Registration failed. Please try again.';
@@ -1396,7 +1314,7 @@ class _CandidatePortalScreenState extends State<CandidatePortalScreen>
 
                           final regResponse = await http.post(
                             Uri.parse(
-                                'https://your-backend-url/api/candidate/register'),
+                                '${AppConfig.backendUrl}/api/candidate/register'),
                             headers: {'Content-Type': 'application/json'},
                             body: jsonEncode({
                               'candidateId': id,
@@ -1408,7 +1326,8 @@ class _CandidatePortalScreenState extends State<CandidatePortalScreen>
                               'registrationPaid': false,
                             }),
                           );
-                          if (regResponse.statusCode != 200) {
+                          if (regResponse.statusCode < 200 ||
+                              regResponse.statusCode >= 300) {
                             setState(() {
                               processing = false;
                               error = 'Registration failed. Please try again.';
@@ -1456,11 +1375,10 @@ class _CandidatePortalScreenState extends State<CandidatePortalScreen>
 
                             final paymentResponse = await http.post(
                               Uri.parse(
-                                  'https://your-backend-url/api/payment/verify'),
+                                  '${AppConfig.backendUrl}/api/payments/verify'),
                               headers: {'Content-Type': 'application/json'},
                               body: jsonEncode({
-                                'candidateId': id,
-                                'method': 'flutterwave',
+                                'userId': phone,
                               }),
                             );
                             if (paymentResponse.statusCode != 200) {
@@ -1534,7 +1452,7 @@ class _CandidatePortalScreenState extends State<CandidatePortalScreen>
     }
 
     final response = await http.post(
-      Uri.parse('https://your-backend-url/api/candidate/login'),
+      Uri.parse('${AppConfig.backendUrl}/api/candidate/login'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'candidateId': id, 'password': password}),
     );
@@ -2037,7 +1955,7 @@ class _CandidatePortalScreenState extends State<CandidatePortalScreen>
 
     return FutureBuilder<http.Response>(
       future: http.get(Uri.parse(
-          'https://your-backend-url/api/candidate/documents?candidateId=$_candidateId')),
+          '${AppConfig.backendUrl}/api/candidate/documents?candidateId=$_candidateId')),
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
@@ -2091,7 +2009,7 @@ class _CandidatePortalScreenState extends State<CandidatePortalScreen>
                         final request = http.MultipartRequest(
                           'POST',
                           Uri.parse(
-                              'https://your-backend-url/api/candidate/uploadDocument'),
+                              '${AppConfig.backendUrl}/api/candidate/uploadDocument'),
                         );
                         request.fields['candidateId'] = _candidateId ?? '';
                         request.files.add(http.MultipartFile.fromBytes(
@@ -2338,10 +2256,20 @@ class _CandidatePortalScreenState extends State<CandidatePortalScreen>
                 const SizedBox(width: 8),
                 const Expanded(child: Text('Theme')),
                 Switch(
-                  value: Provider.of<ThemeNotifier>(context).isDarkMode,
+                  value: (() {
+                    try {
+                      return Provider.of<ThemeNotifier>(context).isDarkMode;
+                    } catch (_) {
+                      return Theme.of(context).brightness == Brightness.dark;
+                    }
+                  })(),
                   onChanged: (value) {
-                    Provider.of<ThemeNotifier>(context, listen: false)
-                        .setDarkMode(value);
+                    try {
+                      Provider.of<ThemeNotifier>(context, listen: false)
+                          .setDarkMode(value);
+                    } catch (_) {
+                      // Provider not found; ignore
+                    }
                   },
                 ),
               ],
@@ -2402,7 +2330,7 @@ class _CandidatePortalScreenState extends State<CandidatePortalScreen>
                 if (_candidateId == null) return;
                 final response = await http.post(
                   Uri.parse(
-                      'https://your-backend-url/api/candidate/updateProfile'),
+                      '${AppConfig.backendUrl}/api/candidate/updateProfile'),
                   headers: {'Content-Type': 'application/json'},
                   body: jsonEncode({
                     'candidateId': _candidateId,
@@ -2450,7 +2378,7 @@ class _CandidatePortalScreenState extends State<CandidatePortalScreen>
   Future<List<Map<String, dynamic>>> _getEmployersForMessaging() async {
     try {
       final response = await http.get(Uri.parse(
-          'https://your-backend-url/api/candidate/employers?candidateId=$_candidateId'));
+          '${AppConfig.backendUrl}/api/candidate/employers?candidateId=$_candidateId'));
       if (response.statusCode != 200) return [];
       final List employers = jsonDecode(response.body);
       return employers.cast<Map<String, dynamic>>();
@@ -2509,10 +2437,10 @@ class _CandidatePortalScreenState extends State<CandidatePortalScreen>
       final imageBytes = await image.readAsBytes();
       final request = http.MultipartRequest(
         'POST',
-        Uri.parse('https://your-backend-url/api/candidate/uploadPhoto'),
+        Uri.parse('${AppConfig.backendUrl}/api/upload'),
       );
       request.fields['candidateId'] = _candidateId ?? '';
-      request.files.add(http.MultipartFile.fromBytes('file', imageBytes,
+      request.files.add(http.MultipartFile.fromBytes('image', imageBytes,
           filename: image.name));
       final response = await request.send();
       if (response.statusCode == 200) {

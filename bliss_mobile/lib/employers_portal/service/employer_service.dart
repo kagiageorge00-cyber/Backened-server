@@ -1,16 +1,18 @@
 // lib/employers_portal/services/employer_service.dart
 
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:bliss_mobile/firebase_stub.dart';
 
 class EmployerService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final String collection = 'employers';
 
-  Future<void> createEmployer(Map<String, dynamic> employerData, String employerId) async {
+  Future<void> createEmployer(
+      Map<String, dynamic> employerData, String employerId) async {
     await _db.collection(collection).doc(employerId).set(employerData);
   }
 
-  Future<void> updateEmployer(Map<String, dynamic> employerData, String employerId) async {
+  Future<void> updateEmployer(
+      Map<String, dynamic> employerData, String employerId) async {
     await _db.collection(collection).doc(employerId).update(employerData);
   }
 

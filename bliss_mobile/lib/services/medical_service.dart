@@ -1,4 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:bliss_mobile/firebase_stub.dart';
 
 enum MedicalServiceType { generalCheckup, vaccination, dental, eye, specialist }
 
@@ -230,7 +230,8 @@ class MedicalService {
   /// Get appointment statistics
   Future<Map<String, dynamic>> getAppointmentStats() async {
     try {
-      final appointments = await _firestore.collection('medical_appointments').get();
+      final appointments =
+          await _firestore.collection('medical_appointments').get();
 
       int total = appointments.size;
       int completed = 0;

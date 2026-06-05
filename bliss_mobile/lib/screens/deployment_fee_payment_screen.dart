@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-// backend-only auth: use employerId passed into the screen
 import '../services/stripe_service.dart';
+import '../services/payment_service.dart'; // your backend payment service
 import '../agents_portal/services/payment_service.dart'
     as agent_payment_service;
 import '../agents_portal/models/payment_model.dart';
@@ -24,69 +23,69 @@ class DeploymentFeePaymentScreen extends StatefulWidget {
 class _DeploymentFeePaymentScreenState
     extends State<DeploymentFeePaymentScreen> {
   bool _processing = false;
+
+  final PaymentService _paymentService = PaymentService();
   final agent_payment_service.PaymentService _agentPaymentService =
       agent_payment_service.PaymentService();
 
   Future<void> _processPayment() async {
     setState(() => _processing = true);
-    try {
-      final employerDoc = await FirebaseFirestore.instance
-          .collection('employers')
-          .doc(widget.employerId)
-          .get();
-      final employerEmail = (employerDoc.exists && employerDoc.data() != null)
-          ? (employerDoc.data()!['email'] ?? '')
-          : '';
 
+    try {
+      /// 1. Create payment intent from backend
+      final intentId = await _paymentService.createPaymentIntent(
+        candidateId: widget.candidateId,
+        amount: 1000,
+        paymentMethod: 'stripe',
+        title: 'Deployment Fee',
+      );
+
+      /// 2. Process Stripe payment
       final success = await StripeService.processPayment(
-        amount: 100000,
+        amount: 100000, // cents
         currency: 'usd',
-        customerEmail: employerEmail,
+        customerEmail: '', // optional: fetch from backend if needed
       );
 
       if (!success) throw Exception('Payment failed');
 
+      /// 3. Confirm payment in backend
+      await _paymentService.submitPaymentBackend(
+        intentId: intentId,
+        candidateId: widget.candidateId,
+        amount: 1000,
+        title: 'Deployment Fee',
+      );
+
+      /// 4. Record agent-side payment
       await _agentPaymentService.createPayment(
         userId: widget.employerId,
         type: PaymentType.employerPayment,
         amount: 1000,
-        reference: 'stripe_${DateTime.now().millisecondsSinceEpoch}',
+        reference: intentId,
         status: PaymentStatus.completed,
       );
 
-      await FirebaseFirestore.instance.collection('payments').add({
-        'employerId': widget.employerId,
-        'candidateId': widget.candidateId,
-        'amount': 1000,
-        'currency': 'USD',
-        'type': 'deployment_fee',
-        'status': 'completed',
-        'stripePaymentId': 'simulated_payment_id',
-        'createdAt': FieldValue.serverTimestamp(),
-      });
-
-      await FirebaseFirestore.instance
-          .collection('employers')
-          .doc(widget.employerId)
-          .collection('accessed_candidates')
-          .doc(widget.candidateId)
-          .set({
-        'accessedAt': FieldValue.serverTimestamp(),
-        'feePaid': true,
-      });
+      /// 5. Unlock candidate access via backend
+      await _paymentService.unlockCandidateAccess(
+        employerId: widget.employerId,
+        candidateId: widget.candidateId,
+      );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-              content: Text(
-                  'Payment successful! You can now view candidate details.')),
+            content:
+                Text('Payment successful! You can now view candidate details.'),
+          ),
         );
+
         Navigator.pop(context, true);
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Payment failed: ${e.toString()}')),
+          SnackBar(content: Text('Payment failed: $e')),
         );
       }
     } finally {
@@ -130,11 +129,11 @@ class _DeploymentFeePaymentScreenState
                 elevation: 3,
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14)),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
+                child: const Padding(
+                  padding: EdgeInsets.all(16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
+                    children: [
                       Text(
                         'Deployment Fee: \$1000 USD',
                         style: TextStyle(
@@ -142,17 +141,17 @@ class _DeploymentFeePaymentScreenState
                       ),
                       SizedBox(height: 10),
                       Text(
-                        'This fee covers the 2-year contract deployment process and grants you access to:',
+                        'This fee gives you:',
                         style: TextStyle(fontSize: 16),
                       ),
                       SizedBox(height: 10),
-                      Text('• Candidate\'s full documents'),
+                      Text('• Full candidate documents'),
                       Text('• Contact phone number'),
-                      Text('• Direct communication access'),
+                      Text('• Direct communication'),
                       Text('• Interview scheduling'),
                       SizedBox(height: 20),
                       Text(
-                        'Note: This is a one-time fee per candidate for the contract period.',
+                        'One-time fee per candidate.',
                         style: TextStyle(
                             fontStyle: FontStyle.italic, color: Colors.grey),
                       ),

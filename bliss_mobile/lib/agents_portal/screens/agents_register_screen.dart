@@ -130,7 +130,7 @@ class _AgentRegisterScreenState extends State<AgentRegisterScreen> {
               children: [
                 // Logo
                 Image.asset(
-                  'assets/images/bliss_logo.png',
+                  'assets/images/logo.png',
                   height: 100,
                   errorBuilder: (context, error, stackTrace) {
                     return Container(

@@ -1,4 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:bliss_mobile/firebase_stub.dart';
 import '../models/interview_model.dart';
 
 class InterviewService {
@@ -14,22 +14,29 @@ class InterviewService {
 
   // Update interview result
   Future<void> updateInterview(Interview interview) async {
-    await _db.collection('interviews').doc(interview.id).update(interview.toMap());
+    await _db
+        .collection('interviews')
+        .doc(interview.id)
+        .update(interview.toMap());
   }
 
   // Fetch interviews for employer
   Stream<List<Interview>> fetchEmployerInterviews(String employerId) {
-    return _db.collection('interviews')
-      .where('employerId', isEqualTo: employerId)
-      .snapshots()
-      .map((snap) => snap.docs.map((d) => Interview.fromMap(d.data())).toList());
+    return _db
+        .collection('interviews')
+        .where('employerId', isEqualTo: employerId)
+        .snapshots()
+        .map((snap) =>
+            snap.docs.map((d) => Interview.fromMap(d.data())).toList());
   }
 
   // Fetch interviews for candidate
   Stream<List<Interview>> fetchCandidateInterviews(String candidateId) {
-    return _db.collection('interviews')
-      .where('candidateId', isEqualTo: candidateId)
-      .snapshots()
-      .map((snap) => snap.docs.map((d) => Interview.fromMap(d.data())).toList());
+    return _db
+        .collection('interviews')
+        .where('candidateId', isEqualTo: candidateId)
+        .snapshots()
+        .map((snap) =>
+            snap.docs.map((d) => Interview.fromMap(d.data())).toList());
   }
 }

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:bliss_mobile/services/backend_application_service.dart';
 
 class ApplicantDetailsScreen extends StatelessWidget {
   final String candidateId;
@@ -47,146 +47,135 @@ class ApplicantDetailsScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Candidate Summary Card
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black12,
-                    blurRadius: 10,
-                    offset: const Offset(0, 3),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    candidateName,
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue.shade800,
-                    ),
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    "Applied for $jobTitle",
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.grey.shade700,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Divider(color: Colors.grey.shade300),
-                  const SizedBox(height: 10),
-                  _infoRow("Email", email),
-                  _infoRow("Phone", phone),
-                  _infoRow("Country", country),
-                  _infoRow("Age", age.toString()),
-                  _infoRow("Gender", gender),
-                  _infoRow("Profession", profession),
-                ],
-              ),
-            ),
-
+            _candidateCard(),
             const SizedBox(height: 30),
-
-            // Application Status Section
-            StreamBuilder<DocumentSnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection("applications")
-                  .doc(candidateId)
-                  .snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (!snapshot.hasData || !snapshot.data!.exists) {
-                  return const Text("No application data found.");
-                }
-
-                final data = snapshot.data!;
-                final status = data["status"] ?? "Pending Review";
-                final notes = data["notes"] ?? "";
-
-                return Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black12,
-                        blurRadius: 10,
-                        offset: const Offset(0, 3),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        "Application Status",
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                          color: Colors.grey.shade800,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade100,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.grey.shade300),
-                        ),
-                        child: Text(
-                          status,
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.blue.shade800,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      Text(
-                        "Notes",
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                          color: Colors.grey.shade800,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade100,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.grey.shade300),
-                        ),
-                        child: Text(
-                          notes.isEmpty ? "No notes available" : notes,
-                          style: TextStyle(
-                            fontSize: 15,
-                            color: Colors.grey.shade700,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
+            _applicationStatus(),
           ],
         ),
       ),
+    );
+  }
+
+  // ------------------------
+  // BACKEND DATA
+  // ------------------------
+  Widget _applicationStatus() {
+    return FutureBuilder<Map<String, dynamic>?>(
+      future: BackendApplicationService.getApplication(candidateId),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (!snapshot.hasData || snapshot.data == null) {
+          return const Text("No application data found.");
+        }
+
+        final data = snapshot.data!;
+        final status = data["status"] ?? "Pending Review";
+        final notes = data["notes"] ?? "";
+
+        return _statusCard(status, notes);
+      },
+    );
+  }
+
+  // ------------------------
+  // UI COMPONENTS
+  // ------------------------
+  Widget _candidateCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: _boxStyle(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            candidateName,
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.blue,
+            ),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            "Applied for $jobTitle",
+            style: const TextStyle(fontSize: 16, color: Colors.grey),
+          ),
+          const SizedBox(height: 10),
+          const Divider(),
+          const SizedBox(height: 10),
+          _infoRow("Email", email),
+          _infoRow("Phone", phone),
+          _infoRow("Country", country),
+          _infoRow("Age", age.toString()),
+          _infoRow("Gender", gender),
+          _infoRow("Profession", profession),
+        ],
+      ),
+    );
+  }
+
+  Widget _statusCard(String status, String notes) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: _boxStyle(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            "Application Status",
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          ),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              status,
+              style: const TextStyle(fontSize: 16, color: Colors.blue),
+            ),
+          ),
+          const SizedBox(height: 20),
+          const Text(
+            "Notes",
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          ),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              notes.isEmpty ? "No notes available" : notes,
+              style: const TextStyle(fontSize: 15),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ------------------------
+  // HELPERS
+  // ------------------------
+  BoxDecoration _boxStyle() {
+    return BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      boxShadow: const [
+        BoxShadow(
+          color: Colors.black12,
+          blurRadius: 10,
+          offset: Offset(0, 3),
+        ),
+      ],
     );
   }
 
@@ -199,20 +188,12 @@ class ApplicantDetailsScreen extends StatelessWidget {
             flex: 3,
             child: Text(
               label,
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: Colors.grey.shade800,
-              ),
+              style: const TextStyle(fontWeight: FontWeight.bold),
             ),
           ),
           Expanded(
             flex: 5,
-            child: Text(
-              value,
-              style: TextStyle(
-                color: Colors.grey.shade700,
-              ),
-            ),
+            child: Text(value),
           ),
         ],
       ),
