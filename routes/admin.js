@@ -265,14 +265,18 @@ router.post("/payments/:paymentId/approve", requireAdminAuth, async (req, res) =
     if (notificationTarget.email) {
       // STEP 3: Send payment approval email with candidate form link
       const frontendUrl = FRONTEND_URL.replace(/\/$/, '');
-      const candidateFormLink = `${frontendUrl}/#/candidate-form?candidateId=${notificationTarget.candidateId}`;
+      // Use phone in approval links. Do NOT include candidate.uniqueCode at this stage.
+      const phoneParam = notificationTarget.phone || (typeof payment.userId === 'string' ? payment.userId : null);
+      const candidateFormLink = phoneParam
+        ? `${frontendUrl}/#/candidate-form?phone=${encodeURIComponent(phoneParam)}`
+        : `${frontendUrl}/#/candidate-form`;
       
       console.log("📧 Sending payment approval email to", notificationTarget.email);
       
       await sendEmail(
         notificationTarget.email,
         "Payment Approved ✅ - Complete Your Registration",
-        `Hello ${notificationTarget.name || 'there'},\n\nExciting news! Your payment has been approved! ✅\n\nYour Candidate ID: ${notificationTarget.candidateId}\n\nNow, complete your candidate registration:\n${candidateFormLink}\n\nBest regards,\nBliss Connect Admin`,
+        `Hello ${notificationTarget.name || 'there'},\n\nExciting news! Your payment has been approved! ✅\n\nReference: ${phoneParam || ''}\n\nNow, complete your candidate registration:\n${candidateFormLink}\n\nBest regards,\nBliss Connect Admin`,
         `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #f5f5f5; padding: 20px;">
           <div style="background-color: #ffffff; padding: 30px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
             <h2 style="color: #4CAF50; text-align: center;">Payment Approved ✅</h2>
@@ -280,7 +284,7 @@ router.post("/payments/:paymentId/approve", requireAdminAuth, async (req, res) =
             <p>Great news! Your payment has been <strong>approved by our admin team</strong>! 🎉</p>
             
             <div style="background-color: #e8f5e9; padding: 15px; border-radius: 5px; margin: 20px 0;">
-              <p style="margin: 5px 0; color: #2e7d32;"><strong>Your Candidate ID:</strong> <code style="background-color: #f0f0f0; padding: 5px 10px; border-radius: 3px;">${notificationTarget.candidateId}</code></p>
+              <p style="margin: 5px 0; color: #2e7d32;"><strong>Reference (phone):</strong> <code style="background-color: #f0f0f0; padding: 5px 10px; border-radius: 3px;">${phoneParam || ''}</code></p>
             </div>
             
             <p><strong>Next Step: Complete Your Candidate Registration</strong></p>

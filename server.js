@@ -131,19 +131,24 @@ app.post('/flightSearch', async (req, res) => {
 // ======================
 app.get('/api/candidate-form/data', async (req, res) => {
   try {
-    const { candidateId } = req.query;
-    if (!candidateId) {
-      return res.status(400).json({ success: false, error: 'candidateId query parameter required' });
+    const { candidateId, phone } = req.query;
+    if (!candidateId && !phone) {
+      return res.status(400).json({ success: false, error: 'candidateId or phone query parameter required' });
     }
 
-    let candidate = await CandidateModel.findOne({
-      $or: [
-        { _id: candidateId },
-        { uniqueCode: candidateId },
-        { phone: candidateId },
-        { email: candidateId }
-      ]
-    });
+    let candidate;
+    if (phone) {
+      candidate = await CandidateModel.findOne({ phone: phone });
+    } else {
+      candidate = await CandidateModel.findOne({
+        $or: [
+          { _id: candidateId },
+          { uniqueCode: candidateId },
+          { phone: candidateId },
+          { email: candidateId }
+        ]
+      });
+    }
 
     if (!candidate) {
       return res.status(404).json({ success: false, error: 'Candidate not found' });
