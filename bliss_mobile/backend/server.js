@@ -7,6 +7,8 @@ require('dotenv').config();
 
 const app = express();
 
+const { FRONTEND_URL } = require('./config');
+
 // ======================
 // MIDDLEWARE
 // ======================
@@ -125,30 +127,43 @@ app.post('/flightSearch', async (req, res) => {
 });
 
 // ======================
-// CANDIDATE FORM - GET DATA FOR FRONTEND (WITH REAL DATA)
+// CANDIDATE FORM - GET DATA FOR FRONTEND
 // ======================
 app.get('/api/candidate-form/data', async (req, res) => {
   try {
-    const { candidateId } = req.query;
-    if (!candidateId) {
-      return res.status(400).json({ success: false, error: 'candidateId query parameter required' });
+    const { candidateId, phone } = req.query;
+    if (!candidateId && !phone) {
+      return res.status(400).json({ success: false, error: 'candidateId or phone query parameter required' });
     }
 
-    let candidate = await CandidateModel.findOne({
-      $or: [
-        { _id: candidateId },
-        { uniqueCode: candidateId },
-        { phone: candidateId },
-        { email: candidateId }
-      ]
-    });
+    let candidate;
+    if (phone) {
+      candidate = await CandidateModel.findOne({ phone: phone });
+    } else {
+      candidate = await CandidateModel.findOne({
+        $or: [
+          { _id: candidateId },
+          { uniqueCode: candidateId },
+          { phone: candidateId },
+          { email: candidateId }
+        ]
+      });
+    }
 
+    // ✅ RETURN SUCCESS EVEN IF CANDIDATE NOT FOUND
     if (!candidate) {
-      return res.status(404).json({ success: false, error: 'Candidate not found' });
+      return res.status(200).json({
+        success: true,
+        candidateExists: false,
+        data: {
+          phone: phone || candidateId || ''
+        }
+      });
     }
 
     return res.status(200).json({
       success: true,
+      candidateExists: true,
       data: candidate,
       isVerified: candidate.isVerified,
       paymentStatus: candidate.paymentStatus
@@ -177,7 +192,7 @@ app.get('/api/payment-success/:candidateId', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Candidate not found' });
     }
 
-    const candidateFormLink = `${process.env.FRONTEND_URL || 'https://blisssconnect12.netlify.app'}/candidate-form?candidateId=${candidateId}`;
+    const candidateFormLink = `${FRONTEND_URL}/#/candidate-form?candidateId=${candidateId}`;
 
     return res.status(200).json({
       success: true,

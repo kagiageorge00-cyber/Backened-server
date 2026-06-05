@@ -42,9 +42,12 @@ class ApplyApp extends StatelessWidget {
         '/home': (context) => const HomeScreen(),
         '/apply': (context) => const ApplyScreen(),
         '/candidate-form': (context) {
-          // Extract candidateId from URL query parameters
           final candidateId = Uri.base.queryParameters['candidateId'];
-          return CandidateFormScreen(candidateId: candidateId);
+          final phone = Uri.base.queryParameters['phone'];
+          return CandidateFormScreen(
+            candidateId: candidateId,
+            phone: phone,
+          );
         },
         '/jobApplication': (context) => const JobApplicationPageScreen(),
         '/admin': (context) => const AdminScreen(),

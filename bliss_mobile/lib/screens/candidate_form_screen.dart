@@ -19,6 +19,8 @@ class CandidateFormScreen extends StatefulWidget {
 class _CandidateFormScreenState extends State<CandidateFormScreen> {
   bool isSaving = false;
   String? _candidateId;
+  String? _phone;
+  bool _candidateExists = true; // ✅ NEW FIELD
 
   static const String baseUrl = ApiConfig.baseUrl;
 
@@ -36,6 +38,42 @@ class _CandidateFormScreenState extends State<CandidateFormScreen> {
     super.initState();
     _candidateId =
         widget.candidateId ?? Uri.base.queryParameters['candidateId'];
+    _phone = widget.phone ??
+        Uri.base.queryParameters['phone']; // ✅ GET PHONE FROM URL
+    _loadCandidateData(); // ✅ LOAD DATA IF EXISTS
+  }
+
+  // ✅ NEW METHOD: Load existing candidate data
+  Future<void> _loadCandidateData() async {
+    try {
+      final queryParam = _candidateId ?? _phone;
+      if (queryParam == null || queryParam.isEmpty) {
+        setState(() => _candidateExists = false);
+        return;
+      }
+
+      final url = _candidateId != null
+          ? '$baseUrl/api/candidate-form/data?candidateId=$queryParam'
+          : '$baseUrl/api/candidate-form/data?phone=${Uri.encodeComponent(queryParam)}';
+
+      final response = await http.get(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        setState(() {
+          _candidateExists = data['candidateExists'] ?? false;
+          // Pre-fill phone from response if available
+          if (data['data'] != null && data['data']['phone'] != null) {
+            _phone = data['data']['phone'];
+          }
+        });
+      } else {
+        setState(() => _candidateExists = false);
+      }
+    } catch (e) {
+      debugPrint('Error loading candidate data: $e');
+      setState(() => _candidateExists = false);
+    }
   }
 
   bool get _hasRequiredFiles {
@@ -52,8 +90,10 @@ class _CandidateFormScreenState extends State<CandidateFormScreen> {
   }
 
   Future<void> _submitDocuments() async {
-    if (_candidateId == null || _candidateId!.isEmpty) {
-      showError('Candidate ID is required to submit documents.');
+    // ✅ UPDATED: Use candidateId or phone for submission
+    final submitId = _candidateId ?? _phone;
+    if (submitId == null || submitId.isEmpty) {
+      showError('Candidate ID or Phone is required to submit documents.');
       return;
     }
 
@@ -68,7 +108,7 @@ class _CandidateFormScreenState extends State<CandidateFormScreen> {
 
     try {
       final response = await http.put(
-        Uri.parse('$baseUrl/api/candidates/$_candidateId/documents'),
+        Uri.parse('$baseUrl/api/candidates/$submitId/documents'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'passportUrl': _uploadedDocs['passport'],
@@ -77,6 +117,7 @@ class _CandidateFormScreenState extends State<CandidateFormScreen> {
           'medicalUrl': _uploadedDocs['medical'],
           'resumeUrl': _uploadedDocs['resume'],
           'additionalUrl': _uploadedDocs['additional'],
+          'phone': _phone, // ✅ PASS PHONE FOR CANDIDATE CREATION
         }),
       );
 
@@ -162,45 +203,61 @@ class _CandidateFormScreenState extends State<CandidateFormScreen> {
               'Required uploads are passport (PDF), a recent photo, medical report (PDF), and video introduction.',
             ),
             const SizedBox(height: 16),
+            // ✅ SHOW INFO: Candidate ID or Phone
             if (_candidateId != null)
               _buildInfoRow('Candidate ID', _candidateId!),
-            if (widget.phone != null) _buildInfoRow('Phone', widget.phone!),
+            if (_phone != null) _buildInfoRow('Phone', _phone!),
+            // ✅ SHOW STATUS
+            if (!_candidateExists)
+              Container(
+                padding: const EdgeInsets.all(12),
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: Colors.blue[50],
+                  border: Border.all(color: Colors.blue),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text(
+                  '✅ Your payment has been approved. Please upload documents to complete registration.',
+                  style: TextStyle(color: Colors.blue, fontSize: 14),
+                ),
+              ),
             const SizedBox(height: 16),
             _buildDocTile(
               'Passport (PDF)',
               'passport',
               ['pdf'],
-              'candidate_documents/$_candidateId/passport',
+              'candidate_documents/${_candidateId ?? _phone}/passport',
             ),
             _buildDocTile(
               'Photo (JPG, PNG)',
               'photo',
               ['jpg', 'jpeg', 'png'],
-              'candidate_documents/$_candidateId/photo',
+              'candidate_documents/${_candidateId ?? _phone}/photo',
             ),
             _buildDocTile(
               'Video Introduction (MP4)',
               'video',
               ['mp4', 'mov', 'avi', 'mkv'],
-              'candidate_documents/$_candidateId/video',
+              'candidate_documents/${_candidateId ?? _phone}/video',
             ),
             _buildDocTile(
               'Medical Report (PDF)',
               'medical',
               ['pdf'],
-              'candidate_documents/$_candidateId/medical',
+              'candidate_documents/${_candidateId ?? _phone}/medical',
             ),
             _buildDocTile(
               'Resume / CV (PDF, DOC)',
               'resume',
               ['pdf', 'doc', 'docx'],
-              'candidate_documents/$_candidateId/resume',
+              'candidate_documents/${_candidateId ?? _phone}/resume',
             ),
             _buildDocTile(
               'Additional Document',
               'additional',
               ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png'],
-              'candidate_documents/$_candidateId/additional',
+              'candidate_documents/${_candidateId ?? _phone}/additional',
             ),
             const SizedBox(height: 24),
             SizedBox(
