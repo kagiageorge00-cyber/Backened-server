@@ -18,8 +18,9 @@ class ApplyApp extends StatelessWidget {
   String _getInitialRoute() {
     try {
       final uri = Uri.parse(Uri.base.toString());
-      final fragment = uri.fragment; // Gets the hash part (#/candidate-form?phone=...)
-      
+      final fragment =
+          uri.fragment; // Gets the hash part (#/candidate-form?phone=...)
+
       if (fragment.isNotEmpty) {
         // Fragment is like '/candidate-form?phone=...'
         if (fragment.contains('/candidate-form')) {
@@ -84,7 +85,7 @@ class ApplyApp extends StatelessWidget {
       // ✅ SAFETY (NO CRASH IF ROUTE MISSING)
       onUnknownRoute: (settings) {
         return MaterialPageRoute(
-          builder: (_) => const Scaffold(
+          builder: (_) => Scaffold(
             body: Center(
               child: Text("Route not found: ${settings.name}"),
             ),
