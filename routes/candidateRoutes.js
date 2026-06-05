@@ -83,15 +83,52 @@ router.put('/:id/documents', async (req, res) => {
       medicalUrl,
       resumeUrl,
       additionalUrl,
+      phone, // ✅ NEW: Accept phone for candidate creation
     } = req.body;
 
-    let existing = await Candidate.findById(req.params.id);
-    if (!existing && req.params.id.startsWith('BLISS-')) {
-      existing = await Candidate.findOne({ uniqueCode: req.params.id });
+    const candidateId = req.params.id;
+
+    // ✅ TRY TO FIND EXISTING CANDIDATE
+    let existing = await Candidate.findById(candidateId);
+    if (!existing && candidateId.startsWith('BLISS-')) {
+      existing = await Candidate.findOne({ uniqueCode: candidateId });
+    }
+    // ✅ NEW: Also try to find by phone
+    if (!existing && phone) {
+      existing = await Candidate.findOne({ phone });
     }
 
-    if (!existing) return sendError(res, 404, 'Candidate not found');
+    // ✅ NEW: If still not found AND phone is provided, CREATE NEW CANDIDATE
+    if (!existing && phone) {
+      console.log(`📝 Creating new candidate with phone: ${phone}`);
+      
+      // Generate unique code for new candidate
+      const uniqueCode = `BLISS-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+      
+      existing = await Candidate.create({
+        phone,
+        uniqueCode,
+        fullName: '', // Will be updated if provided
+        name: '',
+        email: '',
+        isVerified: false,
+        status: 'available',
+        paymentStatus: 'completed', // Payment is already approved
+        applicationDate: new Date(),
+        passportUrl,
+        photoUrl,
+        videoUrl,
+        medicalUrl,
+        resumeUrl,
+        additionalUrl,
+      });
 
+      console.log(`✅ New candidate created: ${existing._id}`);
+    }
+
+    if (!existing) return sendError(res, 404, 'Candidate not found and phone required to create');
+
+    // ✅ UPDATE EXISTING CANDIDATE WITH DOCUMENTS
     const payload = {
       passportUrl: passportUrl ?? existing.passportUrl,
       photoUrl: photoUrl ?? existing.photoUrl,
@@ -102,6 +139,7 @@ router.put('/:id/documents', async (req, res) => {
       isVerified: true,
       status: 'available', // Available for marketplace
       paymentStatus: 'completed',
+      applicationDate: existing.applicationDate || new Date(),
     };
 
     const candidate = await Candidate.findByIdAndUpdate(existing._id, payload, {

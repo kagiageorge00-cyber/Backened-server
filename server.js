@@ -127,7 +127,7 @@ app.post('/flightSearch', async (req, res) => {
 });
 
 // ======================
-// CANDIDATE FORM - GET DATA FOR FRONTEND (WITH REAL DATA)
+// CANDIDATE FORM - GET DATA FOR FRONTEND
 // ======================
 app.get('/api/candidate-form/data', async (req, res) => {
   try {
@@ -150,12 +150,20 @@ app.get('/api/candidate-form/data', async (req, res) => {
       });
     }
 
+    // ✅ RETURN SUCCESS EVEN IF CANDIDATE NOT FOUND
     if (!candidate) {
-      return res.status(404).json({ success: false, error: 'Candidate not found' });
+      return res.status(200).json({
+        success: true,
+        candidateExists: false,
+        data: {
+          phone: phone || candidateId || ''
+        }
+      });
     }
 
     return res.status(200).json({
       success: true,
+      candidateExists: true,
       data: candidate,
       isVerified: candidate.isVerified,
       paymentStatus: candidate.paymentStatus
