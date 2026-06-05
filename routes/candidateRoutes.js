@@ -1,382 +1,334 @@
 const express = require('express');
-const Candidate = require('../models/candidate');
-const sendEmail = require('../email');
-const bcrypt = require('bcryptjs');
-const { FRONTEND_URL } = require('../config');
-
+const mongoose = require('mongoose');
 const router = express.Router();
 
-const toCandidatePayload = (body = {}, existing = null) => {
-  const payload = {
-    fullName: body.fullName ?? body.name ?? existing?.fullName ?? existing?.name ?? '',
-    name: body.name ?? body.fullName ?? existing?.name ?? existing?.fullName ?? '',
-    email: body.email ?? existing?.email ?? '',
-    phone: body.phone ?? existing?.phone ?? '',
-    country: body.country ?? existing?.country ?? '',
-    skills: body.skills ?? existing?.skills ?? '',
-    experience: body.experience ?? existing?.experience ?? '',
-    photoUrl: body.photoUrl ?? existing?.photoUrl ?? '',
-    videoUrl: body.videoUrl ?? existing?.videoUrl ?? '',
-    passportUrl: body.passportUrl ?? existing?.passportUrl ?? '',
-    medicalUrl: body.medicalUrl ?? existing?.medicalUrl ?? '',
-    resumeUrl: body.resumeUrl ?? existing?.resumeUrl ?? '',
-    additionalUrl: body.additionalUrl ?? existing?.additionalUrl ?? '',
-    isVerified: body.isVerified ?? existing?.isVerified ?? false,
-    status: body.status ?? existing?.status ?? 'available',
-    paymentStatus: body.paymentStatus ?? existing?.paymentStatus ?? 'pending',
-  };
+const Candidate = require('../models/candidate');
+const sendEmail = require('../email');
+const { FRONTEND_URL } = require('../config');
 
-  const uniqueCode = body.uniqueCode || body.candidateId || existing?.uniqueCode;
-  if (uniqueCode) {
-    payload.uniqueCode = uniqueCode;
-  }
+function generateCandidateCode() {
+  return 'BLISS-' + Math.floor(100000 + Math.random() * 900000);
+}
 
-  return payload;
-};
-
-const sendError = (res, status, error) => res.status(status).json({ success: false, error });
-
+// GET /
 router.get('/', async (req, res) => {
   try {
     const candidates = await Candidate.find().sort({ createdAt: -1 });
-    return res.status(200).json({ success: true, count: candidates.length, data: candidates });
+    return res.json({
+      success: true,
+      count: candidates.length,
+      data: candidates,
+    });
   } catch (error) {
-    return sendError(res, 500, error.message || 'Failed to fetch candidates');
+    return res.status(500).json({ success: false, error: error.message });
   }
 });
 
-router.post('/', async (req, res) => {
-  try {
-    const payload = toCandidatePayload(req.body);
-
-    if (!payload.fullName || !payload.email || !payload.phone) {
-      return sendError(res, 400, 'fullName, email and phone are required');
-    }
-
-    const existing = await Candidate.findOne({ $or: [{ email: payload.email }, { phone: payload.phone }] });
-    if (existing) {
-      return sendError(res, 409, 'Candidate already exists');
-    }
-
-    const candidate = await Candidate.create(payload);
-    return res.status(201).json({ success: true, message: 'Candidate created successfully', data: candidate });
-  } catch (error) {
-    return sendError(res, 500, error.message || 'Failed to create candidate');
-  }
-});
-
+// GET /marketplace
 router.get('/marketplace', async (req, res) => {
   try {
-    const candidates = await Candidate.find({ isVerified: true, status: 'available' }).sort({ createdAt: -1 });
-    return res.status(200).json({ success: true, count: candidates.length, data: candidates });
+    const candidates = await Candidate.find().sort({ createdAt: -1 });
+    return res.json({
+      success: true,
+      count: candidates.length,
+      data: candidates,
+    });
   } catch (error) {
-    return sendError(res, 500, error.message || 'Failed to fetch marketplace candidates');
+    return res.status(500).json({ success: false, error: error.message });
   }
 });
 
-router.put('/:id/documents', async (req, res) => {
+// GET /form/data
+router.get('/form/data', async (req, res) => {
+  try {
+    const { candidateId, phone } = req.query;
+    const lookupValue = candidateId || phone;
+
+    if (!lookupValue) {
+      return res.status(400).json({ success: false, error: 'candidateId or phone query parameter required' });
+    }
+
+    const searchCriteria = [];
+    if (mongoose.Types.ObjectId.isValid(lookupValue)) {
+      searchCriteria.push({ _id: lookupValue });
+    }
+
+    searchCriteria.push(
+      { uniqueCode: lookupValue },
+      { phone: lookupValue },
+      { email: lookupValue }
+    );
+
+    const candidate = await Candidate.findOne({ $or: searchCriteria });
+
+    if (!candidate) {
+      return res.status(404).json({ success: false, error: 'Candidate not found' });
+    }
+
+    return res.json({
+      success: true,
+      data: candidate,
+      formLink: `${FRONTEND_URL}/#/candidate-form?phone=${candidate.phone}`,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// POST /form/submit
+router.post('/form/submit', async (req, res) => {
   try {
     const {
-      passportUrl,
+      candidateId,
+      phone,
+      fullName,
+      email,
+      country,
+      skills,
+      experience,
       photoUrl,
       videoUrl,
+      passportUrl,
       medicalUrl,
       resumeUrl,
       additionalUrl,
-      phone, // ✅ NEW: Accept phone for candidate creation
     } = req.body;
 
-    const candidateId = req.params.id;
-
-    // ✅ TRY TO FIND EXISTING CANDIDATE
-    let existing = await Candidate.findById(candidateId);
-    if (!existing && candidateId.startsWith('BLISS-')) {
-      existing = await Candidate.findOne({ uniqueCode: candidateId });
-    }
-    // ✅ NEW: Also try to find by phone
-    if (!existing && phone) {
-      existing = await Candidate.findOne({ phone });
+    const lookupValue = candidateId || phone;
+    if (!lookupValue) {
+      return res.status(400).json({ success: false, error: 'candidateId or phone is required' });
     }
 
-    // ✅ NEW: If still not found AND phone is provided, CREATE NEW CANDIDATE
-    if (!existing && phone) {
-      console.log(`📝 Creating new candidate with phone: ${phone}`);
-      
-      // Generate unique code for new candidate
-      const uniqueCode = `BLISS-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-      
-      existing = await Candidate.create({
+    const searchCriteria = [];
+    if (mongoose.Types.ObjectId.isValid(lookupValue)) {
+      searchCriteria.push({ _id: lookupValue });
+    }
+
+    searchCriteria.push(
+      { uniqueCode: lookupValue },
+      { phone: lookupValue },
+      { email: lookupValue }
+    );
+
+    let candidate = await Candidate.findOne({ $or: searchCriteria });
+
+    if (!candidate) {
+      candidate = await Candidate.create({
+        fullName,
+        name: fullName,
+        email,
         phone,
-        uniqueCode,
-        fullName: '', // Will be updated if provided
-        name: '',
-        email: '',
-        isVerified: false,
-        status: 'available',
-        paymentStatus: 'completed', // Payment is already approved
-        applicationDate: new Date(),
-        passportUrl,
-        photoUrl,
-        videoUrl,
-        medicalUrl,
-        resumeUrl,
-        additionalUrl,
+        country,
+        skills,
+        experience,
+        uniqueCode: generateCandidateCode(),
+        paymentStatus: 'completed',
       });
-
-      console.log(`✅ New candidate created: ${existing._id}`);
     }
 
-    if (!existing) return sendError(res, 404, 'Candidate not found and phone required to create');
+    if (photoUrl !== undefined) candidate.photoUrl = photoUrl;
+    if (videoUrl !== undefined) candidate.videoUrl = videoUrl;
+    if (passportUrl !== undefined) candidate.passportUrl = passportUrl;
+    if (medicalUrl !== undefined) candidate.medicalUrl = medicalUrl;
+    if (resumeUrl !== undefined) candidate.resumeUrl = resumeUrl;
+    if (additionalUrl !== undefined) candidate.additionalUrl = additionalUrl;
 
-    // ✅ UPDATE EXISTING CANDIDATE WITH DOCUMENTS
-    const payload = {
-      passportUrl: passportUrl ?? existing.passportUrl,
-      photoUrl: photoUrl ?? existing.photoUrl,
-      videoUrl: videoUrl ?? existing.videoUrl,
-      medicalUrl: medicalUrl ?? existing.medicalUrl,
-      resumeUrl: resumeUrl ?? existing.resumeUrl,
-      additionalUrl: additionalUrl ?? existing.additionalUrl,
-      isVerified: true,
-      status: 'available', // Available for marketplace
-      paymentStatus: 'completed',
-      applicationDate: existing.applicationDate || new Date(),
-    };
+    candidate.fullName = fullName || candidate.fullName;
+    candidate.name = fullName || candidate.name;
+    candidate.email = email || candidate.email;
+    candidate.phone = phone || candidate.phone;
+    candidate.country = country || candidate.country;
+    candidate.skills = skills || candidate.skills;
+    candidate.experience = experience || candidate.experience;
+    candidate.isVerified = true;
+    candidate.status = 'available';
+    candidate.paymentStatus = 'completed';
 
-    const candidate = await Candidate.findByIdAndUpdate(existing._id, payload, {
-      new: true,
-      runValidators: true,
-    });
+    await candidate.save();
 
-    if (!candidate) return sendError(res, 404, 'Candidate not found');
+    if (candidate.email) {
+      const confirmationLink = `${FRONTEND_URL}/#/candidate-form?phone=${encodeURIComponent(candidate.phone)}`;
+      await sendEmail(
+        candidate.email,
+        'Candidate Registration Completed ✅',
+        `Hello ${candidate.fullName || 'Candidate'},\n\nYour candidate registration is now complete.\n\nYou can continue your application here: ${confirmationLink}\n\nThank you for completing your documents!`,
+        `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #fff; padding: 20px; border-radius: 8px;">
+          <h2 style="color: #4CAF50;">Registration Completed ✅</h2>
+          <p>Hello ${candidate.fullName || 'Candidate'},</p>
+          <p>Your documents have been submitted and your registration is now complete.</p>
+          <p><strong>Candidate ID:</strong> ${candidate.uniqueCode || 'N/A'}</p>
+          <p><strong>Phone:</strong> ${candidate.phone || 'N/A'}</p>
+          <p><a href="${confirmationLink}" style="display: inline-block; background-color: #4CAF50; color: #ffffff; padding: 12px 20px; text-decoration: none; border-radius: 5px;">Continue to Candidate Form</a></p>
+          <p>If the button does not work, copy and paste this link into your browser:</p>
+          <p><a href="${confirmationLink}">${confirmationLink}</a></p>
+          <p style="color: #777; font-size: 13px;">Bliss Connect Team</p>
+        </div>`
+      );
+    }
 
-    // ⚡ RETURN IMMEDIATELY (don't wait for email)
-    res.status(200).json({ 
-      success: true, 
-      message: 'Candidate documents updated successfully and profile registered', 
-      data: candidate 
-    });
-
-    // ⚡ STEP 5 & 6: Send final registration confirmation email in background
-    setImmediate(async () => {
-      try {
-        if (!candidate.email) {
-          console.warn('⚠️ No email for candidate', candidate._id);
-          return;
-        }
-
-        // Generate portal password (if not exists)
-        const portalPassword = candidate.password || Math.random().toString(36).substring(2, 10);
-        const portalUrl = `${FRONTEND_URL}/candidatePortal?candidateId=${encodeURIComponent(candidate.uniqueCode)}`;
-
-        console.log('📧 Sending registration confirmation to', candidate.email);
-
-        const confirmationMessage = `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #f5f5f5; padding: 20px;">
-            <div style="background-color: #ffffff; padding: 30px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
-              <h2 style="color: #4CAF50; text-align: center;">🎉 Registration Complete!</h2>
-              
-              <p>Hello ${candidate.name || 'Candidate'},</p>
-              <p>Congratulations! Your registration is now complete and your profile has been posted to the Bliss Connect marketplace! 🚀</p>
-              
-              <div style="background-color: #e8f5e9; padding: 20px; border-radius: 5px; margin: 20px 0;">
-                <p style="margin: 5px 0; color: #2e7d32;"><strong>Your Unique Code:</strong> <code style="background-color: #f0f0f0; padding: 8px 12px; border-radius: 3px; font-size: 14px;">${candidate.uniqueCode}</code></p>
-                <p style="margin: 5px 0; color: #2e7d32;"><strong>Portal Password:</strong> <code style="background-color: #f0f0f0; padding: 8px 12px; border-radius: 3px; font-size: 14px;">${portalPassword}</code></p>
-              </div>
-              
-              <p style="background-color: #fff3cd; padding: 12px; border-left: 4px solid #ffc107; color: #856404; margin: 15px 0;">
-                <strong>⚠️ Important:</strong> Keep these credentials safe. You will need them to access your candidate portal.
-              </p>
-              
-              <p><strong>What's Next?</strong></p>
-              <ul>
-                <li>✅ Your profile is now visible to employers in our marketplace</li>
-                <li>📧 You will receive notifications when employers express interest</li>
-                <li>💼 Access your portal to track applications and opportunities</li>
-              </ul>
-              
-              <p style="text-align: center; margin: 30px 0;">
-                <a href="${portalUrl}" style="background-color: #4CAF50; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; display: inline-block; font-size: 16px; font-weight: bold;">Access Candidate Portal</a>
-              </p>
-              
-              <div style="background-color: #f0f0f0; padding: 15px; border-radius: 5px; margin: 20px 0;">
-                <p style="margin: 0; font-size: 13px; color: #666;"><strong>Portal Link:</strong><br/><code style="word-break: break-all;">${portalUrl}</code></p>
-              </div>
-              
-              <h3 style="color: #2196F3; margin-top: 30px;">Your Profile Highlights:</h3>
-              <ul style="color: #666;">
-                <li><strong>Status:</strong> Active and Visible to Employers</li>
-                <li><strong>Documents:</strong> Verified and Complete</li>
-                <li><strong>Marketplace:</strong> Listed and Featured</li>
-              </ul>
-              
-              <p style="color: #666; margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
-                If you did not register for this service or have any questions, please contact our support team.
-              </p>
-              
-                <p style="color: #666; font-size: 12px; margin-top: 30px; text-align: center;">
-                Bliss Connect Team<br/>
-                <a href="${FRONTEND_URL}" style="color: #4CAF50; text-decoration: none;">Visit our website</a>
-              </p>
-            </div>
-          </div>
-        `;
-
-        await sendEmail(
-          candidate.email,
-          "🎉 Registration Complete - Your Profile is Now Live!",
-          `Hello ${candidate.name || 'Candidate'},\n\nCongratulations! Your registration is complete.\n\nYour Unique Code: ${candidate.uniqueCode}\nYour Portal Password: ${portalPassword}\n\nYour profile is now visible to employers.\n\nAccess your portal: ${portalUrl}\n\nBest regards,\nBliss Connect Team`,
-          confirmationMessage
-        );
-
-        console.log('✅ Registration confirmation email sent to', candidate.email);
-
-      } catch (err) {
-        console.error('❌ Error sending registration email:', err.message);
-        // Don't fail the request - it's already returned
-      }
-    });
-
+    return res.json({ success: true, data: candidate });
   } catch (error) {
-    return sendError(res, 500, error.message || 'Failed to update candidate documents');
+    return res.status(500).json({ success: false, error: error.message });
   }
 });
 
+// GET /:id
 router.get('/:id', async (req, res) => {
   try {
-    let candidate = await Candidate.findById(req.params.id);
-    if (!candidate && req.params.id.startsWith('BLISS-')) {
-      candidate = await Candidate.findOne({ uniqueCode: req.params.id });
+    const { id } = req.params;
+    const searchCriteria = [];
+
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      searchCriteria.push({ _id: id });
     }
-    if (!candidate) return sendError(res, 404, 'Candidate not found');
-    return res.status(200).json({ success: true, data: candidate });
+
+    searchCriteria.push(
+      { uniqueCode: id },
+      { phone: id },
+      { email: id }
+    );
+
+    const candidate = await Candidate.findOne({ $or: searchCriteria });
+
+    if (!candidate) {
+      return res.status(404).json({ success: false, error: 'Candidate not found' });
+    }
+
+    return res.json({ success: true, data: candidate });
   } catch (error) {
-    return sendError(res, 500, error.message || 'Failed to fetch candidate');
+    return res.status(500).json({ success: false, error: error.message });
   }
 });
 
+// PUT /:id/documents
+router.put('/:id/documents', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      photoUrl,
+      videoUrl,
+      passportUrl,
+      medicalUrl,
+      resumeUrl,
+      additionalUrl,
+    } = req.body;
+
+    const searchCriteria = [];
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      searchCriteria.push({ _id: id });
+    }
+
+    searchCriteria.push(
+      { uniqueCode: id },
+      { phone: id },
+      { email: id }
+    );
+
+    const candidate = await Candidate.findOne({ $or: searchCriteria });
+
+    if (!candidate) {
+      return res.status(404).json({ success: false, error: 'Candidate not found' });
+    }
+
+    if (photoUrl !== undefined) candidate.photoUrl = photoUrl;
+    if (videoUrl !== undefined) candidate.videoUrl = videoUrl;
+    if (passportUrl !== undefined) candidate.passportUrl = passportUrl;
+    if (medicalUrl !== undefined) candidate.medicalUrl = medicalUrl;
+    if (resumeUrl !== undefined) candidate.resumeUrl = resumeUrl;
+    if (additionalUrl !== undefined) candidate.additionalUrl = additionalUrl;
+
+    await candidate.save();
+
+    return res.json({ success: true, data: candidate });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// PUT /:id
 router.put('/:id', async (req, res) => {
   try {
-    let existing = await Candidate.findById(req.params.id);
-    if (!existing && req.params.id.startsWith('BLISS-')) {
-      existing = await Candidate.findOne({ uniqueCode: req.params.id });
+    const { id } = req.params;
+    const updates = {
+      fullName: req.body.fullName,
+      name: req.body.name,
+      email: req.body.email,
+      phone: req.body.phone,
+      country: req.body.country,
+      skills: req.body.skills,
+      experience: req.body.experience,
+      status: req.body.status,
+      paymentStatus: req.body.paymentStatus,
+      uniqueCode: req.body.uniqueCode,
+      password: req.body.password,
+      isVerified: req.body.isVerified,
+      photoUrl: req.body.photoUrl,
+      videoUrl: req.body.videoUrl,
+      passportUrl: req.body.passportUrl,
+      medicalUrl: req.body.medicalUrl,
+      resumeUrl: req.body.resumeUrl,
+      additionalUrl: req.body.additionalUrl,
+    };
+
+    const validUpdates = Object.keys(updates).reduce((acc, key) => {
+      if (updates[key] !== undefined) {
+        acc[key] = updates[key];
+      }
+      return acc;
+    }, {});
+
+    const searchCriteria = [];
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      searchCriteria.push({ _id: id });
     }
 
-    if (!existing) return sendError(res, 404, 'Candidate not found');
+    searchCriteria.push(
+      { uniqueCode: id },
+      { phone: id },
+      { email: id }
+    );
 
-    const payload = toCandidatePayload(req.body, existing);
-    const candidate = await Candidate.findByIdAndUpdate(existing._id, payload, { new: true, runValidators: true });
-    if (!candidate) return sendError(res, 404, 'Candidate not found');
-    return res.status(200).json({ success: true, message: 'Candidate updated successfully', data: candidate });
+    const candidate = await Candidate.findOneAndUpdate(
+      { $or: searchCriteria },
+      { $set: validUpdates },
+      { new: true }
+    );
+
+    if (!candidate) {
+      return res.status(404).json({ success: false, error: 'Candidate not found' });
+    }
+
+    return res.json({ success: true, data: candidate });
   } catch (error) {
-    return sendError(res, 500, error.message || 'Failed to update candidate');
+    return res.status(500).json({ success: false, error: error.message });
   }
 });
 
+// DELETE /:id
 router.delete('/:id', async (req, res) => {
   try {
-    const candidate = await Candidate.findByIdAndDelete(req.params.id);
-    if (!candidate) return sendError(res, 404, 'Candidate not found');
-    return res.status(200).json({ success: true, message: 'Candidate deleted successfully' });
-  } catch (error) {
-    return sendError(res, 500, error.message || 'Failed to delete candidate');
-  }
-});
+    const { id } = req.params;
+    const searchCriteria = [];
 
-// ============================================
-// GET CANDIDATE FORM DATA (FOR FRONTEND FORM)
-// ============================================
-router.get('/form/data', async (req, res) => {
-  try {
-    const { candidateId } = req.query;
-    if (!candidateId) {
-      return sendError(res, 400, 'candidateId query parameter required');
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      searchCriteria.push({ _id: id });
     }
 
-    let candidate = await Candidate.findOne({
-      $or: [
-        { _id: candidateId },
-        { uniqueCode: candidateId },
-        { phone: candidateId },
-        { email: candidateId }
-      ]
-    });
-
-    if (!candidate) {
-      return sendError(res, 404, 'Candidate not found');
-    }
-
-    return res.status(200).json({
-      success: true,
-      data: candidate,
-      formLink: `${FRONTEND_URL}/#/candidate-form?candidateId=${candidateId}`
-    });
-  } catch (error) {
-    return sendError(res, 500, error.message || 'Failed to fetch candidate form data');
-  }
-});
-
-// ============================================
-// SUBMIT CANDIDATE FORM (VERIFIED AFTER PAYMENT)
-// ============================================
-router.post('/form/submit', async (req, res) => {
-  try {
-    const { candidateId, fullName, email, phone, country, skills, experience, passportUrl, photoUrl, videoUrl, medicalUrl, resumeUrl, additionalUrl } = req.body;
-
-    if (!candidateId) {
-      return sendError(res, 400, 'candidateId is required');
-    }
-
-    let candidate = await Candidate.findOne({
-      $or: [
-        { _id: candidateId },
-        { uniqueCode: candidateId },
-        { phone: candidateId },
-        { email: candidateId }
-      ]
-    });
-
-    if (!candidate) {
-      return sendError(res, 404, 'Candidate not found');
-    }
-
-    // Update candidate with form data
-    const updatedCandidate = await Candidate.findByIdAndUpdate(
-      candidate._id,
-      {
-        fullName: fullName || candidate.fullName,
-        email: email || candidate.email,
-        phone: phone || candidate.phone,
-        country: country || candidate.country,
-        skills: skills || candidate.skills,
-        experience: experience || candidate.experience,
-        passportUrl: passportUrl || candidate.passportUrl,
-        photoUrl: photoUrl || candidate.photoUrl,
-        videoUrl: videoUrl || candidate.videoUrl,
-        medicalUrl: medicalUrl || candidate.medicalUrl,
-        resumeUrl: resumeUrl || candidate.resumeUrl,
-        additionalUrl: additionalUrl || candidate.additionalUrl,
-        isVerified: true,
-        status: 'available',
-        paymentStatus: 'completed'
-      },
-      { new: true, runValidators: true }
+    searchCriteria.push(
+      { uniqueCode: id },
+      { phone: id },
+      { email: id }
     );
 
-    // Send confirmation email
-    const sendEmail = require('../email');
-    sendEmail(
-      updatedCandidate.email,
-      'Form Submitted Successfully - Bliss Connect ✅',
-      `Hello ${updatedCandidate.fullName},\n\nYour candidate form has been submitted successfully! ✅\n\nYour profile is now active and visible to employers.\n\nWe will match you with suitable job opportunities soon.\n\nBest regards,\nBliss Connect Team`
-    );
+    const candidate = await Candidate.findOneAndDelete({ $or: searchCriteria });
 
-    return res.status(200).json({
-      success: true,
-      message: 'Candidate form submitted successfully',
-      data: updatedCandidate
-    });
+    if (!candidate) {
+      return res.status(404).json({ success: false, error: 'Candidate not found' });
+    }
+
+    return res.json({ success: true, message: 'Candidate deleted successfully' });
   } catch (error) {
-    return sendError(res, 500, error.message || 'Failed to submit candidate form');
+    return res.status(500).json({ success: false, error: error.message });
   }
 });
 
