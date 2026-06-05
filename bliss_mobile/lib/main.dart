@@ -14,6 +14,32 @@ void main() {
 class ApplyApp extends StatelessWidget {
   const ApplyApp({super.key});
 
+  // ✅ PARSE INITIAL ROUTE FROM URL (handles query parameters)
+  String _getInitialRoute() {
+    try {
+      final uri = Uri.parse(Uri.base.toString());
+      final fragment = uri.fragment; // Gets the hash part (#/candidate-form?phone=...)
+      
+      if (fragment.isNotEmpty) {
+        // Fragment is like '/candidate-form?phone=...'
+        if (fragment.contains('/candidate-form')) {
+          return '/candidate-form';
+        } else if (fragment.contains('/apply')) {
+          return '/apply';
+        } else if (fragment.contains('/admin')) {
+          return '/admin';
+        } else if (fragment.contains('/candidates')) {
+          return '/candidates';
+        } else if (fragment.contains('/jobApplication')) {
+          return '/jobApplication';
+        }
+      }
+    } catch (e) {
+      debugPrint('Error parsing initial route: $e');
+    }
+    return '/';
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -30,9 +56,9 @@ class ApplyApp extends StatelessWidget {
       ),
 
       // ======================
-      // START SCREEN
+      // START SCREEN - ✅ DYNAMICALLY DETERMINE FROM URL
       // ======================
-      initialRoute: '/',
+      initialRoute: _getInitialRoute(),
 
       // ======================
       // ROUTES
@@ -42,6 +68,7 @@ class ApplyApp extends StatelessWidget {
         '/home': (context) => const HomeScreen(),
         '/apply': (context) => const ApplyScreen(),
         '/candidate-form': (context) {
+          // ✅ Extract query parameters from URL
           final candidateId = Uri.base.queryParameters['candidateId'];
           final phone = Uri.base.queryParameters['phone'];
           return CandidateFormScreen(
@@ -59,7 +86,7 @@ class ApplyApp extends StatelessWidget {
         return MaterialPageRoute(
           builder: (_) => const Scaffold(
             body: Center(
-              child: Text("Route not found"),
+              child: Text("Route not found: ${settings.name}"),
             ),
           ),
         );
