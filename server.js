@@ -7,6 +7,8 @@ require('dotenv').config();
 
 const app = express();
 
+const { FRONTEND_URL } = require('./config');
+
 // ======================
 // MIDDLEWARE
 // ======================
@@ -34,7 +36,16 @@ const applyRoutes = require('./routes/applyRoutes');
 const registerRoutes = require('./routes/register');
 const paymentRoutes = require('./routes/payment');
 const uploadRoutes = require('./routes/upload');
-const adminRoutes = require('./routes/admin');
+let adminRoutes;
+try {
+  adminRoutes = require('./routes/admin');
+  console.log('✅ Admin routes loaded successfully');
+} catch (err) {
+  console.error('❌ ERROR loading admin routes:', err.message);
+  adminRoutes = (req, res, next) => {
+    res.status(500).json({ success: false, error: 'Admin routes not available: ' + err.message });
+  };
+}
 const submitPaymentsRoutes = require('./routes/submitpayments');
 const submitPaymentsLegacy = require('./submitpayments');
 const CandidateModel = require('./models/candidate');
@@ -62,7 +73,14 @@ app.use('/api/candidate', registerRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/admin', adminRoutes);
-app.use('/api/submitpayments', submitPaymentsRoutes);
+app.use('/api', submitPaymentsRoutes);
+
+// ======================
+// TEST ENDPOINT FOR ADMIN ROUTES
+// ======================
+app.get('/api/admin/health', (req, res) => {
+  res.json({ success: true, message: 'Admin routes working ✅' });
+});
 
 app.post('/register', async (req, res) => {
   const { name, email, phone, userType } = req.body;
@@ -105,6 +123,78 @@ app.post('/flightSearch', async (req, res) => {
   } catch (err) {
     console.error('Flight search error:', err);
     return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ======================
+// CANDIDATE FORM - GET DATA FOR FRONTEND (WITH REAL DATA)
+// ======================
+app.get('/api/candidate-form/data', async (req, res) => {
+  try {
+    const { candidateId } = req.query;
+    if (!candidateId) {
+      return res.status(400).json({ success: false, error: 'candidateId query parameter required' });
+    }
+
+    let candidate = await CandidateModel.findOne({
+      $or: [
+        { _id: candidateId },
+        { uniqueCode: candidateId },
+        { phone: candidateId },
+        { email: candidateId }
+      ]
+    });
+
+    if (!candidate) {
+      return res.status(404).json({ success: false, error: 'Candidate not found' });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: candidate,
+      isVerified: candidate.isVerified,
+      paymentStatus: candidate.paymentStatus
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ======================
+// PAYMENT SUCCESS REDIRECT
+// ======================
+app.get('/api/payment-success/:candidateId', async (req, res) => {
+  try {
+    const candidateId = req.params.candidateId;
+    
+    let candidate = await CandidateModel.findOne({
+      $or: [
+        { _id: candidateId },
+        { uniqueCode: candidateId },
+        { phone: candidateId }
+      ]
+    });
+
+    if (!candidate) {
+      return res.status(404).json({ success: false, error: 'Candidate not found' });
+    }
+
+    const candidateFormLink = `${FRONTEND_URL}/candidate-form?candidateId=${candidateId}`;
+
+    return res.status(200).json({
+      success: true,
+      message: 'Payment verified, please complete your form',
+      candidateId,
+      formLink: candidateFormLink,
+      candidate: {
+        name: candidate.fullName || candidate.name,
+        email: candidate.email,
+        phone: candidate.phone,
+        isVerified: candidate.isVerified
+      }
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -258,6 +348,8 @@ app.get('/api/marketplace', async (req, res) => {
 // 404
 // ======================
 app.use((req, res) => {
+  // Log unmatched requests to help debug 404s from clients
+  console.log('[404] Unmatched request:', req.method, req.originalUrl, 'headers:', req.headers && Object.keys(req.headers).length);
   res.status(404).json({
     success: false,
     error: 'Endpoint not found'

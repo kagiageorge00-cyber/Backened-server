@@ -4,6 +4,7 @@ const router = express.Router();
 const Payment = require("../models/Payment");
 const Candidate = require("../models/candidate");
 const sendEmail = require("../email");
+const { FRONTEND_URL } = require('../config');
 
 // ======================
 // HEALTH CHECK
@@ -159,25 +160,43 @@ router.post("/verify", async (req, res) => {
       { new: true }
     );
 
-    // SEND EMAIL (SAFE)
+    // SEND EMAIL (ASYNC - DON'T WAIT)
     if (candidate?.email) {
-      try {
-        await sendEmail(
-          candidate.email,
-          "Payment Successful - Bliss Connect",
-          `Hello ${candidate.fullName},
+      const candidateFormLink = `${FRONTEND_URL}/candidate-form?candidateId=${candidate.uniqueCode || candidate._id}`;
+      
+      sendEmail(
+        candidate.email,
+        "Payment Successful - Bliss Connect ✅",
+        `Hello ${candidate.fullName},
 
-✅ Your payment was successful.
+✅ Your payment was successful!
 
 🎉 You are now VERIFIED on Bliss Connect.
 
+📋 Complete your candidate form here:
+${candidateFormLink}
+
 We will connect you to job opportunities soon.
 
-— Bliss Connect`
-        );
-      } catch (emailErr) {
-        console.log("⚠️ Email failed:", emailErr.message);
-      }
+— Bliss Connect Team`,
+        `<html>
+          <body style="font-family: Arial, sans-serif; background-color: #f5f5f5;">
+            <div style="max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px;">
+              <h2 style="color: #4CAF50;">Payment Successful ✅</h2>
+              <p>Hello <strong>${candidate.fullName}</strong>,</p>
+              <p>Your payment was received successfully!</p>
+              <p style="background-color: #e8f5e9; padding: 15px; border-radius: 5px; margin: 20px 0;">
+                🎉 <strong>You are now VERIFIED on Bliss Connect</strong>
+              </p>
+              <p>Please complete your candidate form to get started:</p>
+              <a href="${candidateFormLink}" style="display: inline-block; background-color: #4CAF50; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin: 20px 0;">Complete Your Form</a>
+              <p>We will connect you to job opportunities soon!</p>
+              <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
+              <p style="color: #666; font-size: 12px;">— Bliss Connect Team</p>
+            </div>
+          </body>
+        </html>`
+      );
     }
 
     return res.json({

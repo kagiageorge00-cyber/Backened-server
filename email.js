@@ -3,7 +3,7 @@ const nodemailer = require("nodemailer");
 // ======================
 // CREATE TRANSPORTER (ONCE)
 // ======================
-let transporter;
+let transporter = null;
 
 function getTransporter() {
   if (transporter) return transporter;
@@ -12,7 +12,7 @@ function getTransporter() {
   const pass = process.env.EMAIL_PASS;
 
   if (!user || !pass) {
-    console.warn("⚠️ EMAIL_USER or EMAIL_PASS missing");
+    console.error("❌ EMAIL_USER or EMAIL_PASS missing - emails will not work");
     return null;
   }
 
@@ -24,11 +24,20 @@ function getTransporter() {
     },
   });
 
+  // Verify transporter connection
+  transporter.verify((error, success) => {
+    if (error) {
+      console.error("❌ Email transporter verification failed:", error.message);
+    } else {
+      console.log("✅ Email transporter verified and ready");
+    }
+  });
+
   return transporter;
 }
 
 // ======================
-// SEND EMAIL FUNCTION
+// SEND EMAIL FUNCTION (ASYNC)
 // ======================
 async function sendEmail(to, subject, text, html = null) {
   if (!to) {
@@ -40,7 +49,7 @@ async function sendEmail(to, subject, text, html = null) {
     const transport = getTransporter();
 
     if (!transport) {
-      console.warn("⚠️ Email transporter not initialized");
+      console.error("❌ Email transporter not initialized - credentials missing");
       return false;
     }
 
@@ -49,19 +58,28 @@ async function sendEmail(to, subject, text, html = null) {
       to,
       subject,
       text,
-      html: html || undefined, // optional HTML support
+      html: html || undefined,
     };
 
+    console.log(`📧 Sending email to ${to} with subject: "${subject}"`);
+    
     const info = await transport.sendMail(mailOptions);
-
-    console.log("📧 Email sent:", info.messageId);
-
+    console.log(`✅ Email sent successfully to ${to} | MessageID: ${info.messageId}`);
     return true;
 
   } catch (error) {
-    console.error("❌ Email error:", error.message);
+    console.error(`❌ Email failed to ${to}: ${error.message}`);
+    console.error("Error details:", error.stack);
     return false;
   }
 }
 
+// Wrapper for async calls (fire-and-forget)
+function sendEmailAsync(to, subject, text, html = null) {
+  sendEmail(to, subject, text, html).catch(err => {
+    console.error("Error in sendEmailAsync:", err);
+  });
+}
+
 module.exports = sendEmail;
+module.exports.sendEmailAsync = sendEmailAsync;

@@ -1,4 +1,5 @@
 const nodemailer = require('nodemailer');
+const { FRONTEND_URL } = require('../config');
 
 // ======================
 // ✅ EMAIL CONFIG
@@ -53,7 +54,7 @@ async function notifyPaymentSuccess(user) {
 async function notifyRegistrationSuccess(user) {
   if (!user.email) return;
 
-  const portalUrl = process.env.FRONTEND_URL || 'https://your-portal-link.com';
+  const portalUrl = FRONTEND_URL.replace(/\/$/, '');
   const loginUrl = user.uniqueCode
     ? `${portalUrl}/candidatePortal?candidateId=${encodeURIComponent(user.uniqueCode)}`
     : `${portalUrl}/candidatePortal`;
@@ -97,8 +98,8 @@ async function notifyMarketplaceListing(user) {
 async function notifyPaymentApproved(user) {
   if (!user.email) return;
 
-  const portalUrl = process.env.FRONTEND_URL || 'https://your-portal-link.com';
-  const formUrl = `${portalUrl}/candidateForm${user.candidateId ? `?candidateId=${encodeURIComponent(user.candidateId)}` : ''}`;
+  const portalUrl = FRONTEND_URL.replace(/\/$/, '');
+  const formUrl = `${portalUrl}/candidate-form${user.candidateId ? `?candidateId=${encodeURIComponent(user.candidateId)}` : ''}`;
 
   const message = `
     <h2>Payment Approved ✅</h2>
