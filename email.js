@@ -1,12 +1,14 @@
 const nodemailer = require("nodemailer");
 
 // ======================
-// CREATE TRANSPORTER (ONCE)
+// TRANSPORTER
 // ======================
 let transporter = null;
 
 function getTransporter() {
-  if (transporter) return transporter;
+  if (transporter) {
+    return transporter;
+  }
 
   const user = process.env.EMAIL_USER;
   const pass = process.env.EMAIL_PASS;
@@ -29,7 +31,7 @@ function getTransporter() {
 
   transporter.verify((err) => {
     if (err) {
-      console.error("❌ SMTP Verify Failed:", err);
+      console.error("❌ SMTP Verify Failed:", err.message);
     } else {
       console.log("✅ SMTP Ready");
     }
@@ -37,18 +39,9 @@ function getTransporter() {
 
   return transporter;
 }
-  // Verify transporter connection
-  transporter.verify((error, success) => {
-    if (error) {
-      console.error("❌ Email transporter verification failed:", error.message);
-    } else {
-      console.log("✅ Email transporter verified and ready");
-    }
-  });
-
 
 // ======================
-// SEND EMAIL FUNCTION (ASYNC)
+// SEND EMAIL
 // ======================
 async function sendEmail(to, subject, text, html = null) {
   if (!to) {
@@ -60,37 +53,42 @@ async function sendEmail(to, subject, text, html = null) {
     const transport = getTransporter();
 
     if (!transport) {
-      console.error("❌ Email transporter not initialized - credentials missing");
+      console.error("❌ Transporter not available");
       return false;
     }
 
-    const mailOptions = {
+    const info = await transport.sendMail({
       from: `"Bliss Connect" <${process.env.EMAIL_USER}>`,
       to,
       subject,
       text,
       html: html || undefined,
-    };
+    });
 
-    console.log(`📧 Sending email to ${to} with subject: "${subject}"`);
-    
-    const info = await transport.sendMail(mailOptions);
-    console.log(`✅ Email sent successfully to ${to} | MessageID: ${info.messageId}`);
+    console.log(
+      `✅ Email sent to ${to} | Message ID: ${info.messageId}`
+    );
+
     return true;
-
   } catch (error) {
-    console.error(`❌ Email failed to ${to}: ${error.message}`);
-    console.error("Error details:", error.stack);
+    console.error(`❌ Email failed to ${to}:`, error.message);
     return false;
   }
 }
 
-// Wrapper for async calls (fire-and-forget)
+// ======================
+// FIRE-AND-FORGET
+// ======================
 function sendEmailAsync(to, subject, text, html = null) {
-  sendEmail(to, subject, text, html).catch(err => {
-    console.error("Error in sendEmailAsync:", err);
+  setImmediate(async () => {
+    try {
+      await sendEmail(to, subject, text, html);
+    } catch (err) {
+      console.error("❌ sendEmailAsync error:", err);
+    }
   });
 }
 
 module.exports = sendEmail;
+module.exports.sendEmail = sendEmail;
 module.exports.sendEmailAsync = sendEmailAsync;
