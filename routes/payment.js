@@ -165,13 +165,13 @@ router.post("/verify", async (req, res) => {
       // Use phone when linking to the candidate form (uniqueCode may not exist yet)
       const phoneParam = candidate.phone || userId;
       const candidateFormLink = phoneParam
-        ? `${FRONTEND_URL}/#/candidate-form?phone=${encodeURIComponent(phoneParam)}`
-        : `${FRONTEND_URL}/#/candidate-form`;
+        ? `${FRONTEND_URL}/candidate-form?phone=${encodeURIComponent(phoneParam)}`
+        : `${FRONTEND_URL}/candidate-form`;
       
       sendEmail(
         candidate.email,
         "Payment Successful - Bliss Connect ✅",
-        `Hello ${candidate.fullName},\n\n✅ Your payment was successful!\n\n🎉 You are now VERIFIED on Bliss Connect.\n\n📋 Complete your candidate form here:\n${candidateFormLink}\n\nWe will connect you to job opportunities soon.\n\n— Bliss Connect Team`,
+        `Hello ${candidate.fullName},\n\n✅ Your payment was successful!\n\n🎉 You are now VERIFIED on Bliss Connect.\n\n📋 Complete your candidate form here:\n${candidateFormLink}\n\nWe will connect you to job opportunities soon.\n\n— Bliss Connect Team`, 
         `<html>
           <body style="font-family: Arial, sans-serif; background-color: #f5f5f5;">
             <div style="max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px;">

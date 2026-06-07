@@ -268,8 +268,8 @@ router.post("/payments/:paymentId/approve", requireAdminAuth, async (req, res) =
       // Use phone in approval links. Do NOT include candidate.uniqueCode at this stage.
       const phoneParam = notificationTarget.phone || (typeof payment.userId === 'string' ? payment.userId : null);
       const candidateFormLink = phoneParam
-        ? `${frontendUrl}/#/candidate-form?phone=${encodeURIComponent(phoneParam)}`
-        : `${frontendUrl}/#/candidate-form`;
+        ? `${frontendUrl}/candidate-form?phone=${encodeURIComponent(phoneParam)}`
+        : `${frontendUrl}/candidate-form`;
       
       console.log("📧 Sending payment approval email to", notificationTarget.email);
       

@@ -93,6 +93,24 @@ async function notifyMarketplaceListing(user) {
 }
 
 // ======================
+// ✅ EMPLOYER WELCOME EMAIL
+// ======================
+async function notifyEmployerWelcome(user) {
+  if (!user.email) return;
+
+  const message = `
+    <h2>Welcome To Bliss Recruitment</h2>
+    <p>Hello ${user.contactPerson || user.companyName || 'Employer'},</p>
+    <p>Your employer account has been created successfully.</p>
+    <p><strong>Employer ID:</strong> ${user.employerId}</p>
+    <p>You can now browse verified candidates and schedule interviews.</p>
+    <p>Thank you for joining Bliss Recruitment.</p>
+  `;
+
+  await sendEmail(user.email, 'Welcome To Bliss Recruitment', message);
+}
+
+// ======================
 // ✅ PAYMENT APPROVAL EMAIL
 // ======================
 async function notifyPaymentApproved(user) {
@@ -101,8 +119,8 @@ async function notifyPaymentApproved(user) {
   const portalUrl = FRONTEND_URL.replace(/\/$/, '');
   // Use phone for payment approval links when available. Fallback to candidateId only if phone is absent.
   const formUrl = user.phone
-    ? `${portalUrl}/#/candidate-form?phone=${encodeURIComponent(user.phone)}`
-    : `${portalUrl}/#/candidate-form${user.candidateId ? `?candidateId=${encodeURIComponent(user.candidateId)}` : ''}`;
+    ? `${portalUrl}/candidate-form?phone=${encodeURIComponent(user.phone)}`
+    : `${portalUrl}/candidate-form${user.candidateId ? `?candidateId=${encodeURIComponent(user.candidateId)}` : ''}`;
 
   const message = `
     <h2>Payment Approved ✅</h2>
@@ -151,6 +169,7 @@ module.exports = {
   notifyPaymentApproved,
   notifyRegistrationSuccess,
   notifyMarketplaceListing,
+  notifyEmployerWelcome,
   notifyApplicationUpdate,
   sendNotification,
 };

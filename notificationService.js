@@ -38,10 +38,10 @@ async function notifyPaymentSuccess(user) {
 
   // Send email with candidate form link
   if (user.email) {
-    // link using phone param (hash routing) — uniqueCode may not exist yet
+    // link using phone param — uniqueCode may not exist yet
     const candidateFormLink = user.phone
-      ? `${FRONTEND_URL}/#/candidate-form?phone=${encodeURIComponent(user.phone)}`
-      : `${FRONTEND_URL}/#/candidate-form`;
+      ? `${FRONTEND_URL}/candidate-form?phone=${encodeURIComponent(user.phone)}`
+      : `${FRONTEND_URL}/candidate-form`;
     sendEmail(
       user.email,
       'Payment Received - Complete Your Form ✅',
