@@ -12,20 +12,31 @@ function getTransporter() {
   const pass = process.env.EMAIL_PASS;
 
   if (!user || !pass) {
-    console.error("❌ EMAIL_USER or EMAIL_PASS missing - emails will not work");
+    console.error("❌ EMAIL_USER or EMAIL_PASS missing");
     return null;
   }
 
-  const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 587,
-  secure: false,
-  family: 4,
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+  transporter = nodemailer.createTransport({
+    host: "smtp.gmail.com",
+    port: 587,
+    secure: false,
+    family: 4,
+    auth: {
+      user,
+      pass,
+    },
+  });
+
+  transporter.verify((err) => {
+    if (err) {
+      console.error("❌ SMTP Verify Failed:", err);
+    } else {
+      console.log("✅ SMTP Ready");
+    }
+  });
+
+  return transporter;
+}
   // Verify transporter connection
   transporter.verify((error, success) => {
     if (error) {
@@ -34,15 +45,7 @@ function getTransporter() {
       console.log("✅ Email transporter verified and ready");
     }
   });
-transporter.verify((err) => {
-  if (err) {
-    console.error("❌ SMTP Verify Failed:", err);
-  } else {
-    console.log("✅ SMTP Ready");
-  }
-});
-  return transporter;
-}
+
 
 // ======================
 // SEND EMAIL FUNCTION (ASYNC)
