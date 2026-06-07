@@ -16,14 +16,16 @@ function getTransporter() {
     return null;
   }
 
-  transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-      user,
-      pass,
-    },
-  });
-
+  const transporter = nodemailer.createTransport({
+  host: "smtp.gmail.com",
+  port: 587,
+  secure: false,
+  family: 4,
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
   // Verify transporter connection
   transporter.verify((error, success) => {
     if (error) {
@@ -32,7 +34,13 @@ function getTransporter() {
       console.log("✅ Email transporter verified and ready");
     }
   });
-
+transporter.verify((err) => {
+  if (err) {
+    console.error("❌ SMTP Verify Failed:", err);
+  } else {
+    console.log("✅ SMTP Ready");
+  }
+});
   return transporter;
 }
 
