@@ -5,9 +5,8 @@ const Payment = require("../models/Payment");
 const User = require("../models/User");
 const Candidate = require("../models/candidate");
 
-const { notifyPaymentSuccess } = require("../email");
-
-const { FRONTEND_URL } = require("../config");
+// ✅ SINGLE CLEAN EMAIL FUNCTION
+const { sendEmail } = require("../email");
 
 // ==========================
 // SUBMIT PAYMENT HANDLER
@@ -34,7 +33,9 @@ async function handleSubmitPayment(req, res) {
       });
     }
 
-    // Check duplicate transaction
+    // ==========================
+    // CHECK DUPLICATE PAYMENT
+    // ==========================
     const exists = await Payment.findOne({
       transactionId: transactionCode,
     });
@@ -46,7 +47,9 @@ async function handleSubmitPayment(req, res) {
       });
     }
 
-    // Save payment
+    // ==========================
+    // SAVE PAYMENT
+    // ==========================
     const payment = await Payment.create({
       intentId: "intent_" + Date.now(),
       userId,
@@ -60,7 +63,9 @@ async function handleSubmitPayment(req, res) {
 
     console.log("✅ Payment saved:", payment._id);
 
-    // Return response immediately
+    // ==========================
+    // RESPOND FAST (IMPORTANT)
+    // ==========================
     res.status(200).json({
       success: true,
       message: "Payment submitted successfully",
@@ -69,57 +74,61 @@ async function handleSubmitPayment(req, res) {
     });
 
     // ==========================
-    // BACKGROUND EMAIL SENDING
+    // BACKGROUND EMAIL (SAFE)
     // ==========================
     setImmediate(async () => {
       try {
-        const notifyUser = {
-          email,
-          name,
-        };
+        let notifyEmail = email;
+        let notifyName = name;
 
-        // Resolve email if missing
-        if (!notifyUser.email && userId) {
-          let candidate = await User.findOne({
-            $or: [
-              { phone: userId },
-              { uniqueCode: userId },
-              { email: userId },
-            ],
-          });
-
-          if (!candidate) {
-            candidate = await Candidate.findOne({
+        // 🔍 fallback lookup if missing email
+        if (!notifyEmail) {
+          const user =
+            (await User.findOne({
               $or: [
                 { phone: userId },
-                { uniqueCode: userId },
                 { email: userId },
+                { uniqueCode: userId },
               ],
-            });
-          }
+            })) ||
+            (await Candidate.findOne({
+              $or: [
+                { phone: userId },
+                { email: userId },
+                { uniqueCode: userId },
+              ],
+            }));
 
-          if (candidate) {
-            notifyUser.email = candidate.email;
-            notifyUser.name = candidate.name || candidate.fullName;
+          if (user) {
+            notifyEmail = user.email;
+            notifyName = user.name || user.fullName;
           }
         }
 
-        if (!notifyUser.email) {
+        if (!notifyEmail) {
           console.warn("⚠️ No email found for payment notification");
           return;
         }
 
-        console.log(
-          "📧 Sending payment submission email to",
-          notifyUser.email
-        );
+        console.log("📧 Sending payment email to:", notifyEmail);
 
-        await notifyPaymentSuccess({
-          email: notifyUser.email,
-          name: notifyUser.name,
-        });
+        await sendEmail(
+          notifyEmail,
+          "Payment Received ✅ - Bliss Connect",
+          `Hello ${notifyName || "User"}, your payment has been received successfully.`,
+          `
+          <div style="font-family: Arial; padding: 20px;">
+            <h2>Payment Received ✅</h2>
+            <p>Hello ${notifyName || "User"},</p>
+            <p>Your payment has been received successfully.</p>
+            <p>Status: <b>Pending Verification</b></p>
+            <br/>
+            <p>Bliss Connect Team</p>
+          </div>
+          `
+        );
       } catch (err) {
-        console.error("Background notification error:", err);
+        console.error("Background email error:", err);
       }
     });
 
@@ -139,4 +148,3 @@ router.post("/payments", handleSubmitPayment);
 router.post("/submitPayment", handleSubmitPayment);
 
 module.exports = router;
-module.exports.handleSubmitPayment = handleSubmitPayment;
