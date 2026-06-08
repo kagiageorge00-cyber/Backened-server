@@ -3,28 +3,44 @@ const dns = require("dns");
 
 dns.setDefaultResultOrder("ipv4first");
 
-// ======================
-// TRANSPORTER
-// ======================
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+let transporter;
 
-// ======================
-// SEND EMAIL (CORE FUNCTION)
-// ======================
+function getTransporter() {
+  if (transporter) return transporter;
+
+  const user = process.env.EMAIL_USER;
+  const pass = process.env.EMAIL_PASS;
+
+  if (!user || !pass) {
+    throw new Error("EMAIL_USER or EMAIL_PASS missing");
+  }
+
+  transporter = nodemailer.createTransport({
+    host: "smtp.gmail.com",
+    port: 587,
+    secure: false,
+    auth: { user, pass },
+    tls: { rejectUnauthorized: false },
+  });
+
+  transporter.verify((err) => {
+    if (err) console.error("❌ SMTP error:", err);
+    else console.log("✅ SMTP ready");
+  });
+
+  return transporter;
+}
+
 async function sendEmail(to, subject, text, html) {
-  try {
-    if (!to) {
-      console.warn("⚠️ No recipient email");
-      return false;
-    }
+  if (!to) {
+    console.warn("⚠️ No recipient email");
+    return false;
+  }
 
-    const info = await transporter.sendMail({
+  try {
+    const transport = getTransporter();
+
+    const info = await transport.sendMail({
       from: `"Bliss Connect" <${process.env.EMAIL_USER}>`,
       to,
       subject,
@@ -32,7 +48,7 @@ async function sendEmail(to, subject, text, html) {
       html,
     });
 
-    console.log("📧 Email sent to:", to, "| ID:", info.messageId);
+    console.log("📧 Email sent:", info.messageId);
     return true;
   } catch (err) {
     console.error("❌ Email error:", err.message);
@@ -40,26 +56,23 @@ async function sendEmail(to, subject, text, html) {
   }
 }
 
-// ======================
-// ASYNC WRAPPER (NON-BLOCKING)
-// ======================
-function sendEmailAsync(to, subject, text, html) {
-  setImmediate(async () => {
-    try {
-      await sendEmail(to, subject, text, html);
-    } catch (err) {
-      console.error("❌ Async email error:", err.message);
-    }
-  });
+/**
+ * SIMPLE ALIAS (THIS FIXES YOUR BUG)
+ */
+async function notifyPaymentSuccess({ email, name }) {
+  return sendEmail(
+    email,
+    "Payment Successful - Bliss Connect",
+    `Hello ${name}, your payment was successful.`,
+    `<h2>Hello ${name}</h2><p>Your payment was successful.</p>`
+  );
 }
 
-// ======================
-// DEBUG LOG (SAFE)
-// ======================
 console.log("EMAIL MODULE LOADED");
-console.log("TYPE OF sendEmail:", typeof sendEmail);
+console.log("sendEmail type:", typeof sendEmail);
 
 module.exports = {
   sendEmail,
-  sendEmailAsync,
+  sendEmailAsync: sendEmail,
+  notifyPaymentSuccess,
 };
