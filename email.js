@@ -1,8 +1,5 @@
 const nodemailer = require("nodemailer");
 
-// ======================
-// TRANSPORTER
-// ======================
 let transporter = null;
 
 function getTransporter() {
@@ -19,30 +16,31 @@ function getTransporter() {
   }
 
   transporter = nodemailer.createTransport({
-    host: "smtp.gmail.com",
-    port: 587,
-    secure: false,
-    family: 4,
+    service: "gmail",
+
     auth: {
       user,
       pass,
     },
+
+    connectionTimeout: 30000,
+    greetingTimeout: 30000,
+    socketTimeout: 30000,
+
+    family: 4,
   });
 
-  transporter.verify((err) => {
-    if (err) {
-      console.error("❌ SMTP Verify Failed:", err.message);
-    } else {
+  transporter.verify()
+    .then(() => {
       console.log("✅ SMTP Ready");
-    }
-  });
+    })
+    .catch((err) => {
+      console.error("❌ SMTP Verify Failed:", err.message);
+    });
 
   return transporter;
 }
 
-// ======================
-// SEND EMAIL
-// ======================
 async function sendEmail(to, subject, text, html = null) {
   if (!to) {
     console.warn("⚠️ No recipient email provided");
@@ -53,9 +51,10 @@ async function sendEmail(to, subject, text, html = null) {
     const transport = getTransporter();
 
     if (!transport) {
-      console.error("❌ Transporter not available");
       return false;
     }
+
+    console.log(`📧 Sending email to ${to}`);
 
     const info = await transport.sendMail({
       from: `"Bliss Connect" <${process.env.EMAIL_USER}>`,
@@ -71,14 +70,13 @@ async function sendEmail(to, subject, text, html = null) {
 
     return true;
   } catch (error) {
-    console.error(`❌ Email failed to ${to}:`, error.message);
+    console.error(`❌ Email failed to ${to}`);
+    console.error(error);
+
     return false;
   }
 }
 
-// ======================
-// FIRE-AND-FORGET
-// ======================
 function sendEmailAsync(to, subject, text, html = null) {
   setImmediate(async () => {
     try {
