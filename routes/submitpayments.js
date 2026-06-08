@@ -5,7 +5,7 @@ const Payment = require("../models/Payment");
 const User = require("../models/User");
 const Candidate = require("../models/candidate");
 
-const { notifyPaymentSuccess } = require("../services/email");
+const { notifyPaymentSuccess } = require("../email");
 
 const { FRONTEND_URL } = require("../config");
 
