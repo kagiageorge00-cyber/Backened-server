@@ -1,3 +1,6 @@
+console.log("EMAIL MODULE LOADED");
+console.log("TYPE OF sendEmail:", typeof sendEmail);
+
 const nodemailer = require("nodemailer");
 const dns = require("dns");
 
