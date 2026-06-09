@@ -16,6 +16,31 @@ const candidateSchema = new mongoose.Schema({
   medicalUrl: String,
   resumeUrl: String,
   additionalUrl: String,
+  gender: String,
+  dateOfBirth: String,
+  idNumber: String,
+  county: String,
+  jobAppliedFor: String,
+  education: String,
+  applicationDate: Date,
+  documents: {
+    passportPhoto: String,
+    nationalId: String,
+    cv: String,
+    certificates: [String],
+    coverLetter: String,
+    uploads: [
+      {
+        type: String,
+        filename: String,
+        url: String,
+        uploadedAt: {
+          type: Date,
+          default: Date.now,
+        },
+      }
+    ],
+  },
   uniqueCode: {
     type: String,
     unique: true,
@@ -42,7 +67,7 @@ const candidateSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['available', 'in_process', 'deployed'],
+    enum: ['available', 'in_process', 'deployed', 'approved', 'rejected'],
     default: 'available',
   },
   paymentStatus: {
