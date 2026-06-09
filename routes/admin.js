@@ -33,6 +33,7 @@ const adminSessions = new Map();
 function requireAdminAuth(req, res, next) {
   const token =
     req.headers.authorization?.replace("Bearer ", "") ||
+    req.query.token ||
     req.body.token;
 
   if (!token || !adminSessions.has(token)) {
@@ -214,18 +215,15 @@ router.post(
   }
 );
 
-// ======================
-// MARKETPLACE - VIEW CANDIDATES (ADMIN PANEL)
-// ======================
-router.get("/candidates", requireAdminAuth, async (req, res) => {
+async function fetchCandidates(req, res) {
   try {
     const { limit = 50, skip = 0, status = "available" } = req.query;
 
     const filter = status ? { status } : {};
 
     const candidates = await Candidate.find(filter)
-      .limit(parseInt(limit))
-      .skip(parseInt(skip))
+      .limit(parseInt(limit, 10))
+      .skip(parseInt(skip, 10))
       .sort({ createdAt: -1 });
 
     const total = await Candidate.countDocuments(filter);
@@ -234,15 +232,15 @@ router.get("/candidates", requireAdminAuth, async (req, res) => {
       success: true,
       data: candidates,
       total,
-      limit: parseInt(limit),
-      skip: parseInt(skip),
+      limit: parseInt(limit, 10),
+      skip: parseInt(skip, 10),
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
-});
+}
 
-router.get("/candidates/:id", requireAdminAuth, async (req, res) => {
+async function fetchCandidateById(req, res) {
   try {
     const { id } = req.params;
 
@@ -266,61 +264,12 @@ router.get("/candidates/:id", requireAdminAuth, async (req, res) => {
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
-});
+}
 
-router.get("/marketplace/candidates", requireAdminAuth, async (req, res) => {
-  try {
-    const { limit = 50, skip = 0, status = "available" } = req.query;
-
-    const filter = status ? { status } : {};
-
-    const candidates = await Candidate.find(filter)
-      .limit(parseInt(limit))
-      .skip(parseInt(skip))
-      .sort({ createdAt: -1 });
-
-    const total = await Candidate.countDocuments(filter);
-
-    res.json({
-      success: true,
-      data: candidates,
-      total,
-      limit: parseInt(limit),
-      skip: parseInt(skip),
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// ======================
-// MARKETPLACE - GET CANDIDATE DETAILS
-// ======================
-router.get("/marketplace/candidates/:id", requireAdminAuth, async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const candidate = await Candidate.findOne({
-      $or: [
-        { _id: id },
-        { uniqueCode: id },
-        { phone: id },
-        { email: id },
-      ],
-    });
-
-    if (!candidate) {
-      return res.status(404).json({ success: false, error: "Candidate not found" });
-    }
-
-    res.json({
-      success: true,
-      data: candidate,
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
+router.get("/candidates", requireAdminAuth, fetchCandidates);
+router.get("/marketplace/candidates", requireAdminAuth, fetchCandidates);
+router.get("/candidates/:id", requireAdminAuth, fetchCandidateById);
+router.get("/marketplace/candidates/:id", requireAdminAuth, fetchCandidateById);
 
 // ======================
 // MARKETPLACE - SEARCH CANDIDATES

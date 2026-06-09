@@ -4,6 +4,7 @@ const dns = require("dns");
 dns.setDefaultResultOrder("ipv4first");
 
 let transporter;
+let sgMail;
 
 function getTransporter() {
   if (transporter) return transporter;
@@ -15,13 +16,38 @@ function getTransporter() {
     throw new Error("EMAIL_USER or EMAIL_PASS missing");
   }
 
-  transporter = nodemailer.createTransport({
-    host: "smtp.gmail.com",
-    port: 587,
-    secure: false,
+  const host = process.env.EMAIL_HOST || "smtp.gmail.com";
+  const port = parseInt(process.env.EMAIL_PORT, 10) || 465;
+  const secure = process.env.EMAIL_SECURE
+    ? process.env.EMAIL_SECURE === "true"
+    : port === 465;
+  const service = process.env.EMAIL_SERVICE || null;
+
+  const transportOptions = {
     auth: { user, pass },
     tls: { rejectUnauthorized: false },
+    connectionTimeout: 20000,
+    greetingTimeout: 20000,
+    socketTimeout: 30000,
+  };
+
+  if (service) {
+    transportOptions.service = service;
+  } else {
+    transportOptions.host = host;
+    transportOptions.port = port;
+    transportOptions.secure = secure;
+  }
+
+  console.log("📧 SMTP config:", {
+    host: service ? undefined : host,
+    port: service ? undefined : port,
+    secure: service ? undefined : secure,
+    service,
+    user: user ? user.replace(/.(?=.{4})/g, "*") : undefined,
   });
+
+  transporter = nodemailer.createTransport(transportOptions);
 
   transporter.verify((err) => {
     if (err) console.error("❌ SMTP error:", err);
@@ -31,10 +57,58 @@ function getTransporter() {
   return transporter;
 }
 
+function getSendGrid() {
+  if (sgMail) return sgMail;
+
+  const apiKey = process.env.SENDGRID_API_KEY;
+  if (!apiKey) return null;
+
+  sgMail = require("@sendgrid/mail");
+  sgMail.setApiKey(apiKey);
+  return sgMail;
+}
+
+async function sendMailWithSendGrid(to, subject, text, html) {
+  const sg = getSendGrid();
+  if (!sg) {
+    throw new Error("SENDGRID_API_KEY missing");
+  }
+
+  const from = process.env.EMAIL_FROM || process.env.EMAIL_USER;
+  const msg = {
+    to,
+    from,
+    subject,
+    text,
+    html,
+  };
+
+  const [response] = await sg.send(msg);
+  if (response && response.headers) {
+    console.log("📧 SendGrid response status:", response.statusCode);
+  }
+  return response;
+}
+
 async function sendEmail(to, subject, text, html) {
   if (!to) {
     console.warn("⚠️ No recipient email");
     return false;
+  }
+
+  const sendGridKey = process.env.SENDGRID_API_KEY;
+  if (sendGridKey) {
+    try {
+      await sendMailWithSendGrid(to, subject, text, html);
+      console.log("📧 SendGrid email queued");
+      return true;
+    } catch (err) {
+      console.error("❌ SendGrid error:", err.message || err);
+      if (process.env.EMAIL_DISABLE_SMTP_FALLBACK === "true") {
+        return false;
+      }
+      console.log("🔁 Falling back to SMTP transport");
+    }
   }
 
   try {
@@ -48,10 +122,10 @@ async function sendEmail(to, subject, text, html) {
       html,
     });
 
-    console.log("📧 Email sent:", info.messageId);
+    console.log("📧 SMTP email sent:", info.messageId);
     return true;
   } catch (err) {
-    console.error("❌ Email error:", err.message);
+    console.error("❌ SMTP Email error:", err.message || err);
     return false;
   }
 }

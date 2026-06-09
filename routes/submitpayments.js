@@ -15,21 +15,35 @@ async function handleSubmitPayment(req, res) {
   try {
     const {
       userId: userIdFromBody,
+      user_id,
+      candidateId,
+      candidate_id,
       email,
       name,
       amount,
       transactionCode,
+      transactionId,
+      transaction_id,
       paymentMethod,
       phone,
-      candidateId,
     } = req.body;
 
-    const userId = userIdFromBody || phone || candidateId || email;
+    const userId = userIdFromBody || user_id || phone || candidateId || candidate_id || email;
+    const transactionKey = transactionCode || transactionId || transaction_id;
+    const parsedAmount = typeof amount === 'string' ? amount.trim() : amount;
 
-    if (!userId || !amount || !transactionCode) {
+    if (!userId || parsedAmount == null || !transactionKey) {
       return res.status(400).json({
         success: false,
-        error: "userId, amount, transactionCode required",
+        error: "userId, amount, transactionCode/transactionId required",
+      });
+    }
+
+    const finalAmount = Number(parsedAmount);
+    if (Number.isNaN(finalAmount) || finalAmount <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid amount",
       });
     }
 
@@ -37,7 +51,7 @@ async function handleSubmitPayment(req, res) {
     // CHECK DUPLICATE PAYMENT
     // ==========================
     const exists = await Payment.findOne({
-      transactionId: transactionCode,
+      transactionId: transactionKey,
     });
 
     if (exists) {
@@ -53,11 +67,11 @@ async function handleSubmitPayment(req, res) {
     const payment = await Payment.create({
       intentId: "intent_" + Date.now(),
       userId,
-      amount,
+      amount: finalAmount,
       title: "Application Payment",
       method: paymentMethod || "mpesa",
       status: "pending",
-      transactionId: transactionCode,
+      transactionId: transactionKey,
       metadata: { name, email },
     });
 

@@ -16,21 +16,39 @@ const { FRONTEND_URL } = require("./config");
 async function handleSubmitPayment(req, res) {
   try {
     const {
-      userId,
+      userId: userIdFromBody,
+      user_id,
+      candidateId,
+      candidate_id,
+      phone,
       email,
       name,
       amount,
       transactionCode,
+      transactionId,
+      transaction_id,
       paymentMethod,
     } = req.body;
+
+    const userId = userIdFromBody || user_id || candidateId || candidate_id || phone || email;
+    const transactionKey = transactionCode || transactionId || transaction_id;
+    const parsedAmount = typeof amount === 'string' ? amount.trim() : amount;
 
     // ======================
     // VALIDATION
     // ======================
-    if (!userId || !amount || !transactionCode) {
+    if (!userId || parsedAmount == null || !transactionKey) {
       return res.status(400).json({
         success: false,
-        error: "Missing required fields",
+        error: "Missing required fields: userId/candidateId/phone/email, amount, transactionCode/transactionId",
+      });
+    }
+
+    const finalAmount = Number(parsedAmount);
+    if (Number.isNaN(finalAmount) || finalAmount <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid amount",
       });
     }
 
@@ -38,7 +56,7 @@ async function handleSubmitPayment(req, res) {
     // DUPLICATE CHECK
     // ======================
     const exists = await Payment.findOne({
-      transactionId: transactionCode,
+      transactionId: transactionKey,
     });
 
     if (exists) {
@@ -54,12 +72,12 @@ async function handleSubmitPayment(req, res) {
     const payment = await Payment.create({
       intentId: "INT_" + Date.now(),
       userId,
-      amount,
+      amount: finalAmount,
       title: "Application Payment",
       method: paymentMethod || "mpesa",
       status: "pending",
-      transactionId: transactionCode,
-      metadata: { name, email },
+      transactionId: transactionKey,
+      metadata: { name, email, candidateId },
     });
 
     console.log("✅ Payment saved:", payment._id);
