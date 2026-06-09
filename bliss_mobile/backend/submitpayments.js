@@ -17,6 +17,8 @@ async function handleSubmitPayment(req, res) {
   try {
     const {
       userId,
+      candidateId,
+      phone,
       email,
       name,
       amount,
@@ -24,13 +26,15 @@ async function handleSubmitPayment(req, res) {
       paymentMethod,
     } = req.body;
 
+    const resolvedUserId = userId || candidateId || phone;
+
     // ======================
     // VALIDATION
     // ======================
-    if (!userId || !amount || !transactionCode) {
+    if (!resolvedUserId || !amount || !transactionCode) {
       return res.status(400).json({
         success: false,
-        error: "Missing required fields",
+        error: "Missing required fields: userId/candidateId, amount, transactionCode",
       });
     }
 
@@ -53,13 +57,13 @@ async function handleSubmitPayment(req, res) {
     // ======================
     const payment = await Payment.create({
       intentId: "INT_" + Date.now(),
-      userId,
+      userId: resolvedUserId,
       amount,
       title: "Application Payment",
       method: paymentMethod || "mpesa",
       status: "pending",
       transactionId: transactionCode,
-      metadata: { name, email },
+      metadata: { name, email, candidateId },
     });
 
     console.log("✅ Payment saved:", payment._id);
@@ -86,16 +90,16 @@ async function handleSubmitPayment(req, res) {
           const user =
             (await User.findOne({
               $or: [
-                { phone: userId },
-                { email: userId },
-                { uniqueCode: userId },
+                { phone: resolvedUserId },
+                { email: resolvedUserId },
+                { uniqueCode: resolvedUserId },
               ],
             })) ||
             (await Candidate.findOne({
               $or: [
-                { phone: userId },
-                { email: userId },
-                { uniqueCode: userId },
+                { phone: resolvedUserId },
+                { email: resolvedUserId },
+                { uniqueCode: resolvedUserId },
               ],
             }));
 
