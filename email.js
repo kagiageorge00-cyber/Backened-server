@@ -6,6 +6,14 @@ dns.setDefaultResultOrder("ipv4first");
 let transporter;
 let sgMail;
 
+function isSmtpEnabled() {
+  return !(process.env.EMAIL_DISABLE_SMTP === "true" || process.env.DISABLE_SMTP === "true");
+}
+
+function isSmtpFallbackEnabled() {
+  return !(process.env.EMAIL_DISABLE_SMTP_FALLBACK === "true");
+}
+
 function buildTransportOptions(overrides = {}) {
   const user = process.env.EMAIL_USER || process.env.SMTP_USER;
   const pass = process.env.EMAIL_PASS || process.env.SMTP_PASS;
@@ -43,6 +51,10 @@ function buildTransportOptions(overrides = {}) {
 }
 
 async function getTransporter() {
+  if (!isSmtpEnabled()) {
+    throw new Error("SMTP is disabled by environment configuration");
+  }
+
   if (transporter) return transporter;
 
   const { transportOptions, service, host, port, secure } = buildTransportOptions();
@@ -71,7 +83,11 @@ async function getTransporter() {
 }
 
 async function getFallbackTransport() {
-  const { transportOptions, service, host, port, secure } = buildTransportOptions({
+  if (!isSmtpEnabled() || !isSmtpFallbackEnabled()) {
+    return null;
+  }
+
+  const { transportOptions, service, host } = buildTransportOptions({
     port: 587,
     secure: false,
     requireTLS: true,
@@ -140,11 +156,22 @@ async function sendEmail(to, subject, text, html) {
   }
 
   const sendGridKey = process.env.SENDGRID_API_KEY || process.env.SENDGRID_KEY;
-  const fromAddress = process.env.EMAIL_FROM || process.env.SMTP_FROM || process.env.EMAIL_USER || process.env.SMTP_USER;
+  const fromAddress =
+    process.env.EMAIL_FROM ||
+    process.env.SENDGRID_FROM ||
+    process.env.SMTP_FROM ||
+    process.env.EMAIL_USER ||
+    process.env.SMTP_USER ||
+    "no-reply@blissconnect.com";
+  const smtpDisabled = !isSmtpEnabled();
+  const smtpFallbackDisabled = !isSmtpFallbackEnabled();
+
   console.log("📧 sendEmail called", {
     to,
     subject,
     sendGrid: Boolean(sendGridKey),
+    smtpDisabled,
+    smtpFallbackDisabled,
     from: fromAddress ? fromAddress.replace(/.(?=.{4})/g, "*") : undefined,
   });
 
@@ -154,12 +181,17 @@ async function sendEmail(to, subject, text, html) {
       console.log("📧 SendGrid email queued");
       return true;
     } catch (err) {
-      console.error("❌ SendGrid error:", err.message || err);
-      if (process.env.EMAIL_DISABLE_SMTP_FALLBACK === "true") {
+      console.error("❌ SendGrid error:", err.stack || err);
+      if (smtpDisabled || process.env.EMAIL_DISABLE_SMTP_FALLBACK === "true") {
         return false;
       }
       console.log("🔁 Falling back to SMTP transport");
     }
+  }
+
+  if (smtpDisabled) {
+    console.error("❌ SMTP is disabled and SendGrid is not configured.");
+    return false;
   }
 
   try {
@@ -180,27 +212,32 @@ async function sendEmail(to, subject, text, html) {
       console.error("❌ SMTP response:", err.response);
     }
 
-    // Retry once using STARTTLS on port 587 for Gmail-like servers.
-    if (!sendGridKey) {
-      console.log("🔁 Retrying SMTP with fallback transport (port 587 / STARTTLS)");
-      transporter = null;
-      try {
-        const fallbackTransport = await getFallbackTransport();
-        const fallbackInfo = await fallbackTransport.sendMail({
-          from: `"Bliss Connect" <${fromAddress}>`,
-          to,
-          subject,
-          text,
-          html,
-        });
+    if (smtpFallbackDisabled) {
+      return false;
+    }
 
-        console.log("📧 SMTP fallback email sent:", fallbackInfo.messageId, fallbackInfo);
-        return true;
-      } catch (fallbackErr) {
-        console.error("❌ SMTP fallback error:", fallbackErr.stack || fallbackErr);
-        if (fallbackErr.response) {
-          console.error("❌ SMTP fallback response:", fallbackErr.response);
-        }
+    console.log("🔁 Retrying SMTP with fallback transport (port 587 / STARTTLS)");
+    transporter = null;
+    try {
+      const fallbackTransport = await getFallbackTransport();
+      if (!fallbackTransport) {
+        return false;
+      }
+
+      const fallbackInfo = await fallbackTransport.sendMail({
+        from: `"Bliss Connect" <${fromAddress}>`,
+        to,
+        subject,
+        text,
+        html,
+      });
+
+      console.log("📧 SMTP fallback email sent:", fallbackInfo.messageId, fallbackInfo);
+      return true;
+    } catch (fallbackErr) {
+      console.error("❌ SMTP fallback error:", fallbackErr.stack || fallbackErr);
+      if (fallbackErr.response) {
+        console.error("❌ SMTP fallback response:", fallbackErr.response);
       }
     }
 
