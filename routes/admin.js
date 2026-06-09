@@ -181,20 +181,29 @@ router.post(
 
       console.log("📧 Sending approval email:", email);
 
-      await sendEmail(
-        email,
-        "Payment Approved ✅",
-        `Hello ${name}, your payment is approved.`,
-        `<h2>Payment Approved ✅</h2>
-         <p>Hello ${name}</p>
-         <p>Complete form:</p>
-         <a href="${link}">Open Form</a>`
-      );
-
       res.json({
         success: true,
         message: "Payment approved",
       });
+
+      if (email) {
+        setImmediate(async () => {
+          try {
+            console.log("📧 Sending approval email:", email);
+            await sendEmail(
+              email,
+              "Payment Approved ✅",
+              `Hello ${name}, your payment is approved.`,
+              `<h2>Payment Approved ✅</h2>
+               <p>Hello ${name}</p>
+               <p>Complete form:</p>
+               <a href="${link}">Open Form</a>`
+            );
+          } catch (emailErr) {
+            console.error("❌ Approval email error:", emailErr);
+          }
+        });
+      }
     } catch (err) {
       console.error("❌ APPROVE ERROR:", err);
       res.status(500).json({
@@ -208,6 +217,57 @@ router.post(
 // ======================
 // MARKETPLACE - VIEW CANDIDATES (ADMIN PANEL)
 // ======================
+router.get("/candidates", requireAdminAuth, async (req, res) => {
+  try {
+    const { limit = 50, skip = 0, status = "available" } = req.query;
+
+    const filter = status ? { status } : {};
+
+    const candidates = await Candidate.find(filter)
+      .limit(parseInt(limit))
+      .skip(parseInt(skip))
+      .sort({ createdAt: -1 });
+
+    const total = await Candidate.countDocuments(filter);
+
+    res.json({
+      success: true,
+      data: candidates,
+      total,
+      limit: parseInt(limit),
+      skip: parseInt(skip),
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.get("/candidates/:id", requireAdminAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const candidate = await Candidate.findOne({
+      $or: [
+        { _id: id },
+        { uniqueCode: id },
+        { phone: id },
+        { email: id },
+      ],
+    });
+
+    if (!candidate) {
+      return res.status(404).json({ success: false, error: "Candidate not found" });
+    }
+
+    res.json({
+      success: true,
+      data: candidate,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 router.get("/marketplace/candidates", requireAdminAuth, async (req, res) => {
   try {
     const { limit = 50, skip = 0, status = "available" } = req.query;
