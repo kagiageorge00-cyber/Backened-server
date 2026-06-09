@@ -130,7 +130,7 @@ async function handleSubmitPayment(req, res) {
 
         console.log("📧 Sending payment email to:", notifyEmail);
 
-        await sendEmail(
+        const emailSent = await sendEmail(
           notifyEmail,
           "Payment Received ✅ - Bliss Connect",
           `Hello ${notifyName || "User"}, your payment has been received successfully.`,
@@ -143,6 +143,7 @@ async function handleSubmitPayment(req, res) {
           </div>
           `
         );
+        console.log("📧 Payment notification result:", { email: notifyEmail, sent: emailSent });
       } catch (err) {
         console.error("❌ Background email error:", err.message);
       }

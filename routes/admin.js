@@ -191,7 +191,7 @@ router.post(
         setImmediate(async () => {
           try {
             console.log("📧 Sending approval email:", email);
-            await sendEmail(
+            const emailSent = await sendEmail(
               email,
               "Payment Approved ✅",
               `Hello ${name}, your payment is approved.`,
@@ -200,6 +200,7 @@ router.post(
                <p>Complete form:</p>
                <a href="${link}">Open Form</a>`
             );
+            console.log("📧 Approval notification result:", { email, sent: emailSent });
           } catch (emailErr) {
             console.error("❌ Approval email error:", emailErr);
           }

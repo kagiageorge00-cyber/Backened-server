@@ -9,19 +9,20 @@ let sgMail;
 function getTransporter() {
   if (transporter) return transporter;
 
-  const user = process.env.EMAIL_USER;
-  const pass = process.env.EMAIL_PASS;
+  const user = process.env.EMAIL_USER || process.env.SMTP_USER;
+  const pass = process.env.EMAIL_PASS || process.env.SMTP_PASS;
 
   if (!user || !pass) {
     throw new Error("EMAIL_USER or EMAIL_PASS missing");
   }
 
-  const host = process.env.EMAIL_HOST || "smtp.gmail.com";
-  const port = parseInt(process.env.EMAIL_PORT, 10) || 465;
+  const host = process.env.EMAIL_HOST || process.env.SMTP_HOST || "smtp.gmail.com";
+  const port = parseInt(process.env.EMAIL_PORT || process.env.SMTP_PORT || "465", 10) || 465;
   const secure = process.env.EMAIL_SECURE
     ? process.env.EMAIL_SECURE === "true"
     : port === 465;
-  const service = process.env.EMAIL_SERVICE || null;
+  const service = process.env.EMAIL_SERVICE || process.env.SMTP_SERVICE || null;
+  const fromAddress = process.env.EMAIL_FROM || process.env.SMTP_FROM || user;
 
   const transportOptions = {
     auth: { user, pass },
@@ -44,7 +45,7 @@ function getTransporter() {
     port: service ? undefined : port,
     secure: service ? undefined : secure,
     service,
-    user: user ? user.replace(/.(?=.{4})/g, "*") : undefined,
+    from: fromAddress ? fromAddress.replace(/.(?=.{4})/g, "*") : undefined,
   });
 
   transporter = nodemailer.createTransport(transportOptions);
@@ -60,7 +61,7 @@ function getTransporter() {
 function getSendGrid() {
   if (sgMail) return sgMail;
 
-  const apiKey = process.env.SENDGRID_API_KEY;
+  const apiKey = process.env.SENDGRID_API_KEY || process.env.SENDGRID_KEY;
   if (!apiKey) return null;
 
   sgMail = require("@sendgrid/mail");
@@ -74,7 +75,7 @@ async function sendMailWithSendGrid(to, subject, text, html) {
     throw new Error("SENDGRID_API_KEY missing");
   }
 
-  const from = process.env.EMAIL_FROM || process.env.EMAIL_USER;
+  const from = process.env.EMAIL_FROM || process.env.SENDGRID_FROM || process.env.EMAIL_USER || process.env.SMTP_USER;
   const msg = {
     to,
     from,
@@ -96,7 +97,15 @@ async function sendEmail(to, subject, text, html) {
     return false;
   }
 
-  const sendGridKey = process.env.SENDGRID_API_KEY;
+  const sendGridKey = process.env.SENDGRID_API_KEY || process.env.SENDGRID_KEY;
+  const fromAddress = process.env.EMAIL_FROM || process.env.SMTP_FROM || process.env.EMAIL_USER || process.env.SMTP_USER;
+  console.log("📧 sendEmail called", {
+    to,
+    subject,
+    sendGrid: Boolean(sendGridKey),
+    from: fromAddress ? fromAddress.replace(/.(?=.{4})/g, "*") : undefined,
+  });
+
   if (sendGridKey) {
     try {
       await sendMailWithSendGrid(to, subject, text, html);
@@ -113,9 +122,8 @@ async function sendEmail(to, subject, text, html) {
 
   try {
     const transport = getTransporter();
-
     const info = await transport.sendMail({
-      from: `"Bliss Connect" <${process.env.EMAIL_USER}>`,
+      from: `"Bliss Connect" <${fromAddress}>`,
       to,
       subject,
       text,
