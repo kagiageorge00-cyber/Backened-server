@@ -189,15 +189,22 @@ router.post('/register', async (req, res) => {
 
 router.post('/login', async (req, res) => {
   try {
-    const { employerId, password, candidateId } = req.body;
-    if (!employerId || !password) {
+    const { employerId, email, password, candidateId } = req.body;
+    if ((!employerId && !email) || !password) {
       return res.status(400).json({
         success: false,
-        error: 'employerId and password are required',
+        error: 'employerId or email and password are required',
       });
     }
 
-    const employer = await Employer.findOne({ employerId: sanitizeValue(employerId) });
+    const normalizedLogin = sanitizeValue(employerId || email || '');
+    const employer = await Employer.findOne({
+      $or: [
+        { employerId: normalizedLogin },
+        { email: normalizedLogin.toLowerCase() },
+      ],
+    });
+
     if (!employer) {
       return res.status(401).json({ success: false, error: 'Invalid Employer ID or password' });
     }
@@ -249,6 +256,12 @@ router.post('/login', async (req, res) => {
         employerId: employer.employerId,
         companyName: employer.companyName,
         contactPerson: employer.contactPerson,
+        email: employer.email,
+        phone: employer.phone,
+        country: employer.country,
+        industry: employer.industry,
+        companyAddress: employer.companyAddress,
+        website: employer.website,
         verificationStatus: employer.verificationStatus,
       },
       counts: {

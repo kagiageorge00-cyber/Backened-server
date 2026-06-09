@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Notification Center</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #f5f7fa;
+            color: #333;
+        }
+
+        /* TOP NAV WITH BELL */
+        .top-nav {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1rem 2rem;
+            background: white;
+            border-bottom: 1px solid #e1e8ed;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .nav-left {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #1a73e8;
+        }
+
+        .nav-right {
+            display: flex;
+            align-items: center;
+            gap: 2rem;
+        }
+
+        /* NOTIFICATION BELL */
+        .notification-bell {
+            position: relative;
+            cursor: pointer;
+            font-size: 1.5rem;
+            transition: transform 0.2s;
+        }
+
+        .notification-bell:hover {
+            transform: scale(1.1);
+        }
+
+        .notification-badge {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background: #dc3545;
+            color: white;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            font-weight: 700;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+
+        /* NOTIFICATION DRAWER/PANEL */
+        .notification-drawer {
+            position: fixed;
+            top: 0;
+            right: 0;
+            width: 400px;
+            max-width: 90vw;
+            height: 100vh;
+            background: white;
+            box-shadow: -2px 0 8px rgba(0,0,0,0.15);
+            z-index: 999;
+            display: flex;
+            flex-direction: column;
+            transform: translateX(100%);
+            transition: transform 0.3s ease;
+            overflow: hidden;
+        }
+
+        .notification-drawer.open {
+            transform: translateX(0);
+        }
+
+        .drawer-header {
+            padding: 1.5rem;
+            border-bottom: 1px solid #e1e8ed;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .drawer-header h2 {
+            font-size: 1.25rem;
+            color: #1a1a1a;
+        }
+
+        .drawer-close {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #666;
+            transition: color 0.2s;
+        }
+
+        .drawer-close:hover {
+            color: #1a1a1a;
+        }
+
+        .drawer-actions {
+            padding: 1rem;
+            border-bottom: 1px solid #e1e8ed;
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .action-btn {
+            padding: 0.5rem 1rem;
+            border: 1px solid #ddd;
+            background: white;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            transition: all 0.2s;
+        }
+
+        .action-btn:hover {
+            background: #f0f0f0;
+            border-color: #999;
+        }
+
+        .action-btn.primary {
+            background: #1a73e8;
+            color: white;
+            border-color: #1a73e8;
+        }
+
+        .action-btn.primary:hover {
+            background: #1557b0;
+        }
+
+        /* FILTER TABS */
+        .filter-tabs {
+            display: flex;
+            gap: 0.5rem;
+            padding: 0 1rem 0.5rem 1rem;
+            border-bottom: 1px solid #e1e8ed;
+            overflow-x: auto;
+            flex-wrap: wrap;
+        }
+
+        .filter-tab {
+            padding: 0.5rem 1rem;
+            border: 1px solid #ddd;
+            background: white;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .filter-tab:hover {
+            border-color: #1a73e8;
+            color: #1a73e8;
+        }
+
+        .filter-tab.active {
+            background: #1a73e8;
+            color: white;
+            border-color: #1a73e8;
+        }
+
+        /* SEARCH BOX */
+        .search-box {
+            padding: 1rem;
+            border-bottom: 1px solid #e1e8ed;
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.875rem;
+        }
+
+        .search-box input:focus {
+            outline: none;
+            border-color: #1a73e8;
+            box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.1);
+        }
+
+        /* NOTIFICATION LIST */
+        .notification-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0.5rem 0;
+        }
+
+        .notification-item {
+            padding: 1rem;
+            border-bottom: 1px solid #f0f0f0;
+            cursor: pointer;
+            transition: background 0.2s;
+            border-left: 3px solid transparent;
+        }
+
+        .notification-item:hover {
+            background: #f9f9f9;
+        }
+
+        .notification-item.unread {
+            background: #f0f7ff;
+            border-left-color: #1a73e8;
+            font-weight: 500;
+        }
+
+        .notification-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 0.5rem;
+        }
+
+        .notification-title {
+            font-weight: 600;
+            color: #1a1a1a;
+            font-size: 0.95rem;
+        }
+
+        .notification-time {
+            font-size: 0.75rem;
+            color: #999;
+        }
+
+        .notification-message {
+            font-size: 0.875rem;
+            color: #666;
+            margin-bottom: 0.5rem;
+            line-height: 1.4;
+        }
+
+        .notification-meta {
+            display: flex;
+            gap: 1rem;
+            font-size: 0.75rem;
+            color: #999;
+            flex-wrap: wrap;
+        }
+
+        .notification-meta-item {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .notification-badge-category {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-top: 0.5rem;
+        }
+
+        .badge-payment {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+
+        .badge-interview {
+            background: #e3f2fd;
+            color: #1565c0;
+        }
+
+        .badge-deployment {
+            background: #f3e5f5;
+            color: #6a1b9a;
+        }
+
+        .badge-contract {
+            background: #fff3e0;
+            color: #e65100;
+        }
+
+        .badge-visa {
+            background: #fce4ec;
+            color: #c2185b;
+        }
+
+        .badge-ticket {
+            background: #e0f2f1;
+            color: #00695c;
+        }
+
+        .badge-message {
+            background: #f1f8e9;
+            color: #558b2f;
+        }
+
+        .badge-support {
+            background: #ede7f6;
+            color: #4527a0;
+        }
+
+        .notification-actions {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.75rem;
+            font-size: 0.75rem;
+        }
+
+        .action-link {
+            background: none;
+            border: none;
+            color: #1a73e8;
+            cursor: pointer;
+            padding: 0;
+            text-decoration: underline;
+            transition: color 0.2s;
+        }
+
+        .action-link:hover {
+            color: #1557b0;
+        }
+
+        /* EMPTY STATE */
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #999;
+            text-align: center;
+            padding: 2rem;
+        }
+
+        .empty-state-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+
+        /* MODAL OVERLAY */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 998;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+
+        .modal-overlay.open {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        /* RESPONSIVE */
+        @media (max-width: 600px) {
+            .notification-drawer {
+                width: 100%;
+            }
+
+            .drawer-actions {
+                flex-direction: column;
+            }
+
+            .action-btn {
+                width: 100%;
+            }
+        }
+
+        /* SCROLLBAR */
+        .notification-list::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .notification-list::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+
+        .notification-list::-webkit-scrollbar-thumb {
+            background: #ccc;
+            border-radius: 3px;
+        }
+
+        .notification-list::-webkit-scrollbar-thumb:hover {
+            background: #999;
+        }
+    </style>
+</head>
+<body>
+    <!-- TOP NAVIGATION -->
+    <div class="top-nav">
+        <div class="nav-left">Admin Dashboard</div>
+        <div class="nav-right">
+            <div class="notification-bell" id="notificationBell">
+                🔔
+                <div class="notification-badge" id="notificationBadge" style="display: none;">0</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- NOTIFICATION DRAWER -->
+    <div class="modal-overlay" id="modalOverlay"></div>
+    <div class="notification-drawer" id="notificationDrawer">
+        <div class="drawer-header">
+            <h2>Notifications</h2>
+            <button class="drawer-close" id="drawerClose">✕</button>
+        </div>
+
+        <div class="drawer-actions">
+            <button class="action-btn primary" id="markAllRead">Mark All as Read</button>
+            <button class="action-btn" id="deleteAll">Delete All</button>
+        </div>
+
+        <!-- FILTER TABS -->
+        <div class="filter-tabs" id="filterTabs">
+            <div class="filter-tab active" data-category="all">All</div>
+            <div class="filter-tab" data-category="payment">💳 Payment</div>
+            <div class="filter-tab" data-category="interview">📅 Interview</div>
+            <div class="filter-tab" data-category="deployment">🚀 Deployment</div>
+            <div class="filter-tab" data-category="message">💬 Message</div>
+            <div class="filter-tab" data-category="contract">📄 Contract</div>
+            <div class="filter-tab" data-category="support">🆘 Support</div>
+        </div>
+
+        <!-- SEARCH BOX -->
+        <div class="search-box">
+            <input type="text" id="searchInput" placeholder="Search notifications...">
+        </div>
+
+        <!-- NOTIFICATION LIST -->
+        <div class="notification-list" id="notificationList">
+            <div class="empty-state">
+                <div class="empty-state-icon">📭</div>
+                <p>No notifications</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/api/admin';
+        let allNotifications = [];
+        let currentFilter = 'all';
+        let searchQuery = '';
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            setupEventListeners();
+            loadNotifications();
+            setInterval(loadNotifications, 30000); // Refresh every 30 seconds
+        });
+
+        function setupEventListeners() {
+            document.getElementById('notificationBell').addEventListener('click', toggleDrawer);
+            document.getElementById('drawerClose').addEventListener('click', closeDrawer);
+            document.getElementById('modalOverlay').addEventListener('click', closeDrawer);
+            document.getElementById('markAllRead').addEventListener('click', markAllAsRead);
+            document.getElementById('deleteAll').addEventListener('click', deleteAllNotifications);
+            document.getElementById('searchInput').addEventListener('input', handleSearch);
+
+            document.querySelectorAll('.filter-tab').forEach(tab => {
+                tab.addEventListener('click', () => handleFilterChange(tab.dataset.category));
+            });
+        }
+
+        function toggleDrawer() {
+            const drawer = document.getElementById('notificationDrawer');
+            const overlay = document.getElementById('modalOverlay');
+            drawer.classList.toggle('open');
+            overlay.classList.toggle('open');
+        }
+
+        function closeDrawer() {
+            document.getElementById('notificationDrawer').classList.remove('open');
+            document.getElementById('modalOverlay').classList.remove('open');
+        }
+
+        async function loadNotifications() {
+            try {
+                const response = await fetch(`${API_BASE}/notifications?limit=50`, {
+                    headers: { 'Authorization': `Bearer ${getToken()}` }
+                });
+
+                if (!response.ok) {
+                    console.error('Failed to load notifications');
+                    return;
+                }
+
+                const data = await response.json();
+                allNotifications = data.data || [];
+                updateBadgeCount(data.unread);
+                renderNotifications();
+            } catch (err) {
+                console.error('Error loading notifications:', err);
+            }
+        }
+
+        function updateBadgeCount(count) {
+            const badge = document.getElementById('notificationBadge');
+            if (count > 0) {
+                badge.textContent = count > 99 ? '99+' : count;
+                badge.style.display = 'flex';
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+
+        function handleFilterChange(category) {
+            currentFilter = category;
+            document.querySelectorAll('.filter-tab').forEach(tab => {
+                tab.classList.toggle('active', tab.dataset.category === category);
+            });
+            renderNotifications();
+        }
+
+        function handleSearch(e) {
+            searchQuery = e.target.value.toLowerCase();
+            renderNotifications();
+        }
+
+        function renderNotifications() {
+            const list = document.getElementById('notificationList');
+            let filtered = allNotifications;
+
+            // Filter by category
+            if (currentFilter !== 'all') {
+                filtered = filtered.filter(n => n.category === currentFilter);
+            }
+
+            // Filter by search
+            if (searchQuery) {
+                filtered = filtered.filter(n => 
+                    n.title.toLowerCase().includes(searchQuery) ||
+                    n.message.toLowerCase().includes(searchQuery) ||
+                    (n.candidateName && n.candidateName.toLowerCase().includes(searchQuery)) ||
+                    (n.employerName && n.employerName.toLowerCase().includes(searchQuery))
+                );
+            }
+
+            if (filtered.length === 0) {
+                list.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📭</div>
+                        <p>No notifications found</p>
+                    </div>
+                `;
+                return;
+            }
+
+            list.innerHTML = filtered.map(notif => `
+                <div class="notification-item ${notif.isRead ? '' : 'unread'}" data-id="${notif.notificationId}">
+                    <div class="notification-item-header">
+                        <div class="notification-title">${escapeHtml(notif.title)}</div>
+                        <div class="notification-time">${formatTime(notif.createdAt)}</div>
+                    </div>
+                    <div class="notification-message">${escapeHtml(notif.message)}</div>
+                    <div class="notification-meta">
+                        ${notif.candidateName ? `<div class="notification-meta-item">👤 ${escapeHtml(notif.candidateName)}</div>` : ''}
+                        ${notif.employerName ? `<div class="notification-meta-item">🏢 ${escapeHtml(notif.employerName)}</div>` : ''}
+                        ${notif.amount ? `<div class="notification-meta-item">💰 ${notif.currency} ${notif.amount}</div>` : ''}
+                    </div>
+                    <span class="notification-badge-category badge-${notif.category}">
+                        ${notif.category.toUpperCase()}
+                    </span>
+                    <div class="notification-actions">
+                        ${!notif.isRead ? `<button class="action-link" onclick="markAsRead('${notif.notificationId}')">Mark as Read</button>` : ''}
+                        ${notif.actionUrl ? `<button class="action-link" onclick="openRecord('${notif.actionUrl}')">View Details</button>` : ''}
+                        <button class="action-link" onclick="deleteNotification('${notif.notificationId}')">Delete</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function markAsRead(notificationId) {
+            try {
+                await fetch(`${API_BASE}/notifications/${notificationId}/read`, {
+                    method: 'PATCH',
+                    headers: { 'Authorization': `Bearer ${getToken()}` }
+                });
+                loadNotifications();
+            } catch (err) {
+                console.error('Error marking notification as read:', err);
+            }
+        }
+
+        async function markAllAsRead() {
+            try {
+                await fetch(`${API_BASE}/notifications/read-all`, {
+                    method: 'PATCH',
+                    headers: { 'Authorization': `Bearer ${getToken()}` }
+                });
+                loadNotifications();
+            } catch (err) {
+                console.error('Error marking all as read:', err);
+            }
+        }
+
+        async function deleteNotification(notificationId) {
+            if (!confirm('Delete this notification?')) return;
+            try {
+                await fetch(`${API_BASE}/notifications/${notificationId}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${getToken()}` }
+                });
+                loadNotifications();
+            } catch (err) {
+                console.error('Error deleting notification:', err);
+            }
+        }
+
+        async function deleteAllNotifications() {
+            if (!confirm('Delete all notifications? This cannot be undone.')) return;
+            try {
+                await fetch(`${API_BASE}/notifications`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${getToken()}` }
+                });
+                loadNotifications();
+            } catch (err) {
+                console.error('Error deleting all notifications:', err);
+            }
+        }
+
+        function openRecord(actionUrl) {
+            if (actionUrl) {
+                window.location.href = actionUrl;
+            }
+        }
+
+        function formatTime(timestamp) {
+            const date = new Date(timestamp);
+            const now = new Date();
+            const diff = now - date;
+
+            if (diff < 60000) return 'Just now';
+            if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+            if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+            
+            return date.toLocaleDateString();
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function getToken() {
+            return localStorage.getItem('adminToken') || '';
+        }
+    </script>
+</body>
+</html>

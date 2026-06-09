@@ -1,7 +1,21 @@
 const Notification = require('../models/Notification');
 const crypto = require('crypto');
 
-async function createNotification({ userId, title, message, type, actionUrl, userType = 'candidate' }) {
+async function createNotification({ 
+  userId, 
+  title, 
+  message, 
+  type, 
+  actionUrl, 
+  userType = 'candidate',
+  category = 'support',
+  entityType,
+  entityId,
+  candidateName,
+  employerName,
+  amount,
+  currency = 'KES'
+}) {
   if (!userId || !title || !message) {
     throw new Error('userId, title and message are required to create a notification');
   }
@@ -14,7 +28,14 @@ async function createNotification({ userId, title, message, type, actionUrl, use
     title,
     message,
     notificationType: type,
+    category,
     actionUrl,
+    entityType,
+    entityId,
+    candidateName,
+    employerName,
+    amount,
+    currency,
   });
 }
 

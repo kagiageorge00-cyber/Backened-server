@@ -9,6 +9,10 @@ const Candidate = require("../models/candidate");
 const Payment = require("../models/Payment");
 const Notification = require("../models/Notification");
 const { createNotification } = require("../utils/notificationHelper");
+const {
+  notifyPaymentApproved,
+  notifyPaymentRejected,
+} = require("../utils/adminNotificationHelper");
 
 // ✅ FIX: correct import
 const { sendEmail } = require("../email");
@@ -174,6 +178,20 @@ router.post(
         message: 'Your payment has been approved. Continue your application.',
         type: 'approval',
         actionUrl: `/candidate-form?phone=${encodeURIComponent(candidate?.phone || payment.userId)}`,
+      });
+
+      // Notify admin about payment approval
+      setImmediate(async () => {
+        try {
+          await notifyPaymentApproved({
+            candidateName: candidate?.fullName || candidate?.name || 'Candidate',
+            amount: payment.amount,
+            currency: payment.metadata?.currency || 'KES',
+            paymentId: payment._id,
+          });
+        } catch (err) {
+          console.error('❌ Error creating admin notification:', err);
+        }
       });
 
       res.json({
@@ -344,11 +362,20 @@ router.get("/candidates/:id/documents", requireAdminAuth, fetchCandidateDocument
 router.post("/payments/:paymentId/reject", requireAdminAuth, async (req, res) => {
   try {
     const { paymentId } = req.params;
+    const { reason } = req.body;
     const payment = await Payment.findById(paymentId);
 
     if (!payment) {
       return res.status(404).json({ success: false, error: "Payment not found" });
     }
+
+    const candidate = await Candidate.findOne({
+      $or: [
+        { phone: payment.userId },
+        { email: payment.userId },
+        { uniqueCode: payment.userId },
+      ],
+    });
 
     payment.status = "rejected";
     await payment.save();
@@ -359,6 +386,21 @@ router.post("/payments/:paymentId/reject", requireAdminAuth, async (req, res) =>
       message: 'Your payment could not be verified.',
       type: 'rejection',
       actionUrl: `/candidate/support`,
+    });
+
+    // Notify admin about payment rejection
+    setImmediate(async () => {
+      try {
+        await notifyPaymentRejected({
+          candidateName: candidate?.fullName || candidate?.name || 'Candidate',
+          amount: payment.amount,
+          currency: payment.metadata?.currency || 'KES',
+          paymentId: payment._id,
+          reason: reason || 'No reason provided',
+        });
+      } catch (err) {
+        console.error('❌ Error creating admin notification:', err);
+      }
     });
 
     res.json({ success: true, message: 'Payment rejected' });
@@ -427,18 +469,164 @@ router.post('/status', requireAdminAuth, async (req, res) => {
 
 router.get('/notifications/count', requireAdminAuth, async (req, res) => {
   try {
-    const total = await Notification.countDocuments();
-    const unread = await Notification.countDocuments({ isRead: false });
+    const total = await Notification.countDocuments({ userType: 'admin' });
+    const unread = await Notification.countDocuments({ userType: 'admin', isRead: false });
     return res.json({ success: true, total, unread });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });
   }
 });
-router.get('/notifications/counts', requireAdminAuth, async (req, res) => {
+
+// ======================
+// ADMIN NOTIFICATION CENTER
+// ======================
+
+// Get all admin notifications
+router.get('/notifications', requireAdminAuth, async (req, res) => {
   try {
-    const total = await Notification.countDocuments();
-    const unread = await Notification.countDocuments({ isRead: false });
-    return res.json({ success: true, total, unread });
+    const { limit = 50, skip = 0, category, isRead } = req.query;
+    
+    const filter = { userType: 'admin' };
+    
+    if (category && category !== 'all') {
+      filter.category = category;
+    }
+    
+    if (isRead !== undefined) {
+      filter.isRead = isRead === 'true';
+    }
+
+    const notifications = await Notification.find(filter)
+      .sort({ createdAt: -1 })
+      .limit(parseInt(limit, 10))
+      .skip(parseInt(skip, 10));
+
+    const total = await Notification.countDocuments(filter);
+    const unread = await Notification.countDocuments({ ...filter, isRead: false });
+
+    return res.json({ 
+      success: true, 
+      data: notifications, 
+      total,
+      unread,
+      count: notifications.length 
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Get unread notification count
+router.get('/notifications/unread/count', requireAdminAuth, async (req, res) => {
+  try {
+    const unread = await Notification.countDocuments({ userType: 'admin', isRead: false });
+    return res.json({ success: true, unread });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Get single notification
+router.get('/notifications/:notificationId', requireAdminAuth, async (req, res) => {
+  try {
+    const { notificationId } = req.params;
+    const notification = await Notification.findOne({ notificationId });
+    
+    if (!notification) {
+      return res.status(404).json({ success: false, error: 'Notification not found' });
+    }
+    
+    return res.json({ success: true, data: notification });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Mark notification as read
+router.patch('/notifications/:notificationId/read', requireAdminAuth, async (req, res) => {
+  try {
+    const { notificationId } = req.params;
+    const notification = await Notification.findOneAndUpdate(
+      { notificationId },
+      { isRead: true },
+      { new: true }
+    );
+    
+    if (!notification) {
+      return res.status(404).json({ success: false, error: 'Notification not found' });
+    }
+    
+    return res.json({ success: true, data: notification });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Mark all notifications as read
+router.patch('/notifications/read-all', requireAdminAuth, async (req, res) => {
+  try {
+    const result = await Notification.updateMany(
+      { userType: 'admin', isRead: false },
+      { isRead: true }
+    );
+    
+    return res.json({ success: true, modifiedCount: result.modifiedCount });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Delete notification
+router.delete('/notifications/:notificationId', requireAdminAuth, async (req, res) => {
+  try {
+    const { notificationId } = req.params;
+    const result = await Notification.deleteOne({ notificationId });
+    
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ success: false, error: 'Notification not found' });
+    }
+    
+    return res.json({ success: true, message: 'Notification deleted' });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Delete all notifications
+router.delete('/notifications', requireAdminAuth, async (req, res) => {
+  try {
+    const result = await Notification.deleteMany({ userType: 'admin' });
+    return res.json({ success: true, deletedCount: result.deletedCount });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Search notifications
+router.get('/notifications/search/query', requireAdminAuth, async (req, res) => {
+  try {
+    const { q, category } = req.query;
+    
+    const filter = { userType: 'admin' };
+    
+    if (category && category !== 'all') {
+      filter.category = category;
+    }
+    
+    if (q) {
+      filter.$or = [
+        { title: { $regex: q, $options: 'i' } },
+        { message: { $regex: q, $options: 'i' } },
+        { candidateName: { $regex: q, $options: 'i' } },
+        { employerName: { $regex: q, $options: 'i' } },
+      ];
+    }
+
+    const notifications = await Notification.find(filter)
+      .sort({ createdAt: -1 })
+      .limit(100);
+
+    return res.json({ success: true, data: notifications, count: notifications.length });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });
   }
