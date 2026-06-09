@@ -127,16 +127,6 @@ function getSendGrid() {
   return sgMail;
 }
 
-function getResend() {
-  if (resend) return resend;
-  
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) return null;
-  
-  resend = new Resend(apiKey);
-  return resend;
-}
-
 async function sendMailWithSendGrid(to, subject, text, html) {
   const sg = getSendGrid();
   if (!sg) {
@@ -159,84 +149,33 @@ async function sendMailWithSendGrid(to, subject, text, html) {
   return response;
 }
 
-async function sendMailWithResend(to, subject, text, html) {
-  const r = getResend();
-  if (!r) {
-    throw new Error("RESEND_API_KEY missing");
-  }
-
-  const from =
-    process.env.EMAIL_FROM ||
-    process.env.RESEND_FROM ||
-    process.env.SENDGRID_FROM ||
-    process.env.SMTP_FROM ||
-    "noreply@resend.dev";
-  
-  const response = await r.emails.send({
-    from,
-    to,
-    subject,
-    html: html || text,
-    text,
-  });
-
-  if (response.error) {
-    throw new Error(response.error.message || "Resend API error");
-  }
-
-  console.log("📧 Resend email sent:", response.data?.id);
-  return response.data;
-}
-
 async function sendEmail(to, subject, text, html) {
   if (!to) {
     console.warn("⚠️ No recipient email");
     return false;
   }
 
-  const resendKey = process.env.RESEND_API_KEY;
   const sendGridKey = process.env.SENDGRID_API_KEY || process.env.SENDGRID_KEY;
   const isSendGridKeyValid = typeof sendGridKey === "string" && sendGridKey.startsWith("SG.");
   const fromAddress =
     process.env.EMAIL_FROM ||
-    process.env.RESEND_FROM ||
     process.env.SENDGRID_FROM ||
     process.env.SMTP_FROM ||
     process.env.EMAIL_USER ||
     process.env.SMTP_USER ||
     "no-reply@blissconnect.com";
   const smtpDisabled = !isSmtpEnabled();
-  const isRender = Boolean(
-    process.env.RENDER ||
-    process.env.RENDER_SERVICE_ID ||
-    process.env.RENDER_INTERNAL_HOSTNAME
-  );
-  const shouldAttemptSmtp = !smtpDisabled && !isRender;
 
   console.log("📧 sendEmail called", {
     to,
     subject,
-    resend: Boolean(resendKey),
     sendGrid: Boolean(sendGridKey),
     sendGridValid: isSendGridKeyValid,
     smtp: !smtpDisabled,
-    render: isRender,
     from: fromAddress ? fromAddress.replace(/.(?=.{4})/g, "*") : undefined,
   });
 
-  // Try Resend first (works on Render)
-  if (resendKey) {
-    try {
-      await sendMailWithResend(to, subject, text, html);
-      console.log("📧 Resend email sent successfully");
-      return true;
-    } catch (err) {
-      console.error("❌ Resend error:", err.stack || err);
-      // Fall through to next method
-    }
-  }
-
-  // Try SendGrid second
+  // Try SendGrid first (if key is valid)
   if (sendGridKey) {
     if (!isSendGridKeyValid) {
       console.warn("⚠️ Skipping SendGrid: invalid SENDGRID_API_KEY format");
@@ -252,15 +191,9 @@ async function sendEmail(to, subject, text, html) {
     }
   }
 
-  // Fall back to SMTP (works locally only)
-  if (!shouldAttemptSmtp) {
-    if (isRender) {
-      console.error(
-        "❌ SMTP fallback disabled on Render. Configure RESEND_API_KEY with a verified sending domain or use a valid SendGrid key."
-      );
-    } else {
-      console.error("❌ SMTP is disabled and no email service is configured.");
-    }
+  // Fall back to SMTP
+  if (smtpDisabled) {
+    console.error("❌ SMTP is disabled and no valid email service is configured.");
     return false;
   }
 
