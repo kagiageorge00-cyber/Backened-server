@@ -1,14 +1,14 @@
 const express = require("express");
 const router = express.Router();
 
-const Payment = require("../models/Payment");
-const User = require("../models/User");
-const Candidate = require("../models/candidate");
+const Payment = require("./models/Payment");
+const User = require("./models/User");
+const Candidate = require("./models/candidate");
 
 // ✅ FIX: use notification module (not raw email.js in large apps)
-const { sendEmail } = require("../email");
+const { sendEmail } = require("./email");
 
-const { FRONTEND_URL } = require("../config");
+const { FRONTEND_URL } = require("./config");
 
 // ======================
 // PAYMENT HANDLER
