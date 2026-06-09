@@ -6,7 +6,7 @@ dns.setDefaultResultOrder("ipv4first");
 let transporter;
 let sgMail;
 
-async function buildTransportOptions(overrides = {}) {
+function buildTransportOptions(overrides = {}) {
   const user = process.env.EMAIL_USER || process.env.SMTP_USER;
   const pass = process.env.EMAIL_PASS || process.env.SMTP_PASS;
 
