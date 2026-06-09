@@ -6,7 +6,7 @@ dns.setDefaultResultOrder("ipv4first");
 let transporter;
 let sgMail;
 
-function getTransporter() {
+async function getTransporter() {
   if (transporter) return transporter;
 
   const user = process.env.EMAIL_USER || process.env.SMTP_USER;
@@ -39,6 +39,14 @@ function getTransporter() {
     transportOptions.host = host;
     transportOptions.port = port;
     transportOptions.secure = secure;
+
+    try {
+      const lookup = await dns.promises.lookup(host, { family: 4 });
+      transportOptions.host = lookup.address;
+      console.log("📧 Resolved SMTP host to IPv4:", transportOptions.host);
+    } catch (lookupErr) {
+      console.warn("⚠️ SMTP host lookup failed, continuing with host name:", host, lookupErr.message || lookupErr);
+    }
   }
 
   console.log("📧 SMTP config:", {
@@ -122,7 +130,7 @@ async function sendEmail(to, subject, text, html) {
   }
 
   try {
-    const transport = getTransporter();
+    const transport = await getTransporter();
     const info = await transport.sendMail({
       from: `"Bliss Connect" <${fromAddress}>`,
       to,
