@@ -110,6 +110,12 @@ class CandidateModel {
     );
   }
 
+  /// Convenience factory used in some screens/tests
+  factory CandidateModel.fromJson(Map<String, dynamic> json) {
+    final id = json['id']?.toString() ?? json['_id']?.toString() ?? '';
+    return CandidateModel.fromMap(json, id);
+  }
+
   /// ✅ TO BACKEND (JSON)
   Map<String, dynamic> toMap() {
     return {

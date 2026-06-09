@@ -13,7 +13,12 @@ class CollectionReference {
   DocumentReference doc([String? id]) => DocumentReference();
   Stream<QuerySnapshot> snapshots() => const Stream.empty();
   Future<QuerySnapshot> get() async => QuerySnapshot();
-  CollectionReference where(String field, {required Object? isEqualTo}) => this;
+
+  // Support common where signatures used across the codebase
+  CollectionReference where(String field,
+          {Object? isEqualTo, List<Object?>? whereIn, Object? arrayContains}) =>
+      this;
+
   CollectionReference orderBy(String field, {bool descending = false}) => this;
   CollectionReference limit(int n) => this;
 }
@@ -22,29 +27,35 @@ class DocumentReference {
   Future<void> set(Map<String, dynamic> data, {bool merge = false}) async {}
   Future<void> update(Map<String, dynamic> data) async {}
   Future<void> delete() async {}
-  Future<DocumentSnapshot> get() async => DocumentSnapshot();
-  Stream<DocumentSnapshot> snapshots() => const Stream.empty();
+  Future<DocumentSnapshot> get() async =>
+      DocumentSnapshot<Map<String, dynamic>>();
+  Stream<DocumentSnapshot<Map<String, dynamic>>> snapshots() =>
+      const Stream.empty();
+  CollectionReference collection(String path) => CollectionReference();
+  String get id => '';
 }
 
-class DocumentSnapshot {
-  Map<String, dynamic> data() => <String, dynamic>{};
+class DocumentSnapshot<T> {
+  T data() => <String, dynamic>{} as T;
   String get id => '';
   bool get exists => true;
 }
 
-class QuerySnapshot {
-  List<QueryDocumentSnapshot> get docs => <QueryDocumentSnapshot>[];
+class QuerySnapshot<T> {
+  List<QueryDocumentSnapshot<T>> get docs => <QueryDocumentSnapshot<T>>[];
 }
 
-class QueryDocumentSnapshot extends DocumentSnapshot {}
+class QueryDocumentSnapshot<T> extends DocumentSnapshot<T> {}
 
 class FieldValue {
-  static dynamic serverTimestamp() => DateTime.now().toUtc();
+  static dynamic serverTimestamp() => Timestamp.now();
 }
 
 class Timestamp {
   final DateTime date;
   Timestamp.fromDate(this.date);
+  Timestamp.now() : date = DateTime.now().toUtc();
+  DateTime toDate() => date;
 }
 
 class FirebaseStorage {

@@ -1,11 +1,7 @@
 // employer_dashboard_wrapper.dart
 import 'package:flutter/material.dart';
 import '../../services/backend_auth.dart';
-import 'package:bliss_mobile/firebase_stub.dart';
-
-// <-- Update this import to the file that contains your dashboard widget.
-// If you used the Mockup 2 code I gave you, the file I suggested was
-// `styled_employer_dashboard.dart` which defines `StyledEmployerDashboard`.
+import '../services/employer_api_service.dart';
 import 'styled_employer_dashboard.dart';
 
 // If instead your dashboard class is named MainEmployerDashboard or EmployerDashboard,
@@ -30,9 +26,8 @@ class EmployerDashboardWrapper extends StatelessWidget {
       );
     }
 
-    // Logged in — load employer profile from Firestore
-    return FutureBuilder<DocumentSnapshot>(
-      future: FirebaseFirestore.instance.collection('employers').doc(uid).get(),
+    return FutureBuilder<EmployerProfile?>(
+      future: EmployerApiService.fetchEmployerProfile(uid),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
@@ -42,7 +37,7 @@ class EmployerDashboardWrapper extends StatelessWidget {
           );
         }
 
-        if (!snapshot.hasData || !snapshot.data!.exists) {
+        if (snapshot.hasError || snapshot.data == null) {
           return Scaffold(
             backgroundColor: Colors.black,
             body: Center(
@@ -52,7 +47,7 @@ class EmployerDashboardWrapper extends StatelessWidget {
                   const Icon(Icons.error_outline,
                       size: 64, color: Colors.redAccent),
                   const SizedBox(height: 16),
-                  const Text('Employer profile not found',
+                  const Text('Unable to load employer profile',
                       style: TextStyle(color: Colors.white70, fontSize: 18)),
                   const SizedBox(height: 12),
                   ElevatedButton(
@@ -66,19 +61,15 @@ class EmployerDashboardWrapper extends StatelessWidget {
           );
         }
 
-        final data = snapshot.data!.data() as Map<String, dynamic>;
+        final profile = snapshot.data!;
 
-        // --- IMPORTANT: change this to match the dashboard class you have ---
-        // I used `StyledEmployerDashboard` (from styled_employer_dashboard.dart).
-        // If your dashboard class is named `MainEmployerDashboard` or `EmployerDashboard`
-        // simply replace `StyledEmployerDashboard` below with that class name,
-        // and update the import at the top to point to the correct file.
         return StyledEmployerDashboard(
           employerId: uid,
-          employerName:
-              (data['name'] ?? data['employerName'] ?? 'Employer') as String,
+          employerName: profile.contactPerson.isNotEmpty
+              ? profile.contactPerson
+              : 'Employer',
           companyName:
-              (data['companyName'] ?? data['company'] ?? 'Company') as String,
+              profile.companyName.isNotEmpty ? profile.companyName : 'Company',
         );
       },
     );

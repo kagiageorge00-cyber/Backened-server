@@ -27,7 +27,10 @@ class EmployerApplicantsScreen extends StatelessWidget {
         .get();
 
     return applicationsSnapshot.docs.map((doc) {
-      final data = doc.data();
+      final raw = doc.data();
+      final data = raw is Map
+          ? Map<String, dynamic>.from(raw as Map)
+          : <String, dynamic>{};
       data['appId'] = doc.id;
       return data;
     }).toList();
@@ -92,7 +95,7 @@ class EmployerApplicantsScreen extends StatelessWidget {
                       onTap: () {
                         Navigator.pushNamed(
                           context,
-                          '/candidateDetails',
+                          '/candidate-details',
                           arguments: {
                             'candidateId': applicant['candidateId'],
                             'applicationId': applicant['appId']

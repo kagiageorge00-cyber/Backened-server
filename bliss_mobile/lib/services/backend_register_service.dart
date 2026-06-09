@@ -224,6 +224,36 @@ class BackendRegisterService {
     }
   }
 
+  // ================= GET USER BY EMAIL =================
+  static Future<BackendRegisterResult> getUserByEmail(String email) async {
+    try {
+      final resp = await http.get(
+        Uri.parse('$_base/users?email=${Uri.encodeComponent(email)}'),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      final data = jsonDecode(resp.body);
+
+      if (resp.statusCode == 200 && data['success'] == true) {
+        final user = data['user'] ??
+            (data['users'] != null && (data['users'] as List).isNotEmpty
+                ? data['users'][0]
+                : null);
+        if (user != null) {
+          return BackendRegisterResult(
+              success: true, id: user['_id']?.toString(), data: user);
+        }
+      }
+
+      return BackendRegisterResult(
+        success: false,
+        error: data['error'] ?? 'user_not_found',
+      );
+    } catch (e) {
+      return BackendRegisterResult(success: false, error: e.toString());
+    }
+  }
+
   // ================= UPDATE ROLE =================
   static Future<void> updateUserRole({
     required String userId,

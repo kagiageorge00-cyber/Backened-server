@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../services/backend_auth.dart';
+import '../services/interview_api_service.dart';
 
 class ScheduleInterviewScreen extends StatefulWidget {
   final String candidateName;
@@ -55,7 +57,7 @@ class _ScheduleInterviewScreenState extends State<ScheduleInterviewScreen> {
   /// ---------------------------
   /// SUBMIT INTERVIEW SCHEDULE
   /// ---------------------------
-  void _submitSchedule() {
+  Future<void> _submitSchedule() async {
     if (selectedDate == null || selectedTime == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Please select date and time!")),
@@ -63,36 +65,65 @@ class _ScheduleInterviewScreenState extends State<ScheduleInterviewScreen> {
       return;
     }
 
-    /// TODO: Add this to interview_service.dart
-    ///
-    /// interviewService.scheduleInterview(
-    ///   candidateId: widget.candidateId,
-    ///   candidateName: widget.candidateName,
-    ///   date: selectedDate!,
-    ///   time: selectedTime!,
-    ///   notes: notesController.text,
-    /// );
+    final employerId = BackendAuth.userId;
+    if (employerId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please login as an employer first')),
+      );
+      return;
+    }
+
+    final dt = DateTime(
+      selectedDate!.year,
+      selectedDate!.month,
+      selectedDate!.day,
+      selectedTime!.hour,
+      selectedTime!.minute,
+    );
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16)),
-        title: const Text("Interview Scheduled"),
-        content: Text(
-          "You have successfully scheduled an interview with ${widget.candidateName}.",
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context); // close dialog
-              Navigator.pop(context); // return to previous page
-            },
-            child: const Text("OK"),
-          ),
-        ],
-      ),
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
     );
+
+    final res = await InterviewApiService.scheduleInterview(
+      employerId: employerId,
+      candidateId: widget.candidateId,
+      dateTime: dt,
+      notes: notesController.text.trim(),
+    );
+
+    Navigator.pop(context); // remove progress dialog
+
+    if (res['success'] == true) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text("Interview Requested"),
+          content: Text(
+            "Interview request sent to ${widget.candidateName}.",
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context); // close dialog
+                Navigator.pop(context); // return to previous page
+              },
+              child: const Text("OK"),
+            ),
+          ],
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content:
+                Text('Failed to send interview: ${res['error'] ?? 'unknown'}')),
+      );
+    }
   }
 
   /// ---------------------------
@@ -144,7 +175,8 @@ class _ScheduleInterviewScreenState extends State<ScheduleInterviewScreen> {
                   CircleAvatar(
                     radius: 28,
                     backgroundColor: Colors.blue.shade100,
-                    child: const Icon(Icons.person, size: 32, color: Colors.blue),
+                    child:
+                        const Icon(Icons.person, size: 32, color: Colors.blue),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
@@ -171,7 +203,8 @@ class _ScheduleInterviewScreenState extends State<ScheduleInterviewScreen> {
             GestureDetector(
               onTap: _pickDate,
               child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 14),
+                padding:
+                    const EdgeInsets.symmetric(vertical: 16, horizontal: 14),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(14),
@@ -203,7 +236,8 @@ class _ScheduleInterviewScreenState extends State<ScheduleInterviewScreen> {
             GestureDetector(
               onTap: _pickTime,
               child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 14),
+                padding:
+                    const EdgeInsets.symmetric(vertical: 16, horizontal: 14),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(14),

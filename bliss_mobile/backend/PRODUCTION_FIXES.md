@@ -87,7 +87,7 @@ Returns verification status + candidate form link:
 ```json
 {
   "success": true,
-  "formLink": "https://blisssconnection12.netlify.app/candidate-form?candidateId=...",
+   "formLink": "https://blissconnect12.netlify.app/candidate-form?candidateId=...",
   "candidate": {
     "name": "John Doe",
     "email": "john@example.com",
@@ -179,11 +179,11 @@ POST /api/candidates/form/submit
 
 ## 📋 FRONTEND CHECKLIST
 
-Your frontend (blisssconnection12.netlify.app) should:
+Your frontend (blissconnect12.netlify.app) should:
 
 1. ✅ After payment, call `/api/payment-success/{candidateId}`
 2. ✅ Extract `formLink` from response
-3. ✅ Redirect to: `https://blisssconnection12.netlify.app/candidate-form?candidateId=...`
+3. ✅ Redirect to: `https://blissconnect12.netlify.app/candidate-form?candidateId=...`
 4. ✅ Call `/api/candidate-form/data?candidateId=...` to get real data
 5. ✅ Pre-populate form with candidate data
 6. ✅ On form submit, call `/api/candidates/form/submit` with all data
@@ -256,7 +256,7 @@ Body: {
 **Required .env variables:**
 ```
 MONGO_URI=mongodb+srv://blissadmin:test123@cluster0.d6r64se.mongodb.net/blissdb?retryWrites=true&w=majority
-FRONTEND_URL=https://blisssconnection12.netlify.app
+FRONTEND_URL=https://blissconnect12.netlify.app
 EMAIL_USER=blssspprtteam@gmail.com
 EMAIL_PASS=tfxogxstnbvvxqey
 WHATSAPP_TOKEN=your_token

@@ -1,3 +1,3 @@
-library _flutterfire_internals;
+library;
 
 // Minimal stub

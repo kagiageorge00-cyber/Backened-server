@@ -1,3 +1,3 @@
-library firebase_core_web;
+library;
 
 // Minimal web stub

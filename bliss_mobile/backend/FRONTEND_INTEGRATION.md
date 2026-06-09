@@ -116,10 +116,19 @@ async function submitCandidateForm(event) {
     
     if (success) {
       console.log('✅ Form submitted successfully!');
-      alert('Profile saved! You will receive a confirmation email.');
+
+      let messageText = 'Registration successful!';
+      if (data && data.candidateId) {
+        messageText += '\nCandidate ID: ' + data.candidateId;
+      }
+      if (data && data.password) {
+        messageText += '\nPassword: ' + data.password;
+      }
+
+      alert(messageText + '\nPlease copy these credentials and keep them safe.');
       
-      // Redirect to dashboard
-      window.location.href = '/dashboard';
+      // Do not redirect to payment or dashboard; registration is complete.
+      return;
     } else {
       alert('Error: ' + message);
     }
@@ -198,7 +207,7 @@ async function submitCandidateForm(event) {
     <input type="url" id="additionalUrl">
   </div>
   
-  <button type="submit" class="btn-primary">Submit Application</button>
+  <button type="submit" class="btn-primary">REGISTER</button>
 </form>
 ```
 
@@ -221,7 +230,7 @@ Body: {
 }
 Response: {
   "success": true,
-  "candidateFormLink": "https://blisssconnection12.netlify.app/candidate-form?candidateId=...",
+  "candidateFormLink": "https://blissconnect12.netlify.app/candidate-form?candidateId=...",
   "paymentId": "..."
 }
 ```
@@ -231,7 +240,7 @@ Response: {
 GET /api/payment-success/{candidateId}
 Response: {
   "success": true,
-  "formLink": "https://blisssconnection12.netlify.app/candidate-form?candidateId=...",
+  "formLink": "https://blissconnect12.netlify.app/candidate-form?candidateId=...",
   "candidate": {
     "name": "John Doe",
     "email": "john@example.com",

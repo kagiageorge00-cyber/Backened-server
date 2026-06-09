@@ -50,7 +50,7 @@ class _PrivateChatDetailsScreenState extends State<PrivateChatDetailsScreen> {
         .snapshots()
         .listen((doc) {
       if (doc.exists) {
-        final data = doc.data()!;
+        final data = doc.data();
         final paid = data['paidByEmployer'] == true;
 
         if (mounted) {

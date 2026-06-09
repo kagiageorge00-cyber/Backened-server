@@ -1,9 +1,10 @@
 const nodemailer = require("nodemailer");
+const dns = require("dns");
 
-// ======================
-// CREATE TRANSPORTER (ONCE)
-// ======================
-let transporter = null;
+dns.setDefaultResultOrder("ipv4first");
+
+let transporter;
+let sgMail;
 
 function getTransporter() {
   if (transporter) return transporter;
@@ -12,74 +13,140 @@ function getTransporter() {
   const pass = process.env.EMAIL_PASS;
 
   if (!user || !pass) {
-    console.error("❌ EMAIL_USER or EMAIL_PASS missing - emails will not work");
-    return null;
+    throw new Error("EMAIL_USER or EMAIL_PASS missing");
   }
 
-  transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-      user,
-      pass,
-    },
+  const host = process.env.EMAIL_HOST || "smtp.gmail.com";
+  const port = parseInt(process.env.EMAIL_PORT, 10) || 465;
+  const secure = process.env.EMAIL_SECURE
+    ? process.env.EMAIL_SECURE === "true"
+    : port === 465;
+  const service = process.env.EMAIL_SERVICE || null;
+
+  const transportOptions = {
+    auth: { user, pass },
+    tls: { rejectUnauthorized: false },
+    connectionTimeout: 20000,
+    greetingTimeout: 20000,
+    socketTimeout: 30000,
+  };
+
+  if (service) {
+    transportOptions.service = service;
+  } else {
+    transportOptions.host = host;
+    transportOptions.port = port;
+    transportOptions.secure = secure;
+  }
+
+  console.log("📧 SMTP config:", {
+    host: service ? undefined : host,
+    port: service ? undefined : port,
+    secure: service ? undefined : secure,
+    service,
+    user: user ? user.replace(/.(?=.{4})/g, "*") : undefined,
   });
 
-  // Verify transporter connection
-  transporter.verify((error, success) => {
-    if (error) {
-      console.error("❌ Email transporter verification failed:", error.message);
-    } else {
-      console.log("✅ Email transporter verified and ready");
-    }
+  transporter = nodemailer.createTransport(transportOptions);
+
+  transporter.verify((err) => {
+    if (err) console.error("❌ SMTP error:", err);
+    else console.log("✅ SMTP ready");
   });
 
   return transporter;
 }
 
-// ======================
-// SEND EMAIL FUNCTION (ASYNC)
-// ======================
-async function sendEmail(to, subject, text, html = null) {
+function getSendGrid() {
+  if (sgMail) return sgMail;
+
+  const apiKey = process.env.SENDGRID_API_KEY;
+  if (!apiKey) return null;
+
+  sgMail = require("@sendgrid/mail");
+  sgMail.setApiKey(apiKey);
+  return sgMail;
+}
+
+async function sendMailWithSendGrid(to, subject, text, html) {
+  const sg = getSendGrid();
+  if (!sg) {
+    throw new Error("SENDGRID_API_KEY missing");
+  }
+
+  const from = process.env.EMAIL_FROM || process.env.EMAIL_USER;
+  const msg = {
+    to,
+    from,
+    subject,
+    text,
+    html,
+  };
+
+  const [response] = await sg.send(msg);
+  if (response && response.headers) {
+    console.log("📧 SendGrid response status:", response.statusCode);
+  }
+  return response;
+}
+
+async function sendEmail(to, subject, text, html) {
   if (!to) {
-    console.warn("⚠️ No recipient email provided");
+    console.warn("⚠️ No recipient email");
     return false;
+  }
+
+  const sendGridKey = process.env.SENDGRID_API_KEY;
+  if (sendGridKey) {
+    try {
+      await sendMailWithSendGrid(to, subject, text, html);
+      console.log("📧 SendGrid email queued");
+      return true;
+    } catch (err) {
+      console.error("❌ SendGrid error:", err.message || err);
+      if (process.env.EMAIL_DISABLE_SMTP_FALLBACK === "true") {
+        return false;
+      }
+      console.log("🔁 Falling back to SMTP transport");
+    }
   }
 
   try {
     const transport = getTransporter();
 
-    if (!transport) {
-      console.error("❌ Email transporter not initialized - credentials missing");
-      return false;
-    }
-
-    const mailOptions = {
+    const info = await transport.sendMail({
       from: `"Bliss Connect" <${process.env.EMAIL_USER}>`,
       to,
       subject,
       text,
-      html: html || undefined,
-    };
+      html,
+    });
 
-    console.log(`📧 Sending email to ${to} with subject: "${subject}"`);
-    
-    const info = await transport.sendMail(mailOptions);
-    console.log(`✅ Email sent successfully to ${to} | MessageID: ${info.messageId}`);
+    console.log("📧 SMTP email sent:", info.messageId);
     return true;
-
-  } catch (error) {
-    console.error(`❌ Email failed to ${to}: ${error.message}`);
-    console.error("Error details:", error.stack);
+  } catch (err) {
+    console.error("❌ SMTP Email error:", err.message || err);
     return false;
   }
 }
 
-// Wrapper for async calls (fire-and-forget)
-function sendEmailAsync(to, subject, text, html = null) {
-  sendEmail(to, subject, text, html).catch(err => {
-    console.error("Error in sendEmailAsync:", err);
-  });
+/**
+ * SIMPLE ALIAS (THIS FIXES YOUR BUG)
+ */
+async function notifyPaymentSuccess({ email, name }) {
+  return sendEmail(
+    email,
+    "Payment Successful - Bliss Connect",
+    `Hello ${name}, your payment was successful.`,
+    `<h2>Hello ${name}</h2><p>Your payment was successful.</p>`
+  );
 }
 
-module.exports = sendEmail;
-module.exports.sendEmailAsync = sendEmailAsync;
+console.log("EMAIL MODULE LOADED");
+console.log("sendEmail type:", typeof sendEmail);
+
+module.exports = {
+  sendEmail,
+  sendEmailAsync: sendEmail,
+  notifyPaymentSuccess,
+};

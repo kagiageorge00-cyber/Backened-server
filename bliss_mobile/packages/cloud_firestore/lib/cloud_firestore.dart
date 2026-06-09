@@ -1,4 +1,4 @@
-library cloud_firestore;
+library;
 
 class FirebaseFirestore {
   static FirebaseFirestore instance = FirebaseFirestore();
@@ -33,4 +33,4 @@ class QuerySnapshot<T = dynamic> {
   List<QueryDocumentSnapshot> get docs => [];
 }
 
-class QueryDocumentSnapshot<T = dynamic> extends DocumentSnapshot {}
+class QueryDocumentSnapshot<T = dynamic> extends void DocumentSnapshot {}

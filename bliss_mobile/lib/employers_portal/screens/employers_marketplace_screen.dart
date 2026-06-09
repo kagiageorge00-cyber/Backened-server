@@ -1,6 +1,9 @@
 // lib/employer_portal/screens/employers_marketplace_screen.dart
+import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:bliss_mobile/firebase_stub.dart';
+import 'package:http/http.dart' as http;
+import '../../config/app_config.dart';
+import '../../services/backend_auth.dart';
 import '../widgets/candidate_card.dart';
 
 class EmployersMarketplaceScreen extends StatefulWidget {
@@ -21,6 +24,39 @@ class _EmployersMarketplaceScreenState
   void _searchCandidate(String query) {
     setState(() {
       searchQuery = query.toLowerCase();
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchCandidates() async {
+    final resp =
+        await http.get(Uri.parse('${AppConfig.backendUrl}/api/marketplace'));
+    if (resp.statusCode != 200) throw Exception('Failed to load candidates');
+    final data = jsonDecode(resp.body);
+    final List list = data['data'] ?? data['candidates'] ?? [];
+    return list.map((e) {
+      final m = Map<String, dynamic>.from(e as Map);
+      if (!m.containsKey('id') && m.containsKey('_id')) m['id'] = m['_id'];
+      return m;
+    }).toList();
+  }
+
+  void _handleSchedule(BuildContext context, Map<String, dynamic> candidate) {
+    if (!BackendAuth.isAuthenticated) {
+      // Not logged in: redirect to employer login/register and return here
+      Navigator.pushNamed(context, '/employer-login', arguments: {
+        'returnRoute': '/schedule-interview',
+        'returnArgs': {
+          'candidateId': candidate['id'],
+          'candidateName': candidate['name'],
+        },
+      });
+      return;
+    }
+
+    // Logged in: open schedule interview screen
+    Navigator.pushNamed(context, '/schedule-interview', arguments: {
+      'candidateId': candidate['id'],
+      'candidateName': candidate['name'],
     });
   }
 
@@ -61,10 +97,8 @@ class _EmployersMarketplaceScreenState
             ),
           ),
           Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('candidates')
-                  .snapshots(),
+            child: FutureBuilder<List<Map<String, dynamic>>>(
+              future: _fetchCandidates(),
               builder: (context, snapshot) {
                 if (snapshot.hasError) {
                   return const Center(child: Text("Error loading candidates"));
@@ -73,19 +107,15 @@ class _EmployersMarketplaceScreenState
                   return const Center(child: CircularProgressIndicator());
                 }
 
-                // Convert documents to list
-                final docs = snapshot.data!.docs;
-                List<Map<String, dynamic>> candidates = docs.map((doc) {
-                  final data = doc.data() as Map<String, dynamic>;
-                  data['id'] = doc.id; // preserve document ID
-                  return data;
-                }).toList();
+                // Convert to list
+                List<Map<String, dynamic>> candidates = snapshot.data!;
 
                 // Apply search filter
                 if (searchQuery.isNotEmpty) {
                   candidates = candidates.where((c) {
-                    final name = c['name'].toString().toLowerCase();
-                    final experience = c['experience'].toString().toLowerCase();
+                    final name = (c['name'] ?? '').toString().toLowerCase();
+                    final experience =
+                        (c['experience'] ?? '').toString().toLowerCase();
                     return name.contains(searchQuery) ||
                         experience.contains(searchQuery);
                   }).toList();
@@ -103,22 +133,21 @@ class _EmployersMarketplaceScreenState
 
                     return CandidateCard(
                       id: candidate["id"],
-                      name: candidate["name"],
-                      age: candidate["age"].toString(),
-                      experience: candidate["experience"],
-                      country: candidate["country"],
-                      salary: candidate["salary"].toString(),
+                      name: candidate["name"] ?? 'Candidate',
+                      age: (candidate["age"] ?? '').toString(),
+                      experience: candidate["experience"] ?? '',
+                      country: candidate["country"] ?? '',
+                      salary: (candidate["salary"] ?? '').toString(),
                       imageUrl: candidate["image"] ??
                           "https://via.placeholder.com/150",
                       onViewDetails: () {
                         Navigator.pushNamed(
                           context,
                           '/candidate-details',
-                          arguments: {
-                            'candidateId': candidate['id'],
-                          },
+                          arguments: {'candidateId': candidate['id']},
                         );
                       },
+                      onSchedule: () => _handleSchedule(context, candidate),
                     );
                   },
                 );

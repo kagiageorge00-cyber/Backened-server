@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-
 class ApplicationStatusUpdateScreen extends StatefulWidget {
   final String applicationId;
   final String candidateName;
@@ -44,7 +43,9 @@ class _ApplicationStatusUpdateScreenState
 
     try {
       // Replace with your backend API endpoint
-      final response = Uri.parse('https://your-backend-api.com/applications/${widget.applicationId}/status').resolveUri(Uri());
+      final response = Uri.parse(
+              'https://your-backend-api.com/applications/${widget.applicationId}/status')
+          .resolveUri(Uri());
       // Example using http package (add http to pubspec.yaml)
       // import 'package:http/http.dart' as http;
       // final res = await http.patch(
@@ -254,26 +255,3 @@ class _ApplicationStatusUpdateScreenState
     );
   }
 }
-
-const request = require('supertest');
-const app = require('../app'); // adjust path to your express app
-
-describe('User Registration', () => {
-
-  it('should register a user', async () => {
-    const res = await request(app)
-      .post('/register')
-      .send({
-        name: 'Test User',
-        email: 'test@test.com',
-        phone: '254700000001',
-        password: '123456', // ✅ REQUIRED
-        userType: 'candidate'
-      });
-
-    expect(res.statusCode).toBe(200);
-    expect(res.body.success).toBe(true);
-    expect(res.body.user).toBeDefined();
-  }, 20000); // timeout
-
-});

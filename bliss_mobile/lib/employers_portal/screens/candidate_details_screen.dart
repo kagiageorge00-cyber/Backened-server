@@ -1,5 +1,7 @@
 import 'package:bliss_mobile/firebase_stub.dart';
 import 'package:flutter/material.dart';
+import '../services/interview_api_client.dart';
+import '../widgets/interview_actions.dart';
 
 class CandidateDetailsScreen extends StatefulWidget {
   final String candidateId;
@@ -10,13 +12,29 @@ class CandidateDetailsScreen extends StatefulWidget {
 }
 
 class _CandidateDetailsScreenState extends State<CandidateDetailsScreen> {
-  DocumentSnapshot<Map<String, dynamic>>? candidateSnapshot;
+  dynamic candidateSnapshot;
   bool loading = true;
 
   @override
   void initState() {
     super.initState();
     _loadCandidate();
+    _loadInterviews();
+  }
+
+  List<Map<String, dynamic>> interviews = [];
+
+  Future<void> _loadInterviews() async {
+    try {
+      final list = await InterviewApiClient.fetchInterviewsForCandidate(
+          widget.candidateId);
+      if (!mounted) return;
+      setState(() {
+        interviews = list;
+      });
+    } catch (e) {
+      // ignore
+    }
   }
 
   Future<void> _loadCandidate() async {
@@ -78,6 +96,24 @@ class _CandidateDetailsScreenState extends State<CandidateDetailsScreen> {
                       interviewScheduled ? Colors.green : Colors.orange),
                   const SizedBox(height: 8),
                   _statusChip('Interview Status', interviewStatus, Colors.blue),
+                  const SizedBox(height: 12),
+                  if (interviews.isNotEmpty) ...[
+                    const Text('Interviews',
+                        style: TextStyle(fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 8),
+                    for (var iv in interviews)
+                      Card(
+                        child: ListTile(
+                          title: Text('Interview: ${iv['interviewId'] ?? ''}'),
+                          subtitle:
+                              Text('Status: ${iv['interviewStatus'] ?? ''}'),
+                          trailing: InterviewActions(
+                            interviewId: iv['interviewId'] ?? iv['_id'] ?? '',
+                            candidateId: widget.candidateId,
+                          ),
+                        ),
+                      ),
+                  ],
                   const SizedBox(height: 8),
                   _statusChip('Hired', isHired ? 'Yes' : 'No',
                       isHired ? Colors.green : Colors.grey),

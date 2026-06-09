@@ -77,7 +77,7 @@ class InterviewListScreen extends StatelessWidget {
             padding: const EdgeInsets.all(16),
             itemCount: docs.length,
             itemBuilder: (context, index) {
-              final data = docs[index].data() as Map<String, dynamic>;
+              final data = docs[index].data();
 
               final String candidateName = data['candidateName'] ?? "Unknown";
               final String jobTitle = data['jobTitle'] ?? "Unknown Job";

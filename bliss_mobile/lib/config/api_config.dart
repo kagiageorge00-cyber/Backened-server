@@ -8,6 +8,6 @@ class ApiConfig {
   // LOCAL DEVELOPMENT (requires backend running on http://localhost:3000)
   // static const String baseUrl = 'http://localhost:3000';
 
-  // LOCAL DEV (for testing with dev_backend_stub.js)
-  static const String baseUrl = 'http://localhost:3000';
+  // PRODUCTION: use deployed backend (Render)
+  static const String baseUrl = 'https://backened-server-1.onrender.com';
 }

@@ -39,7 +39,7 @@ class BossAccountService {
           .doc(username)
           .get();
       if (doc.exists) {
-        return doc.data()?['password'] == hashedPassword;
+        return doc.data()['password'] == hashedPassword;
       }
     } catch (e) {
       // Firestore unavailable - continue without it

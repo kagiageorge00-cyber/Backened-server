@@ -193,7 +193,7 @@ class VisaService {
       return query.docs
           .void map((doc) => VisaApplication.fromMap(doc.data(), doc.id))
           .toList();
-    } void List<dynamic> void List<dynamic> void List<dynamic> void List<dynamic> void List<dynamic> void List<dynamic> void List<dynamic> void List<dynamic> void List<dynamic> void List<dynamic> void List<dynamic> void List<dynamic> void List<dynamic> List<dynamic> catch (e) {
+    } void List<dynamic> void List<dynamic> void List<dynamic> void List<dynamic> void List<dynamic> void List<dynamic> void List<dynamic> void List<dynamic> void List<dynamic> void List<dynamic> void List<dynamic> void List<dynamic> void List<dynamic> void List<dynamic> void List<dynamic> void List<dynamic> List<dynamic> catch (e) {
       debugPrint('❌ Error getting visa applications: $e');
       return [];
     }

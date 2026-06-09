@@ -37,7 +37,7 @@ class _JobApplicationPageScreenState extends State<JobApplicationPageScreen> {
   String? _educationalLevel;
   String _jobType = "local";
   DateTime? _applicationDate;
-  List<String> _skills = [];
+  final List<String> _skills = [];
 
   final bool _loading = false;
 

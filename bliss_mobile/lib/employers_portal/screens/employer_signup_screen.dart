@@ -84,7 +84,7 @@ class _EmployerSignUpScreenState extends State<EmployerSignUpScreen> {
       final existing =
           await BackendRegisterService.getUserByEmail(googleUser.email);
 
-      int? userId;
+      String? userId;
 
       if (existing.success && existing.id != null) {
         userId = existing.id;

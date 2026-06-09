@@ -1,14 +1,15 @@
 const express = require("express");
 const router = express.Router();
 
-// ✅ CORRECT MODEL PATH
 const Payment = require("../models/Payment");
 const User = require("../models/User");
-const { notifyPaymentSuccess } = require("../services/notificationservice");
-const sendEmail = require("../email");
+const Candidate = require("../models/candidate");
+
+// ✅ SINGLE CLEAN EMAIL FUNCTION
+const { sendEmail } = require("../email");
 
 // ==========================
-// SUBMIT PAYMENT HANDLER (OPTIMIZED)
+// SUBMIT PAYMENT HANDLER
 // ==========================
 async function handleSubmitPayment(req, res) {
   try {
@@ -32,24 +33,23 @@ async function handleSubmitPayment(req, res) {
       });
     }
 
-    // Check for duplicate - but do this asynchronously
-    let isDuplicate = false;
-    try {
-      const exists = await Payment.findOne({
-        transactionId: transactionCode,
+    // ==========================
+    // CHECK DUPLICATE PAYMENT
+    // ==========================
+    const exists = await Payment.findOne({
+      transactionId: transactionCode,
+    });
+
+    if (exists) {
+      return res.status(409).json({
+        success: false,
+        error: "Transaction already exists",
       });
-      if (exists) {
-        return res.status(409).json({
-          success: false,
-          error: "Transaction already exists",
-        });
-      }
-    } catch (checkErr) {
-      console.warn("Could not check for duplicates:", checkErr.message);
-      // Continue anyway - better to process than block
     }
 
-    // Save payment to database
+    // ==========================
+    // SAVE PAYMENT
+    // ==========================
     const payment = await Payment.create({
       intentId: "intent_" + Date.now(),
       userId,
@@ -63,88 +63,88 @@ async function handleSubmitPayment(req, res) {
 
     console.log("✅ Payment saved:", payment._id);
 
-    // ⚡ RETURN IMMEDIATELY - Don't wait for email
+    // ==========================
+    // RESPOND FAST (IMPORTANT)
+    // ==========================
     res.status(200).json({
       success: true,
       message: "Payment submitted successfully",
-      paymentId: payment._id || payment.id,
+      paymentId: payment._id,
       data: payment,
     });
 
-    // ⚡ SEND NOTIFICATIONS IN BACKGROUND (Don't wait)
+    // ==========================
+    // BACKGROUND EMAIL (SAFE)
+    // ==========================
     setImmediate(async () => {
       try {
-        const notifyUser = {
-          email,
-          name,
-        };
+        let notifyEmail = email;
+        let notifyName = name;
 
-        if (!notifyUser.email && userId) {
-          try {
-            const candidate = await User.findOne({
+        // 🔍 fallback lookup if missing email
+        if (!notifyEmail) {
+          const user =
+            (await User.findOne({
               $or: [
                 { phone: userId },
-                { uniqueCode: userId },
                 { email: userId },
+                { uniqueCode: userId },
               ],
-            });
-            if (candidate) {
-              notifyUser.email = candidate.email;
-              notifyUser.name = candidate.name || notifyUser.name;
-            }
-          } catch (err) {
-            console.warn("Could not fetch candidate:", err.message);
+            })) ||
+            (await Candidate.findOne({
+              $or: [
+                { phone: userId },
+                { email: userId },
+                { uniqueCode: userId },
+              ],
+            }));
+
+          if (user) {
+            notifyEmail = user.email;
+            notifyName = user.name || user.fullName;
           }
         }
 
-        if (notifyUser.email) {
-          // STEP 1: Send payment submission email (user receives this immediately)
-          console.log("📧 Sending payment submission email to", notifyUser.email);
-          
-          await sendEmail(
-            notifyUser.email,
-            "Payment Received ✅ - Bliss Connect",
-            `Hello ${notifyUser.name || 'there'},\n\nWe have received your payment of KES ${amount}! ✅\n\nOur team is now verifying your payment.\nOnce approved, you will receive a confirmation email with your candidate form link.\n\nThank you for joining Bliss Connect!\n\nBest regards,\nBliss Connect Team`,
-            `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #f5f5f5; padding: 20px;">
-              <div style="background-color: #ffffff; padding: 30px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
-                <h2 style="color: #4CAF50; text-align: center;">Payment Received ✅</h2>
-                <p>Hello ${notifyUser.name || 'there'},</p>
-                <p>We have successfully received your payment of <strong>KES ${amount}</strong>.</p>
-                <div style="background-color: #e8f5e9; padding: 15px; border-radius: 5px; margin: 20px 0;">
-                  <p style="margin: 0; color: #2e7d32;"><strong>Status:</strong> Payment Received and Under Verification</p>
-                </div>
-                <p><strong>What happens next?</strong></p>
-                <ol>
-                  <li>Our team verifies your payment (usually within a few hours)</li>
-                  <li>You receive a confirmation email with approval</li>
-                  <li>You can then complete your candidate form</li>
-                </ol>
-                <p>We appreciate your patience!</p>
-                <p style="color: #666; font-size: 12px; margin-top: 30px; border-top: 1px solid #ddd; padding-top: 20px;">
-                  Bliss Connect Team<br/>
-                  <a href="https://blisssconnect12.netlify.app" style="color: #4CAF50; text-decoration: none;">Visit our website</a>
-                </p>
-              </div>
-            </div>`
-          );
+        if (!notifyEmail) {
+          console.warn("⚠️ No email found for payment notification");
+          return;
         }
+
+        console.log("📧 Sending payment email to:", notifyEmail);
+
+        await sendEmail(
+          notifyEmail,
+          "Payment Received ✅ - Bliss Connect",
+          `Hello ${notifyName || "User"}, your payment has been received successfully.`,
+          `
+          <div style="font-family: Arial; padding: 20px;">
+            <h2>Payment Received ✅</h2>
+            <p>Hello ${notifyName || "User"},</p>
+            <p>Your payment has been received successfully.</p>
+            <p>Status: <b>Pending Verification</b></p>
+            <br/>
+            <p>Bliss Connect Team</p>
+          </div>
+          `
+        );
       } catch (err) {
-        console.error("Background notification error:", err.message);
-        // Don't fail the request - it's already returned
+        console.error("Background email error:", err);
       }
     });
 
   } catch (err) {
     console.error("❌ Payment error:", err);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: err.message,
     });
   }
 }
 
-router.post('/payments', handleSubmitPayment);
-router.post('/submitPayment', handleSubmitPayment);
+// ==========================
+// ROUTES
+// ==========================
+router.post("/payments", handleSubmitPayment);
+router.post("/submitPayment", handleSubmitPayment);
 
 module.exports = router;
-module.exports.handleSubmitPayment = handleSubmitPayment;

@@ -1,6 +1,7 @@
 // routes/register.js
 
 const express = require("express");
+const path = require("path");
 const router = express.Router();
 const bcrypt = require("bcryptjs");
 
@@ -8,7 +9,7 @@ const Candidate = require("../models/candidate");
 const {
   notifyRegistrationSuccess,
   notifyMarketplaceListing,
-} = require("../services/notificationservice");
+} = require(path.join(__dirname, "..", "services", "notificationservice"));
 
 // ======================
 // 🔐 HELPERS

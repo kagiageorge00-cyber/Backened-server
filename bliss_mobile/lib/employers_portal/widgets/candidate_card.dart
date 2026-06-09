@@ -10,6 +10,7 @@ class CandidateCard extends StatelessWidget {
   final String imageUrl;
   final VoidCallback onViewDetails;
   final VoidCallback? onHire;
+  final VoidCallback? onSchedule;
 
   const CandidateCard({
     super.key,
@@ -22,6 +23,7 @@ class CandidateCard extends StatelessWidget {
     required this.imageUrl,
     required this.onViewDetails,
     this.onHire,
+    this.onSchedule,
   });
 
   @override
@@ -118,6 +120,40 @@ class CandidateCard extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(width: 8),
+                          if (onSchedule != null)
+                            Container(
+                              margin: const EdgeInsets.only(right: 8),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(8),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.2),
+                                    blurRadius: 4,
+                                  )
+                                ],
+                              ),
+                              child: OutlinedButton(
+                                onPressed: onSchedule,
+                                style: OutlinedButton.styleFrom(
+                                  side:
+                                      BorderSide(color: Colors.orange.shade700),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 8,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                                child: Text(
+                                  "Schedule Interview",
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.orange.shade800,
+                                  ),
+                                ),
+                              ),
+                            ),
                           if (onHire != null)
                             Container(
                               decoration: BoxDecoration(
@@ -132,7 +168,8 @@ class CandidateCard extends StatelessWidget {
                               child: OutlinedButton(
                                 onPressed: onHire,
                                 style: OutlinedButton.styleFrom(
-                                  side: BorderSide(color: Colors.green.shade700),
+                                  side:
+                                      BorderSide(color: Colors.green.shade700),
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 20,
                                     vertical: 8,

@@ -1,6 +1,7 @@
 import 'dart:convert';
-
+import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 
 import '../config/api_config.dart';
@@ -10,21 +11,25 @@ class CandidateFormScreen extends StatefulWidget {
   final String? phone;
   final String? candidateId;
 
-  const CandidateFormScreen({super.key, this.phone, this.candidateId});
+  const CandidateFormScreen({
+    super.key,
+    this.phone,
+    this.candidateId,
+  });
 
   @override
   State<CandidateFormScreen> createState() => _CandidateFormScreenState();
 }
 
 class _CandidateFormScreenState extends State<CandidateFormScreen> {
-  bool isSaving = false;
-  String? _candidateId;
-  String? _phone;
-  bool _candidateExists = true; // ✅ NEW FIELD
-
   static const String baseUrl = ApiConfig.baseUrl;
 
-  final Map<String, String?> _uploadedDocs = {
+  bool isSaving = false;
+
+  String? candidateId;
+  String? phone;
+
+  final Map<String, String?> docs = {
     'passport': null,
     'photo': null,
     'video': null,
@@ -36,125 +41,249 @@ class _CandidateFormScreenState extends State<CandidateFormScreen> {
   @override
   void initState() {
     super.initState();
-    _candidateId =
-        widget.candidateId ?? Uri.base.queryParameters['candidateId'];
-    _phone = widget.phone ??
-        Uri.base.queryParameters['phone']; // ✅ GET PHONE FROM URL
-    _loadCandidateData(); // ✅ LOAD DATA IF EXISTS
-  }
 
-  // ✅ NEW METHOD: Load existing candidate data
-  Future<void> _loadCandidateData() async {
-    try {
-      final queryParam = _candidateId ?? _phone;
-      if (queryParam == null || queryParam.isEmpty) {
-        setState(() => _candidateExists = false);
-        return;
+    final uri = Uri.base;
+
+    // Prefer values passed via constructor (from main), otherwise check
+    // the standard query parameters and finally the fragment query string.
+    candidateId = widget.candidateId ?? uri.queryParameters['candidateId'];
+    phone = widget.phone ?? uri.queryParameters['phone'];
+
+    if ((candidateId == null || phone == null) && Uri.base.fragment.isNotEmpty) {
+      var frag = Uri.base.fragment;
+      if (frag.startsWith('#')) frag = frag.substring(1);
+      if (frag.startsWith('/#/')) frag = frag.substring(2);
+
+      if (frag.contains('?')) {
+        final qs = frag.split('?').last;
+        final params = Uri.splitQueryString(qs);
+        candidateId = candidateId ?? params['candidateId'];
+        phone = phone ?? params['phone'];
       }
-
-      final url = _candidateId != null
-          ? '$baseUrl/api/candidate-form/data?candidateId=$queryParam'
-          : '$baseUrl/api/candidate-form/data?phone=${Uri.encodeComponent(queryParam)}';
-
-      final response = await http.get(Uri.parse(url));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        setState(() {
-          _candidateExists = data['candidateExists'] ?? false;
-          // Pre-fill phone from response if available
-          if (data['data'] != null && data['data']['phone'] != null) {
-            _phone = data['data']['phone'];
-          }
-        });
-      } else {
-        setState(() => _candidateExists = false);
-      }
-    } catch (e) {
-      debugPrint('Error loading candidate data: $e');
-      setState(() => _candidateExists = false);
     }
+
+    debugPrint('CandidateId: $candidateId');
+    debugPrint('Phone: $phone');
   }
 
-  bool get _hasRequiredFiles {
-    return _uploadedDocs['passport'] != null &&
-        _uploadedDocs['photo'] != null &&
-        _uploadedDocs['video'] != null &&
-        _uploadedDocs['medical'] != null;
-  }
+  bool get canSubmit =>
+      docs['passport'] != null &&
+      docs['photo'] != null &&
+      docs['video'] != null &&
+      docs['medical'] != null;
 
-  void _saveDocumentUrl(String key, String url) {
+  void saveDoc(String key, String url) {
     setState(() {
-      _uploadedDocs[key] = url;
+      docs[key] = url;
     });
   }
 
-  Future<void> _submitDocuments() async {
-    // ✅ UPDATED: Use candidateId or phone for submission
-    final submitId = _candidateId ?? _phone;
-    if (submitId == null || submitId.isEmpty) {
-      showError('Candidate ID or Phone is required to submit documents.');
+  String _generateCandidateId() {
+    final year = DateTime.now().year;
+    final random = Random();
+    final seq = 1000 + random.nextInt(9000);
+    return 'CAND-$year-$seq';
+  }
+
+  String _generatePassword({int length = 8}) {
+    // Temporary password format: BLISS####
+    final random = Random();
+    final num = 1000 + random.nextInt(9000);
+    return 'BLISS$num';
+  }
+
+  Future<void> submit() async {
+    final contactPhone = phone;
+
+    if (contactPhone == null || contactPhone.isEmpty) {
+      error('Missing phone number');
       return;
     }
 
-    if (!_hasRequiredFiles) {
-      showError(
-        'Please upload passport, photo, medical report and video to continue.',
-      );
+    if (!canSubmit) {
+      error('Passport, Photo, Video and Medical Report are required');
       return;
     }
 
-    setState(() => isSaving = true);
+    setState(() {
+      isSaving = true;
+    });
 
     try {
-      final response = await http.put(
-        Uri.parse('$baseUrl/api/candidates/$submitId/documents'),
+      final newCandidateId = _generateCandidateId();
+      final tempPassword = _generatePassword();
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/register'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
-          'passportUrl': _uploadedDocs['passport'],
-          'photoUrl': _uploadedDocs['photo'],
-          'videoUrl': _uploadedDocs['video'],
-          'medicalUrl': _uploadedDocs['medical'],
-          'resumeUrl': _uploadedDocs['resume'],
-          'additionalUrl': _uploadedDocs['additional'],
-          'phone': _phone, // ✅ PASS PHONE FOR CANDIDATE CREATION
+          'fullName': 'Candidate',
+          'email': '',
+          'phone': contactPhone,
+          'country': 'Kenya',
+          'skills': '',
+          'experience': '',
+          'registrationPaid': true,
+          'passportUrl': docs['passport'],
+          'photoUrl': docs['photo'],
+          'videoUrl': docs['video'],
+          'medicalUrl': docs['medical'],
+          'resumeUrl': docs['resume'],
+          'additionalUrl': docs['additional'],
         }),
       );
 
       final data = jsonDecode(response.body);
-      if (response.statusCode == 200 && data['success'] == true) {
-        showSuccess();
+
+      if ((response.statusCode == 200 || response.statusCode == 201) && data['success'] == true) {
+        final serverId = data['candidateId'] ?? newCandidateId;
+        final serverPassword = data['password'] ?? tempPassword;
+
+        success(
+          candidateIdGenerated: serverId,
+          passwordGenerated: serverPassword,
+        );
       } else {
-        showError(data['error'] ?? 'Failed to submit documents');
+        error(data['error'] ?? 'Registration failed');
       }
     } catch (e) {
-      showError('Upload failed: $e');
-    } finally {
-      setState(() => isSaving = false);
+      error(e.toString());
     }
+
+    setState(() {
+      isSaving = false;
+    });
   }
 
-  void showSuccess() {
+  void success({
+    required String candidateIdGenerated,
+    required String passwordGenerated,
+  }) {
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (_) => AlertDialog(
-        title: const Text('✅ Registration Complete!'),
-        content: const Text(
-          'Congratulations! Your registration is now complete.\n\n'
-          'Your profile has been posted to the Bliss Connect marketplace.\n\n'
-          'You will receive an email shortly with:\n'
-          '• Your unique candidate code\n'
-          '• Password for the candidate portal\n'
-          '• Login link to track opportunities\n\n'
-          'Check your email for these important details!',
+        title: const Text('Registration Successful! 🎉'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Your account has been created successfully.'),
+              const SizedBox(height: 20),
+              const Text(
+                'Your Login Credentials:',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Candidate ID',
+                                  style: TextStyle(
+                                      fontSize: 11, color: Colors.grey)),
+                              const SizedBox(height: 4),
+                              Text(candidateIdGenerated,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 15,
+                                      fontFamily: 'monospace')),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.copy, size: 18),
+                          onPressed: () {
+                            Clipboard.setData(
+                              ClipboardData(text: candidateIdGenerated),
+                            );
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('✓ Candidate ID copied'),
+                                duration: Duration(seconds: 2),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Password',
+                                  style: TextStyle(
+                                      fontSize: 11, color: Colors.grey)),
+                              const SizedBox(height: 4),
+                              Text(passwordGenerated,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 15,
+                                      fontFamily: 'monospace')),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.copy, size: 18),
+                          onPressed: () {
+                            Clipboard.setData(
+                              ClipboardData(text: passwordGenerated),
+                            );
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('✓ Password copied'),
+                                duration: Duration(seconds: 2),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue[50],
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.info_outline, size: 18, color: Colors.blue),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Save credentials to log in to the candidate portal.',
+                        style: TextStyle(fontSize: 12, color: Colors.blue),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              Navigator.pop(context);
-            },
+            onPressed: () => Navigator.pop(context),
             child: const Text('OK'),
           ),
         ],
@@ -162,23 +291,24 @@ class _CandidateFormScreenState extends State<CandidateFormScreen> {
     );
   }
 
-  void showError(String msg) {
+  void error(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg)),
+      SnackBar(content: Text(message)),
     );
   }
 
-  Widget _buildDocTile(
+  Widget uploadTile(
     String title,
     String key,
     List<String> extensions,
-    String storageFolder,
   ) {
     return ProfessionalFileUploadTile(
       title: title,
-      storageFolder: storageFolder,
+      storageFolder: 'candidate_documents/${candidateId ?? phone}/$key',
       allowedExtensions: extensions,
-      onUploadComplete: (url) => _saveDocumentUrl(key, url),
+      onUploadComplete: (url) {
+        saveDoc(key, url);
+      },
     );
   }
 
@@ -191,108 +321,72 @@ class _CandidateFormScreenState extends State<CandidateFormScreen> {
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Upload documents to complete your candidate profile',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'Please upload the required files below after your payment has been approved. '
-              'Required uploads are passport (PDF), a recent photo, medical report (PDF), and video introduction.',
-            ),
-            const SizedBox(height: 16),
-            // ✅ SHOW INFO: Candidate ID or Phone
-            if (_candidateId != null)
-              _buildInfoRow('Candidate ID', _candidateId!),
-            if (_phone != null) _buildInfoRow('Phone', _phone!),
-            // ✅ SHOW STATUS
-            if (!_candidateExists)
-              Container(
-                padding: const EdgeInsets.all(12),
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: Colors.blue[50],
-                  border: Border.all(color: Colors.blue),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Text(
-                  '✅ Your payment has been approved. Please upload documents to complete registration.',
-                  style: TextStyle(color: Colors.blue, fontSize: 14),
-                ),
-              ),
-            const SizedBox(height: 16),
-            _buildDocTile(
-              'Passport (PDF)',
+            if (candidateId != null) Text('Candidate ID: $candidateId'),
+            if (phone != null) Text('Phone: $phone'),
+            const SizedBox(height: 20),
+            uploadTile(
+              'Passport PDF',
               'passport',
               ['pdf'],
-              'candidate_documents/${_candidateId ?? _phone}/passport',
             ),
-            _buildDocTile(
-              'Photo (JPG, PNG)',
+            uploadTile(
+              'Photo',
               'photo',
               ['jpg', 'jpeg', 'png'],
-              'candidate_documents/${_candidateId ?? _phone}/photo',
             ),
-            _buildDocTile(
-              'Video Introduction (MP4)',
+            uploadTile(
+              'Video',
               'video',
-              ['mp4', 'mov', 'avi', 'mkv'],
-              'candidate_documents/${_candidateId ?? _phone}/video',
+              ['mp4', 'mov'],
             ),
-            _buildDocTile(
-              'Medical Report (PDF)',
+            uploadTile(
+              'Medical Report',
               'medical',
               ['pdf'],
-              'candidate_documents/${_candidateId ?? _phone}/medical',
             ),
-            _buildDocTile(
-              'Resume / CV (PDF, DOC)',
+            uploadTile(
+              'Resume',
               'resume',
               ['pdf', 'doc', 'docx'],
-              'candidate_documents/${_candidateId ?? _phone}/resume',
             ),
-            _buildDocTile(
+            uploadTile(
               'Additional Document',
               'additional',
-              ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png'],
-              'candidate_documents/${_candidateId ?? _phone}/additional',
+              ['pdf', 'doc', 'docx', 'jpg', 'png'],
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 30),
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: isSaving ? null : _submitDocuments,
+                onPressed: isSaving ? null : submit,
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  backgroundColor: Colors.green,
+                ),
                 child: isSaving
                     ? const SizedBox(
-                        width: 20,
                         height: 20,
+                        width: 20,
                         child: CircularProgressIndicator(
-                          color: Colors.white,
                           strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.white,
+                          ),
                         ),
                       )
-                    : const Text('Submit Documents'),
+                    : const Text(
+                        'REGISTER',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
               ),
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildInfoRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        children: [
-          Text(
-            '$label: ',
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-          Expanded(child: Text(value)),
-        ],
       ),
     );
   }

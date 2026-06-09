@@ -50,7 +50,7 @@ class _EmployerCommunicationScreenState
         if (candidateDoc.exists) {
           candidateData.add({
             'id': candidateId,
-            ...candidateDoc.data()!,
+            ...candidateDoc.data(),
           });
         }
       }

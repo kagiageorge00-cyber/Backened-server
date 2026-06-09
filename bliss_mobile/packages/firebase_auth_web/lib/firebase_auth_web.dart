@@ -1,3 +1,3 @@
-library firebase_auth_web;
+library;
 
 // Minimal web stub

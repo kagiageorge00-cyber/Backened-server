@@ -25,6 +25,8 @@ import 'screens/deployment_fee_payment_screen.dart';
 import 'employers_portal/screens/employer_login_screen.dart';
 import 'employers_portal/screens/employers_portal_screen.dart';
 import 'employers_portal/screens/employer_signup_screen.dart';
+import 'employers_portal/screens/candidate_details_screen.dart';
+import 'employers_portal/screens/schedule_interview_screen.dart';
 import 'screens/bliss_communication/screens/private_chats_details_screen.dart';
 import 'screens/job_application_page_screen.dart';
 import 'screens/candidate_form_screen.dart';
@@ -129,6 +131,21 @@ class _BlissAppState extends State<BlissApp> {
         employerId: args?['employerId'] ?? '',
         employerName: args?['employerName'] ?? '',
         companyName: args?['companyName'] ?? '',
+      );
+    },
+    '/candidate-details': (context) {
+      final args =
+          ModalRoute.of(context)?.settings.arguments as Map<String, String>?;
+      return CandidateDetailsScreen(
+        candidateId: args?['candidateId'] ?? '',
+      );
+    },
+    '/schedule-interview': (context) {
+      final args =
+          ModalRoute.of(context)?.settings.arguments as Map<String, String>?;
+      return ScheduleInterviewScreen(
+        candidateId: args?['candidateId'] ?? '',
+        candidateName: args?['candidateName'] ?? 'Candidate',
       );
     },
     '/privateChatDetails': (context) {

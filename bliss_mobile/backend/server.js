@@ -48,8 +48,17 @@ try {
 }
 const submitPaymentsRoutes = require('./routes/submitpayments');
 const submitPaymentsLegacy = require('./submitpayments');
+const employerRoutes = require('./routes/employers');
 const CandidateModel = require('./models/candidate');
 const bcrypt = require('bcryptjs');
+const marketplaceRoutes = require('./routes/marketplace');
+const interviewsRoutes = require('./routes/interviews');
+const shortlistRoutes = require('./routes/shortlist');
+const chatRoutes = require('./routes/chat');
+const deploymentsRoutes = require('./routes/deployments');
+const notificationsRoutes = require('./routes/notifications');
+const contractsRoutes = require('./routes/contracts');
+const adminStatsRoutes = require('./routes/adminStats');
 
 // Gracefully handle flightSearch module (may not exist in all deployments)
 let flightSearch;
@@ -70,10 +79,20 @@ app.use('/api/candidates', candidateRoutes);
 app.use('/api/apply', applyRoutes);
 app.use('/api/register', registerRoutes);
 app.use('/api/candidate', registerRoutes);
+app.use('/api/employers', employerRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api', submitPaymentsRoutes);
+app.use('/api/marketplace', marketplaceRoutes);
+app.use('/api/interviews', interviewsRoutes);
+app.use('/api/shortlist', shortlistRoutes);
+app.use('/api/chat', chatRoutes);
+app.use('/api/deployments', deploymentsRoutes);
+app.use('/api/notifications', notificationsRoutes);
+app.use('/api/contracts', contractsRoutes);
+app.use('/api/admin/stats', adminStatsRoutes);
+// debug routes removed
 
 // ======================
 // TEST ENDPOINT FOR ADMIN ROUTES
@@ -192,7 +211,7 @@ app.get('/api/payment-success/:candidateId', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Candidate not found' });
     }
 
-    const candidateFormLink = `${FRONTEND_URL}/#/candidate-form?candidateId=${candidateId}`;
+    const candidateFormLink = `${FRONTEND_URL}/candidate-form?candidateId=${candidateId}`;
 
     return res.status(200).json({
       success: true,
@@ -243,6 +262,52 @@ app.get('/', (req, res) => {
     success: true,
     message: 'Bliss Backend Running'
   });
+});
+
+app.post('/api/interviews/request', async (req, res) => {
+  try {
+    const { employerId, candidateId, scheduledAt, notes } = req.body;
+    if (!employerId || !candidateId || !scheduledAt) {
+      return res.status(400).json({ success: false, error: 'employerId, candidateId and scheduledAt are required' });
+    }
+
+    const Interview = require('./models/Interview');
+    const Notification = require('./models/Notification');
+    const Employer = require('./models/Employer');
+
+    const employer = await Employer.findOne({ $or: [{ _id: employerId }, { employerId: employerId }] });
+
+    const interviewId = `intv_${Date.now()}`;
+    const interviewDate = new Date(scheduledAt);
+
+    const interview = await Interview.create({
+      interviewId,
+      employerId,
+      candidateId,
+      interviewDate,
+      interviewTime: interviewDate.toISOString(),
+      notes: notes || '',
+      interviewStatus: 'requested'
+    });
+
+    const title = 'New Interview Request';
+    const message = `${(employer && (employer.companyName || employer.name)) || 'An employer'} would like to interview you.`;
+
+    await Notification.create({
+      notificationId: `ntf_${Date.now()}`,
+      userId: candidateId,
+      userType: 'candidate',
+      title,
+      message,
+      notificationType: 'interview',
+      actionUrl: `/candidate/interview/${interviewId}`
+    });
+
+    return res.status(201).json({ success: true, interviewId, interview });
+  } catch (error) {
+    console.error('Interview request error:', error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
 });
 
 app.get('/api/health', (req, res) => {

@@ -120,7 +120,7 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen> {
           itemCount: bookings.length,
           itemBuilder: (context, index) {
             final booking = bookings[index];
-            final data = booking.data() as Map<String, dynamic>;
+            final data = booking.data();
             return _buildBookingCard(
               title: '✈️ ${data['flightNumber'] ?? 'Flight'}',
               route: '${data['origin']} → ${data['destination']}',
@@ -157,7 +157,7 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen> {
           itemCount: bookings.length,
           itemBuilder: (context, index) {
             final booking = bookings[index];
-            final data = booking.data() as Map<String, dynamic>;
+            final data = booking.data();
             return _buildBookingCard(
               title: '🏨 ${data['hotelName'] ?? 'Hotel'}',
               route: data['city'] ?? 'Unknown',
@@ -194,7 +194,7 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen> {
           itemCount: applications.length,
           itemBuilder: (context, index) {
             final app = applications[index];
-            final data = app.data() as Map<String, dynamic>;
+            final data = app.data();
             final statuses = ['pending', 'reviewing', 'approved', 'rejected'];
             final status = statuses[data['status'] ?? 0];
 
@@ -234,7 +234,7 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen> {
           itemCount: appointments.length,
           itemBuilder: (context, index) {
             final apt = appointments[index];
-            final data = apt.data() as Map<String, dynamic>;
+            final data = apt.data();
             final statuses = ['pending', 'confirmed', 'completed', 'cancelled'];
             final status = statuses[data['status'] ?? 0];
 

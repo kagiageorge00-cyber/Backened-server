@@ -1,4 +1,4 @@
-library firebase_core;
+library;
 
 class FirebaseOptions {}
 

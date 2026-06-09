@@ -1,4 +1,4 @@
-library firebase_storage;
+library;
 
 class FirebaseStorage {
   static FirebaseStorage instance = FirebaseStorage();

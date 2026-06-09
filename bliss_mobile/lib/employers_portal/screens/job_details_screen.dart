@@ -210,8 +210,8 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
           const SizedBox(height: 12),
 
           // Applicants list
-          StreamBuilder<List<CandidateModel>>(
-            stream: applicantsStream(),
+          FutureBuilder<List<CandidateModel>>(
+            future: applicantsStream(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Padding(

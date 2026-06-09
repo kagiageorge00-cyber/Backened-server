@@ -24,21 +24,19 @@ class PaymentService {
   Future<void> verifyPaymentAndUnlockCandidate(String paymentId) async {
     final paymentSnap = await _db.collection('payments').doc(paymentId).get();
     final data = paymentSnap.data();
-    if (data != null) {
-      final candidateId = data['candidateId'];
-      final employerId = data['employerId'];
+    final candidateId = data['candidateId'];
+    final employerId = data['employerId'];
 
-      // Update payment
-      await _db
-          .collection('payments')
-          .doc(paymentId)
-          .update({'status': 'verified'});
+    // Update payment
+    await _db
+        .collection('payments')
+        .doc(paymentId)
+        .update({'status': 'verified'});
 
-      // Unlock candidate documents
-      await _db.collection('candidates').doc(candidateId).update({
-        'hirePaid': true,
-        'employerId': employerId,
-      });
+    // Unlock candidate documents
+    await _db.collection('candidates').doc(candidateId).update({
+      'hirePaid': true,
+      'employerId': employerId,
+    });
     }
-  }
 }

@@ -18,8 +18,20 @@ class _EmployerLoginScreenState extends State<EmployerLoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
 
+  String? _returnRoute;
+  Map<String, dynamic>? _returnArgs;
   bool _loading = false;
   bool _passwordVisible = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (args is Map<String, dynamic>) {
+      _returnRoute = args['returnRoute'] as String?;
+      _returnArgs = args['returnArgs'] as Map<String, dynamic>?;
+    }
+  }
 
   // ================= EMAIL LOGIN =================
   Future<void> _loginWithEmail() async {
@@ -99,7 +111,7 @@ class _EmployerLoginScreenState extends State<EmployerLoginScreen> {
       final existing =
           await BackendRegisterService.getUserByEmail(googleUser.email);
 
-      int? userId;
+      String? userId;
 
       if (existing.success && existing.id != null) {
         userId = existing.id;
@@ -150,6 +162,18 @@ class _EmployerLoginScreenState extends State<EmployerLoginScreen> {
     required String employerName,
     required String companyName,
   }) {
+    if (_returnRoute != null && _returnRoute!.isNotEmpty) {
+      Navigator.pushReplacementNamed(
+        context,
+        _returnRoute!,
+        arguments: _returnArgs ?? {
+          'candidateId': _returnArgs?['candidateId'] ?? '',
+          'candidateName': _returnArgs?['candidateName'] ?? 'Candidate',
+        },
+      );
+      return;
+    }
+
     Navigator.pushReplacementNamed(
       context,
       '/employersPortal',

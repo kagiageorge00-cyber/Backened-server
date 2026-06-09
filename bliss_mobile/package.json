@@ -4,10 +4,13 @@
   "description": "Express backend for Bliss travel system",
   "main": "backend/server.js",
   "scripts": {
+    "build": "mkdir -p src && cp -r backend/* src/ 2>/dev/null || (robocopy backend src /E /DCOPY:T /R:0 /W:0 >nul 2>&1 || true)",
     "start": "node backend/server.js",
+    "start:prod": "node src/server.js",
     "test": "jest --runInBand tests/api.test.js backend/tests"
   },
   "dependencies": {
+    "@sendgrid/mail": "^8.1.6",
     "amadeus": "^11.0.0",
     "cors": "^2.8.5",
     "dotenv": "^17.4.2",

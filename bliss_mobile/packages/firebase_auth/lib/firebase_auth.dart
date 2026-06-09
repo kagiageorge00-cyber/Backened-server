@@ -1,4 +1,4 @@
-library firebase_auth;
+library;
 
 class FirebaseAuth {
   static FirebaseAuth instance = FirebaseAuth();

@@ -100,7 +100,7 @@ class _InterviewChatScreenState extends State<InterviewChatScreen> {
                   padding: const EdgeInsets.all(16),
                   itemCount: docs.length,
                   itemBuilder: (context, index) {
-                    final data = docs[index].data() as Map<String, dynamic>;
+                    final data = docs[index].data();
                     final isEmployer =
                         data["senderId"] == widget.employerId;
                     final message = data["message"] ?? "";

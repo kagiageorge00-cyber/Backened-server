@@ -1,52 +1,127 @@
-import 'package:bliss_mobile/firebase_stub.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import '../models/employer_model.dart';
 
 class EmployerService {
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
+  static const String baseUrl =
+      'https://your-render-backend.onrender.com/api/employers';
 
-  /// Create or update employer profile
+  /// Create Employer
   Future<void> saveEmployerProfile(Employer employer) async {
-    await _db.collection('employers').doc(employer.id).set(
-          employer.toMap(),
-          SetOptions(merge: true), // Prevent overwriting missing fields
-        );
+    final response = await http.post(
+      Uri.parse(baseUrl),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode(employer.toMap()),
+    );
+
+    if (response.statusCode != 200 &&
+        response.statusCode != 201) {
+      throw Exception(
+        'Failed to save employer profile: ${response.body}',
+      );
+    }
   }
 
-  /// Update only selected fields (partial update)
+  /// Get Employer By ID
+  Future<Employer?> fetchEmployerProfile(
+    String employerId,
+  ) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/$employerId'),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+
+      return Employer.fromMap(
+        data,
+        employerId,
+      );
+    }
+
+    return null;
+  }
+
+  /// Update Employer
   Future<void> updateProfileFields(
     String employerId,
     Map<String, dynamic> data,
   ) async {
-    await _db.collection('employers').doc(employerId).update(data);
+    final response = await http.put(
+      Uri.parse('$baseUrl/$employerId'),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode(data),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Failed to update profile: ${response.body}',
+      );
+    }
   }
 
-  /// Get realtime employer profile stream
-  Stream<Employer?> getEmployerProfile(String employerId) {
-    return _db.collection('employers').doc(employerId).snapshots().map((snap) {
-      if (!snap.exists || snap.data() == null) return null;
-      return Employer.fromMap(snap.data()!, employerId);
-    });
+  /// Delete Employer
+  Future<void> deleteEmployer(
+    String employerId,
+  ) async {
+    final response = await http.delete(
+      Uri.parse('$baseUrl/$employerId'),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Failed to delete employer: ${response.body}',
+      );
+    }
   }
 
-  /// Fetch employer profile once (Future)
-  Future<Employer?> fetchEmployerProfile(String employerId) async {
-    final doc = await _db.collection('employers').doc(employerId).get();
-    if (!doc.exists || doc.data() == null) return null;
-    return Employer.fromMap(doc.data()!, employerId);
-  }
-
-  /// Initialize a new employer profile when they sign up
-  Future<void> createDefaultProfile(String employerId, String email) async {
-    final defaultProfile = Employer(
+  /// Create Default Profile
+  Future<void> createDefaultProfile(
+    String employerId,
+    String email,
+  ) async {
+    final employer = Employer(
       id: employerId,
-      companyName: null,
       email: email,
-      phone: null,
-      address: null,
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
     );
 
-    await saveEmployerProfile(defaultProfile);
+    await saveEmployerProfile(employer);
+  }
+
+  /// Get All Employers (Admin)
+  Future<List<Employer>> getAllEmployers() async {
+    final response = await http.get(
+      Uri.parse(baseUrl),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final List data = jsonDecode(response.body);
+
+      return data.map((item) {
+        return Employer.fromMap(
+          item,
+          item['id'].toString(),
+        );
+      }).toList();
+    }
+
+    throw Exception(
+      'Failed to fetch employers',
+    );
   }
 }
