@@ -205,4 +205,141 @@ router.post(
   }
 );
 
+// ======================
+// MARKETPLACE - VIEW CANDIDATES (ADMIN PANEL)
+// ======================
+router.get("/marketplace/candidates", requireAdminAuth, async (req, res) => {
+  try {
+    const { limit = 50, skip = 0, status = "available" } = req.query;
+
+    const filter = status ? { status } : {};
+
+    const candidates = await Candidate.find(filter)
+      .limit(parseInt(limit))
+      .skip(parseInt(skip))
+      .sort({ createdAt: -1 });
+
+    const total = await Candidate.countDocuments(filter);
+
+    res.json({
+      success: true,
+      data: candidates,
+      total,
+      limit: parseInt(limit),
+      skip: parseInt(skip),
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ======================
+// MARKETPLACE - GET CANDIDATE DETAILS
+// ======================
+router.get("/marketplace/candidates/:id", requireAdminAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const candidate = await Candidate.findOne({
+      $or: [
+        { _id: id },
+        { uniqueCode: id },
+        { phone: id },
+        { email: id },
+      ],
+    });
+
+    if (!candidate) {
+      return res.status(404).json({ success: false, error: "Candidate not found" });
+    }
+
+    res.json({
+      success: true,
+      data: candidate,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ======================
+// MARKETPLACE - SEARCH CANDIDATES
+// ======================
+router.get("/marketplace/search", requireAdminAuth, async (req, res) => {
+  try {
+    const { query, skills, country, status } = req.query;
+
+    let filter = {};
+
+    if (query) {
+      filter.$or = [
+        { fullName: { $regex: query, $options: "i" } },
+        { name: { $regex: query, $options: "i" } },
+        { email: { $regex: query, $options: "i" } },
+        { phone: { $regex: query, $options: "i" } },
+      ];
+    }
+
+    if (skills) {
+      filter.skills = { $regex: skills, $options: "i" };
+    }
+
+    if (country) {
+      filter.country = { $regex: country, $options: "i" };
+    }
+
+    if (status) {
+      filter.status = status;
+    }
+
+    const candidates = await Candidate.find(filter).limit(50).sort({ createdAt: -1 });
+
+    res.json({
+      success: true,
+      data: candidates,
+      total: candidates.length,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ======================
+// MARKETPLACE - UPDATE CANDIDATE STATUS
+// ======================
+router.patch("/marketplace/candidates/:id/status", requireAdminAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!status) {
+      return res.status(400).json({ success: false, error: "Status is required" });
+    }
+
+    const candidate = await Candidate.findOneAndUpdate(
+      {
+        $or: [
+          { _id: id },
+          { uniqueCode: id },
+          { phone: id },
+        ],
+      },
+      { status },
+      { new: true }
+    );
+
+    if (!candidate) {
+      return res.status(404).json({ success: false, error: "Candidate not found" });
+    }
+
+    res.json({
+      success: true,
+      message: `Candidate status updated to ${status}`,
+      data: candidate,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 module.exports = router;

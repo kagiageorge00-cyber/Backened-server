@@ -1,11 +1,12 @@
 const express = require('express');
+const path = require('path');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const Employer = require('../models/Employer');
 const EmployerNotification = require('../models/EmployerNotification');
 const {
   notifyEmployerWelcome,
-} = require('../services/notificationservice');
+} = require(path.join(__dirname, '..', 'services', 'notificationservice'));
 
 const JWT_SECRET = process.env.JWT_SECRET || 'employer_secret_key';
 const router = express.Router();

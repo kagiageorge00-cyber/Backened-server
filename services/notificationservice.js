@@ -1,6 +1,6 @@
-const { sendWhatsAppMessage } = require('./whatsapp');
-const { sendEmail } = require('./email');
-const { FRONTEND_URL } = require('./config');
+const { sendWhatsAppMessage } = require('../whatsapp');
+const { sendEmail } = require('../email');
+const { FRONTEND_URL } = require('../config');
 
 // Unified notification system
 async function sendNotification(user, message) {
