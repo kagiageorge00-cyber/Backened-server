@@ -1,10 +1,12 @@
 const nodemailer = require("nodemailer");
 const dns = require("dns");
+const { Resend } = require("resend");
 
 dns.setDefaultResultOrder("ipv4first");
 
 let transporter;
 let sgMail;
+let resend;
 
 function isSmtpEnabled() {
   return !(process.env.EMAIL_DISABLE_SMTP === "true" || process.env.DISABLE_SMTP === "true");
@@ -127,6 +129,16 @@ function getSendGrid() {
   return sgMail;
 }
 
+function getResend() {
+  if (resend) return resend;
+  
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) return null;
+  
+  resend = new Resend(apiKey);
+  return resend;
+}
+
 async function sendMailWithSendGrid(to, subject, text, html) {
   const sg = getSendGrid();
   if (!sg) {
@@ -149,48 +161,108 @@ async function sendMailWithSendGrid(to, subject, text, html) {
   return response;
 }
 
+async function sendMailWithResend(to, subject, text, html) {
+  const r = getResend();
+  if (!r) {
+    throw new Error("RESEND_API_KEY missing");
+  }
+
+  const from =
+    process.env.EMAIL_FROM ||
+    process.env.RESEND_FROM ||
+    process.env.SENDGRID_FROM ||
+    process.env.SMTP_FROM ||
+    "noreply@resend.dev";
+  
+  const response = await r.emails.send({
+    from,
+    to,
+    subject,
+    html: html || text,
+    text,
+  });
+
+  if (response.error) {
+    throw new Error(response.error.message || "Resend API error");
+  }
+
+  console.log("📧 Resend email sent:", response.data?.id);
+  return response.data;
+}
+
 async function sendEmail(to, subject, text, html) {
   if (!to) {
     console.warn("⚠️ No recipient email");
     return false;
   }
 
+  const resendKey = process.env.RESEND_API_KEY;
   const sendGridKey = process.env.SENDGRID_API_KEY || process.env.SENDGRID_KEY;
+  const isSendGridKeyValid = typeof sendGridKey === "string" && sendGridKey.startsWith("SG.");
   const fromAddress =
     process.env.EMAIL_FROM ||
+    process.env.RESEND_FROM ||
     process.env.SENDGRID_FROM ||
     process.env.SMTP_FROM ||
     process.env.EMAIL_USER ||
     process.env.SMTP_USER ||
     "no-reply@blissconnect.com";
   const smtpDisabled = !isSmtpEnabled();
-  const smtpFallbackDisabled = !isSmtpFallbackEnabled();
+  const isRender = Boolean(
+    process.env.RENDER ||
+    process.env.RENDER_SERVICE_ID ||
+    process.env.RENDER_INTERNAL_HOSTNAME
+  );
+  const shouldAttemptSmtp = !smtpDisabled && !isRender;
 
   console.log("📧 sendEmail called", {
     to,
     subject,
+    resend: Boolean(resendKey),
     sendGrid: Boolean(sendGridKey),
-    smtpDisabled,
-    smtpFallbackDisabled,
+    sendGridValid: isSendGridKeyValid,
+    smtp: !smtpDisabled,
+    render: isRender,
     from: fromAddress ? fromAddress.replace(/.(?=.{4})/g, "*") : undefined,
   });
 
-  if (sendGridKey) {
+  // Try Resend first (works on Render)
+  if (resendKey) {
     try {
-      await sendMailWithSendGrid(to, subject, text, html);
-      console.log("📧 SendGrid email queued");
+      await sendMailWithResend(to, subject, text, html);
+      console.log("📧 Resend email sent successfully");
       return true;
     } catch (err) {
-      console.error("❌ SendGrid error:", err.stack || err);
-      if (smtpDisabled || process.env.EMAIL_DISABLE_SMTP_FALLBACK === "true") {
-        return false;
-      }
-      console.log("🔁 Falling back to SMTP transport");
+      console.error("❌ Resend error:", err.stack || err);
+      // Fall through to next method
     }
   }
 
-  if (smtpDisabled) {
-    console.error("❌ SMTP is disabled and SendGrid is not configured.");
+  // Try SendGrid second
+  if (sendGridKey) {
+    if (!isSendGridKeyValid) {
+      console.warn("⚠️ Skipping SendGrid: invalid SENDGRID_API_KEY format");
+    } else {
+      try {
+        await sendMailWithSendGrid(to, subject, text, html);
+        console.log("📧 SendGrid email queued");
+        return true;
+      } catch (err) {
+        console.error("❌ SendGrid error:", err.stack || err);
+        // Fall through to SMTP
+      }
+    }
+  }
+
+  // Fall back to SMTP (works locally only)
+  if (!shouldAttemptSmtp) {
+    if (isRender) {
+      console.error(
+        "❌ SMTP fallback disabled on Render. Configure RESEND_API_KEY with a verified sending domain or use a valid SendGrid key."
+      );
+    } else {
+      console.error("❌ SMTP is disabled and no email service is configured.");
+    }
     return false;
   }
 
@@ -210,10 +282,6 @@ async function sendEmail(to, subject, text, html) {
     console.error("❌ SMTP Email error:", err.stack || err);
     if (err.response) {
       console.error("❌ SMTP response:", err.response);
-    }
-
-    if (smtpFallbackDisabled) {
-      return false;
     }
 
     console.log("🔁 Retrying SMTP with fallback transport (port 587 / STARTTLS)");
