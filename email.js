@@ -50,10 +50,10 @@ function getTransporter() {
 
   transporter = nodemailer.createTransport(transportOptions);
 
-  transporter.verify((err) => {
-    if (err) console.error("❌ SMTP error:", err);
-    else console.log("✅ SMTP ready");
-  });
+  transporter
+    .verify()
+    .then(() => console.log("✅ SMTP ready"))
+    .catch((err) => console.error("❌ SMTP verify failed:", err.stack || err));
 
   return transporter;
 }
@@ -130,10 +130,13 @@ async function sendEmail(to, subject, text, html) {
       html,
     });
 
-    console.log("📧 SMTP email sent:", info.messageId);
+    console.log("📧 SMTP email sent:", info.messageId, info);
     return true;
   } catch (err) {
-    console.error("❌ SMTP Email error:", err.message || err);
+    console.error("❌ SMTP Email error:", err.stack || err);
+    if (err.response) {
+      console.error("❌ SMTP response:", err.response);
+    }
     return false;
   }
 }
