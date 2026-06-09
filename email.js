@@ -1,12 +1,10 @@
 const nodemailer = require("nodemailer");
 const dns = require("dns");
-const { Resend } = require("resend");
 
 dns.setDefaultResultOrder("ipv4first");
 
 let transporter;
 let sgMail;
-let resend;
 
 function isSmtpEnabled() {
   return !(process.env.EMAIL_DISABLE_SMTP === "true" || process.env.DISABLE_SMTP === "true");
