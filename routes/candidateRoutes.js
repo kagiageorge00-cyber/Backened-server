@@ -93,6 +93,20 @@ router.get('/marketplace', async (req, res) => {
   }
 });
 
+// GET /deployed
+router.get('/deployed', async (req, res) => {
+  try {
+    const candidates = await Candidate.find({ status: 'deployed' }).sort({ createdAt: -1 });
+    return res.json({
+      success: true,
+      count: candidates.length,
+      data: candidates,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // GET /form/data
 router.get('/form/data', async (req, res) => {
   try {
@@ -147,6 +161,7 @@ router.post('/form/submit', async (req, res) => {
       medicalUrl,
       resumeUrl,
       additionalUrl,
+      paymentId,
     } = req.body;
 
     const requiredFields = [
@@ -198,7 +213,7 @@ router.post('/form/submit', async (req, res) => {
       passwordPlain = generateTemporaryPassword();
       const hashedPassword = await bcrypt.hash(passwordPlain, 10);
 
-      candidate = await Candidate.create({
+      const createObj = {
         fullName,
         name: fullName,
         email,
@@ -225,7 +240,11 @@ router.post('/form/submit', async (req, res) => {
           coverLetter: null,
           uploads: [],
         },
-      });
+      };
+
+      if (paymentId) createObj.paymentId = paymentId;
+
+      candidate = await Candidate.create(createObj);
     } else {
       candidate.uniqueCode = candidate.uniqueCode || generateCandidateCode();
 
@@ -259,6 +278,19 @@ router.post('/form/submit', async (req, res) => {
       candidate.isVerified = true;
       candidate.status = 'available';
       candidate.paymentStatus = 'completed';
+      if (paymentId) {
+        candidate.paymentId = paymentId;
+        try {
+          const PaymentModel = require('../models/Payment');
+          const pay = await PaymentModel.findById(paymentId);
+          if (pay) {
+            pay.formLink = pay.formLink || `${FRONTEND_URL}/#/candidate-form/${pay._id}`;
+            await pay.save();
+          }
+        } catch (err) {
+          console.warn('Could not link payment to candidate:', err.message || err);
+        }
+      }
 
       await candidate.save();
     }

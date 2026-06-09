@@ -11,8 +11,8 @@ jest.mock('../models/User', () => ({
   findOne: jest.fn().mockResolvedValue(null),
 }));
 
-jest.mock('../services/notificationservice', () => ({
-  notifyPaymentSuccess: jest.fn(async () => true),
+jest.mock('../email', () => ({
+  sendEmail: jest.fn(async () => true),
 }));
 
 const express = require('express');
@@ -24,7 +24,7 @@ jest.mock('../models/candidate', () => ({
 }));
 
 const Candidate = require('../models/candidate');
-const { notifyPaymentSuccess } = require('../services/notificationservice');
+const { sendEmail } = require('../email');
 const applyRoutes = require('../routes/applyRoutes');
 const submitPayments = require('../submitpayments');
 
@@ -80,9 +80,14 @@ describe('Apply flow end to end', () => {
     expect(paymentRes.body.success).toBe(true);
     expect(paymentRes.body.paymentId).toBeDefined();
     expect(paymentRes.body.message).toContain('Payment submitted successfully');
-    expect(notifyPaymentSuccess).toHaveBeenCalledWith({
-      email: 'applicant@example.com',
-      name: 'Test Applicant',
-    });
+
+    await new Promise(resolve => setImmediate(resolve));
+
+    expect(sendEmail).toHaveBeenCalledWith(
+      'applicant@example.com',
+      'Payment Received ✅ - Bliss Connect',
+      expect.any(String),
+      expect.any(String)
+    );
   });
 });

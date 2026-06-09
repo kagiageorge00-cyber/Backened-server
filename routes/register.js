@@ -124,18 +124,30 @@ router.post("/register", async (req, res) => {
     });
 
     // ======================
-    // SEND EMAILS 📧
+    // SEND EMAILS 📧 (BACKGROUND ONLY)
     // ======================
-    await notifyRegistrationSuccess({
-      email,
-      name: fullName,
-      uniqueCode,
-      password: passwordPlain,
+    setImmediate(async () => {
+      try {
+        await notifyRegistrationSuccess({
+          email,
+          name: fullName,
+          uniqueCode,
+          password: passwordPlain,
+        });
+      } catch (notificationError) {
+        console.error('❌ notifyRegistrationSuccess failed:', notificationError);
+      }
     });
 
-    await notifyMarketplaceListing({
-      email,
-      name: fullName,
+    setImmediate(async () => {
+      try {
+        await notifyMarketplaceListing({
+          email,
+          name: fullName,
+        });
+      } catch (notificationError) {
+        console.error('❌ notifyMarketplaceListing failed:', notificationError);
+      }
     });
 
     // ======================

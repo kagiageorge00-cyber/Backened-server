@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Interview = require('../models/Interview');
-const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
 
 router.post('/request', async (req, res) => {
   try {
@@ -94,7 +94,7 @@ router.post('/:interviewId/meeting', async (req, res) => {
     const interview = await Interview.findOne({ interviewId });
     if (!interview) return res.status(404).json({ success: false, error: 'Interview not found' });
 
-    const meetingLink = `https://meet.blissconnect.local/${require('uuid').v4()}`;
+    const meetingLink = `https://meet.blissconnect.local/${crypto.randomUUID()}`;
     interview.meetingLink = meetingLink;
     await interview.save();
 

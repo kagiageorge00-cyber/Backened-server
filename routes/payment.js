@@ -228,4 +228,33 @@ router.post("/verify", async (req, res) => {
   }
 });
 
+// ======================
+// VALIDATE PAYMENT FOR FORM LINK (PUBLIC)
+// ======================
+router.get('/:paymentId/validate', async (req, res) => {
+  try {
+    const { paymentId } = req.params;
+    if (!paymentId) return res.status(400).json({ success: false, error: 'paymentId required' });
+
+    const payment = await Payment.findById(paymentId);
+    if (!payment) return res.status(404).json({ success: false, message: 'Payment not found' });
+
+    if (payment.status !== 'approved') {
+      return res.status(200).json({ success: false, message: 'Payment not approved' });
+    }
+
+    return res.json({
+      success: true,
+      paymentId: payment._id,
+      formLink: payment.formLink || `${FRONTEND_URL}/#/candidate-form/${payment._id}`,
+      userId: payment.userId,
+      amount: payment.amount,
+      generatedAt: payment.linkGeneratedAt || payment.createdAt,
+    });
+  } catch (err) {
+    console.error('❌ validate payment error:', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 module.exports = router;

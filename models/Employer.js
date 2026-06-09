@@ -14,6 +14,10 @@ const employerSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    companyLogo: {
+      type: String,
+      trim: true,
+    },
     contactPerson: {
       type: String,
       required: true,
@@ -39,12 +43,7 @@ const employerSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
-    industry: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    companyAddress: {
+    address: {
       type: String,
       trim: true,
     },
@@ -52,19 +51,24 @@ const employerSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    description: {
+      type: String,
+      trim: true,
+    },
+    status: {
+      type: String,
+      enum: ['pending', 'active', 'blocked', 'suspended'],
+      default: 'pending',
+      index: true,
+    },
     password: {
       type: String,
       required: true,
     },
-    registrationDate: {
-      type: Date,
-      default: Date.now,
-    },
-    verificationStatus: {
-      type: String,
-      enum: ['pending', 'verified', 'rejected'],
-      default: 'pending',
-    },
+    forgotPasswordToken: String,
+    forgotPasswordExpires: Date,
+    resetPasswordToken: String,
+    resetPasswordExpires: Date,
   },
   {
     timestamps: true,

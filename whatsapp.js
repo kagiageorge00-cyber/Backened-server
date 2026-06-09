@@ -2,7 +2,7 @@
 // Reads credentials from environment variables
 // Usage: sendWhatsAppMessage(to, message)
 
-const fetch = require('node-fetch');
+const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 require('dotenv').config();
 
 const PHONE_ID = process.env.WHATSAPP_PHONE_ID;

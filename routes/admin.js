@@ -142,6 +142,15 @@ router.post(
       }
 
       payment.status = "approved";
+      // generate application form link and save
+      try {
+        const formLink = `${FRONTEND_URL}/#/candidate-form/${payment._id}`;
+        payment.formLink = formLink;
+        payment.linkGeneratedAt = new Date();
+        await payment.save();
+      } catch (linkErr) {
+        console.error('❌ Failed to generate/save form link:', linkErr);
+      }
       await payment.save();
 
       const candidate = await Candidate.findOne({
@@ -170,6 +179,7 @@ router.post(
       res.json({
         success: true,
         message: "Payment approved successfully",
+        formLink: payment.formLink || null,
       });
 
       const email = candidate?.email || payment.metadata?.email;
@@ -232,6 +242,29 @@ async function fetchCandidates(req, res) {
 }
 
 async function fetchCandidateById(req, res) {
+
+// ======================
+// GET FORM LINK (ADMIN)
+// ======================
+router.get('/payments/:paymentId/form-link', requireAdminAuth, async (req, res) => {
+  try {
+    const { paymentId } = req.params;
+    const payment = await Payment.findById(paymentId);
+    if (!payment) return res.status(404).json({ success: false, error: 'Payment not found' });
+
+    const candidate = await Candidate.findOne({ $or: [ { phone: payment.userId }, { email: payment.userId }, { uniqueCode: payment.userId } ] });
+
+    return res.json({
+      success: true,
+      paymentId: payment._id,
+      phone: payment.userId,
+      candidateName: candidate ? (candidate.fullName || candidate.name) : null,
+      formLink: payment.formLink || null,
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
   try {
     const { id } = req.params;
 

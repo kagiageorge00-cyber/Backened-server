@@ -66,11 +66,17 @@ async function notifyRegistrationSuccess(user) {
 
   // Send welcome email
   if (user.email) {
-    sendEmail(
-      user.email,
-      'Welcome to Bliss Connect 🎉',
-      `Hello ${user.name || 'there'},\n\nWelcome to Bliss Connect! 🎉\n\nYour account has been created successfully.\n\nNext steps:\n1. Complete your payment\n2. Fill out your candidate form\n3. Get matched with opportunities\n\nBest regards,\nBliss Connect Team`
-    );
+    setImmediate(async () => {
+      try {
+        await sendEmail(
+          user.email,
+          'Welcome to Bliss Connect 🎉',
+          `Hello ${user.name || 'there'},\n\nWelcome to Bliss Connect! 🎉\n\nYour account has been created successfully.\n\nNext steps:\n1. Complete your payment\n2. Fill out your candidate form\n3. Get matched with opportunities\n\nBest regards,\nBliss Connect Team`
+        );
+      } catch (emailErr) {
+        console.error('❌ Registration email failed:', emailErr.message || emailErr);
+      }
+    });
   }
 }
 
@@ -112,13 +118,20 @@ async function notifyMarketplaceListing(user) {
   });
 
   if (user.email) {
-    sendEmail(
-      user.email,
-      'You\'re Now on Bliss Marketplace! 🎉',
-      `Hello ${user.name || 'there'},\n\nCongratulations! 🎉 You are now listed on the Bliss Connect marketplace.\n\nEmployers can now view your profile and contact you with opportunities.\n\nBest regards,\nBliss Connect Team`
-    );
+    setImmediate(async () => {
+      try {
+        await sendEmail(
+          user.email,
+          'You\'re Now on Bliss Marketplace! 🎉',
+          `Hello ${user.name || 'there'},\n\nCongratulations! 🎉 You are now listed on the Bliss Connect marketplace.\n\nEmployers can now view your profile and contact you with opportunities.\n\nBest regards,\nBliss Connect Team`
+        );
+      } catch (emailErr) {
+        console.error('❌ Marketplace listing email failed:', emailErr.message || emailErr);
+      }
+    });
   }
 }
+
 
 module.exports = {
   notifyPaymentSuccess,

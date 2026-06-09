@@ -59,6 +59,7 @@ const deploymentsRoutes = require('./routes/deployments');
 const notificationsRoutes = require('./routes/notifications');
 const contractsRoutes = require('./routes/contracts');
 const adminStatsRoutes = require('./routes/adminStats');
+const candidateApiRoutes = require('./routes/candidate_api');
 
 // Gracefully handle flightSearch module (may not exist in all deployments)
 let flightSearch;
@@ -76,9 +77,9 @@ try {
 // ======================
 app.use('/api', submitPaymentsLegacy);
 app.use('/api/candidates', candidateRoutes);
+app.use('/api/candidate', candidateRoutes);
 app.use('/api/apply', applyRoutes);
 app.use('/api/register', registerRoutes);
-app.use('/api/candidate', registerRoutes);
 app.use('/api/employers', employerRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/upload', uploadRoutes);
@@ -92,6 +93,8 @@ app.use('/api/deployments', deploymentsRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/contracts', contractsRoutes);
 app.use('/api/admin/stats', adminStatsRoutes);
+app.use('/api/candidate_portal', candidateApiRoutes);
+app.use('/api/candidate/v2', candidateApiRoutes);
 // debug routes removed
 
 // ======================

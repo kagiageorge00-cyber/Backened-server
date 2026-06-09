@@ -52,6 +52,14 @@ const paymentSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Mixed, // more flexible than Object
       default: {},
     },
+    formLink: {
+      type: String,
+      default: null,
+    },
+    linkGeneratedAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,
