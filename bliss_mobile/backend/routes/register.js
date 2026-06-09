@@ -8,7 +8,7 @@ const Candidate = require("../models/candidate");
 const {
   notifyRegistrationSuccess,
   notifyMarketplaceListing,
-} = require("../notificationService");
+} = require("../services/notificationservice");
 
 // ======================
 // 🔐 HELPERS

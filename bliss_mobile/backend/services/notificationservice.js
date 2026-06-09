@@ -1,152 +1,128 @@
-const nodemailer = require('nodemailer');
+const { sendWhatsAppMessage } = require('../whatsapp');
+const { sendEmail } = require('../email');
+const { FRONTEND_URL } = require('../config');
 
-// ======================
-// ✅ EMAIL CONFIG
-// ======================
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
-
-// ======================
-// ✅ GENERIC EMAIL SENDER
-// ======================
-async function sendEmail(to, subject, message) {
+// Unified notification system
+async function sendNotification(user, message) {
   try {
-    await transporter.sendMail({
-      from: `"Bliss Connect" <${process.env.EMAIL_USER}>`,
-      to,
-      subject,
-      html: message,
-    });
-
-    console.log('✅ Email sent to', to);
-  } catch (err) {
-    console.error('❌ Email error:', err.message);
+    await sendWhatsAppMessage(user.phone, message);
+  } catch (e) {
+    console.log('[NOTIFY FALLBACK]', user.phone, message);
   }
 }
 
-// ======================
-// ✅ PAYMENT SUBMITTED EMAIL
-// ======================
+// Reminder notification (if medical not booked after 24h)
+async function sendMedicalReminder(user) {
+  const message = 'Reminder: Please book your medical test to continue your application on Bliss Connect.';
+  await sendNotification(user, message);
+}
+
+module.exports.sendNotification = sendNotification;
+module.exports.sendMedicalReminder = sendMedicalReminder;
+
+// ===============================================
+// PAYMENT SUCCESS NOTIFICATION (EMAIL + WhatsApp)
+// ===============================================
 async function notifyPaymentSuccess(user) {
-  if (!user.email) return;
+  const message = 'Hello 👋, your payment has been received successfully. Your application is now being processed.';
+  
+  // Fire-and-forget: send both WhatsApp and email without waiting
+  setImmediate(async () => {
+    try {
+      // Try WhatsApp
+      await sendWhatsAppMessage(user.phone, message);
+    } catch (e) {
+      console.log('WhatsApp notification failed, continuing with email');
+    }
+  });
 
-  const message = `
-    <h2>Payment Submitted ✅</h2>
-    <p>Hello ${user.name || 'User'},</p>
-    <p>Your payment has been successfully submitted.</p>
-    <p>Our team is currently verifying it.</p>
-    <br/>
-    <p>Bliss Support Team</p>
-  `;
-
-  await sendEmail(user.email, 'Payment Submitted - Bliss Connect', message);
+  // Send email with candidate form link
+  if (user.email) {
+    // link using phone param — uniqueCode may not exist yet
+    const candidateFormLink = user.phone
+      ? `${FRONTEND_URL}/candidate-form?phone=${encodeURIComponent(user.phone)}`
+      : `${FRONTEND_URL}/candidate-form`;
+    sendEmail(
+      user.email,
+      'Payment Received - Complete Your Form ✅',
+      `Hello ${user.name || 'there'},\n\nYour payment has been received successfully! ✅\n\nNext step: Complete your candidate form to get verified:\n${candidateFormLink}\n\nBest regards,\nBliss Connect Team`
+    );
+  }
 }
 
-// ======================
-// ✅ REGISTRATION EMAIL
-// ======================
+// ===============================================
+// REGISTRATION SUCCESS NOTIFICATION
+// ===============================================
 async function notifyRegistrationSuccess(user) {
-  if (!user.email) return;
+  const message = user.message || 'Welcome to Bliss Connect 🎉. Your account has been created successfully.';
+  
+  setImmediate(async () => {
+    try {
+      await sendWhatsAppMessage(user.phone, message);
+    } catch (e) {
+      console.log('WhatsApp notification failed');
+    }
+  });
 
-  const portalUrl = (process.env.FRONTEND_URL || 'https://blisssconnect12.netlify.app').replace(/\/$/, '');
-  const loginUrl = user.uniqueCode
-    ? `${portalUrl}/candidatePortal?candidateId=${encodeURIComponent(user.uniqueCode)}`
-    : `${portalUrl}/candidatePortal`;
-
-  const message = `
-    <h2>Registration Complete 🎉</h2>
-    <p>Hello ${user.name || 'Candidate'},</p>
-    <p>Your registration is now complete.</p>
-    <p>Use the following credentials to log in to the candidate portal:</p>
-    <ul>
-      <li><strong>Candidate ID:</strong> ${user.uniqueCode}</li>
-      <li><strong>Password:</strong> ${user.password}</li>
-    </ul>
-    <p>Login here: <a href="${loginUrl}">${loginUrl}</a></p>
-    <p>Please keep these details safe.</p>
-  `;
-
-  await sendEmail(user.email, 'Bliss Connect Registration Successful', message);
+  // Send welcome email
+  if (user.email) {
+    sendEmail(
+      user.email,
+      'Welcome to Bliss Connect 🎉',
+      `Hello ${user.name || 'there'},\n\nWelcome to Bliss Connect! 🎉\n\nYour account has been created successfully.\n\nNext steps:\n1. Complete your payment\n2. Fill out your candidate form\n3. Get matched with opportunities\n\nBest regards,\nBliss Connect Team`
+    );
+  }
 }
 
-// ======================
-// ✅ MARKETPLACE LISTING EMAIL
-// ======================
+// ===============================================
+// APPLICATION UPDATE NOTIFICATION
+// ===============================================
+async function notifyApplicationUpdate(user) {
+  const message = 'Your application status has been updated. Please check your dashboard.';
+  
+  setImmediate(async () => {
+    try {
+      await sendWhatsAppMessage(user.phone, message);
+    } catch (e) {
+      console.log('WhatsApp notification failed');
+    }
+  });
+
+  if (user.email) {
+    sendEmail(
+      user.email,
+      'Application Status Update - Bliss Connect 📋',
+      `Hello ${user.name || 'there'},\n\nYour application status has been updated!\n\nPlease check your dashboard for more details.\n\nBest regards,\nBliss Connect Team`
+    );
+  }
+}
+
+// ===============================================
+// MARKETPLACE LISTING NOTIFICATION
+// ===============================================
 async function notifyMarketplaceListing(user) {
-  if (!user.email) return;
+  const message = 'Congratulations! 🎉 You are now listed on the Bliss Connect marketplace. Employers can now view your profile.';
+  
+  setImmediate(async () => {
+    try {
+      await sendWhatsAppMessage(user.phone, message);
+    } catch (e) {
+      console.log('WhatsApp notification failed');
+    }
+  });
 
-  const message = `
-    <h2>Your profile is now on the market</h2>
-    <p>Hello ${user.name || 'Candidate'},</p>
-    <p>Your application is now visible to employers on the Bliss Connect marketplace.</p>
-    <p>We will notify you when potential employers are available.</p>
-    <p>Thank you for joining Bliss Connect.</p>
-  `;
-
-  await sendEmail(user.email, 'Your Application is Now on the Market', message);
-}
-
-// ======================
-// ✅ PAYMENT APPROVAL EMAIL
-// ======================
-async function notifyPaymentApproved(user) {
-  if (!user.email) return;
-
-  const portalUrl = (process.env.FRONTEND_URL || 'https://blisssconnect12.netlify.app').replace(/\/$/, '');
-  const formUrl = `${portalUrl}/candidate-form${user.candidateId ? `?candidateId=${encodeURIComponent(user.candidateId)}` : ''}`;
-
-  const message = `
-    <h2>Payment Approved ✅</h2>
-    <p>Hello ${user.name || 'Candidate'},</p>
-    <p>Your payment has been approved by our team.</p>
-    ${user.candidateId ? `<p>Your Candidate ID is <strong>${user.candidateId}</strong>.</p>` : ''}
-    <p>Please complete your registration in the candidate form:</p>
-    <p><a href="${formUrl}">${formUrl}</a></p>
-    <p>Once your registration is complete, you will receive login details and marketplace confirmation.</p>
-  `;
-
-  await sendEmail(user.email, 'Payment Approved — Complete Your Registration', message);
-}
-
-// ======================
-// ✅ APPLICATION UPDATE
-// ======================
-async function notifyApplicationUpdate(user, status) {
-  if (!user.email) return;
-
-  const message = `
-    <h2>Application Update</h2>
-    <p>Hello ${user.name},</p>
-    <p>Your application status is now: <b>${status}</b></p>
-  `;
-
-  await sendEmail(user.email, 'Application Update', message);
-}
-
-// ======================
-// ✅ GENERIC NOTIFICATION
-// ======================
-async function sendNotification(user, text) {
-  if (!user.email) return;
-
-  const message = `
-    <p>Hello ${user.name || 'User'},</p>
-    <p>${text}</p>
-  `;
-
-  await sendEmail(user.email, 'Bliss Notification', message);
+  if (user.email) {
+    sendEmail(
+      user.email,
+      'You\'re Now on Bliss Marketplace! 🎉',
+      `Hello ${user.name || 'there'},\n\nCongratulations! 🎉 You are now listed on the Bliss Connect marketplace.\n\nEmployers can now view your profile and contact you with opportunities.\n\nBest regards,\nBliss Connect Team`
+    );
+  }
 }
 
 module.exports = {
   notifyPaymentSuccess,
-  notifyPaymentApproved,
   notifyRegistrationSuccess,
-  notifyMarketplaceListing,
   notifyApplicationUpdate,
-  sendNotification,
+  notifyMarketplaceListing,
 };
