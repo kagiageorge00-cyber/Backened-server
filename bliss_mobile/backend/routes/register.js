@@ -5,11 +5,10 @@ const router = express.Router();
 const bcrypt = require("bcryptjs");
 
 const Candidate = require("../models/candidate");
-const Payment = require("../models/Payment");
 const {
   notifyRegistrationSuccess,
   notifyMarketplaceListing,
-} = require("../services/notificationservice");
+} = require("../notificationService");
 
 // ======================
 // 🔐 HELPERS
@@ -24,7 +23,9 @@ function generatePassword(length = 8) {
 }
 
 function generateCandidateCode() {
-  return "BLISS-" + Math.floor(100000 + Math.random() * 900000); // cleaner ID
+  const year = new Date().getFullYear();
+  const seq = Math.floor(1000 + Math.random() * 9000); // 4 digits
+  return `CAND-${year}-${seq}`;
 }
 
 // ======================
@@ -39,22 +40,48 @@ router.post("/register", async (req, res) => {
       country,
       skills,
       experience,
+      photoUrl,
+      videoUrl,
+      passportUrl,
+      medicalUrl,
+      resumeUrl,
+      additionalUrl,
     } = req.body;
 
     // ======================
     // VALIDATION
     // ======================
-    if (!fullName || !email || !phone) {
+    const requiredFields = [
+      { key: 'fullName', value: fullName },
+      { key: 'phone', value: phone },
+      { key: 'country', value: country },
+      { key: 'skills', value: skills },
+      { key: 'experience', value: experience },
+      { key: 'photoUrl', value: photoUrl },
+      { key: 'videoUrl', value: videoUrl },
+      { key: 'passportUrl', value: passportUrl },
+      { key: 'medicalUrl', value: medicalUrl },
+      { key: 'resumeUrl', value: resumeUrl },
+    ];
+
+    const missingField = requiredFields.find((field) => {
+      const value = field.value;
+      return value === undefined || value === null || (typeof value === 'string' && !value.trim());
+    });
+
+    if (missingField) {
       return res.status(400).json({
         success: false,
-        error: "fullName, email and phone are required",
+        error: `${missingField.key} is required`,
       });
     }
 
     // ======================
     // CHECK EXISTING
     // ======================
-    const existing = await Candidate.findOne({ phone });
+    const existing = await Candidate.findOne({
+      $or: [{ phone }, { email }],
+    });
     if (existing) {
       return res.status(409).json({
         success: false,
@@ -62,29 +89,11 @@ router.post("/register", async (req, res) => {
       });
     }
 
-    const { registrationPaid } = req.body;
-
-    // ======================
-    // CHECK PAYMENT FIRST 🔒
-    // ======================
-    const payment = registrationPaid === true
-      ? true
-      : await Payment.findOne({
-          userId: phone,
-          status: "completed",
-        });
-
-    if (!payment) {
-      return res.status(403).json({
-        success: false,
-        error: "Complete payment before registering",
-      });
-    }
-
     // ======================
     // GENERATE CREDENTIALS
     // ======================
-    const passwordPlain = generatePassword();
+    // Temporary password format: BLISS####
+    const passwordPlain = `BLISS${Math.floor(1000 + Math.random() * 9000)}`;
     const hashedPassword = await bcrypt.hash(passwordPlain, 10);
     const uniqueCode = generateCandidateCode();
 
@@ -99,7 +108,12 @@ router.post("/register", async (req, res) => {
       country,
       skills,
       experience,
-
+      photoUrl,
+      videoUrl,
+      passportUrl,
+      medicalUrl,
+      resumeUrl,
+      additionalUrl,
       uniqueCode, // ✅ correct field (not candidateId)
       password: hashedPassword,
 
@@ -126,12 +140,19 @@ router.post("/register", async (req, res) => {
     // ======================
     // RESPONSE
     // ======================
-    return res.status(201).json({
+    const resp = {
       success: true,
-      message: "Candidate registered successfully",
+      message: 'Candidate registered successfully',
       candidateId: uniqueCode,
       data: candidate,
-    });
+    };
+
+    // include plain password so frontend can display it once (only on create)
+    if (passwordPlain) {
+      resp.password = passwordPlain;
+    }
+
+    return res.status(201).json(resp);
 
   } catch (err) {
     console.error("❌ REGISTER ERROR:", err);
