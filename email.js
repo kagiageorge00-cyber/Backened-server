@@ -6,9 +6,7 @@ dns.setDefaultResultOrder("ipv4first");
 let transporter;
 let sgMail;
 
-async function getTransporter() {
-  if (transporter) return transporter;
-
+async function buildTransportOptions(overrides = {}) {
   const user = process.env.EMAIL_USER || process.env.SMTP_USER;
   const pass = process.env.EMAIL_PASS || process.env.SMTP_PASS;
 
@@ -22,7 +20,6 @@ async function getTransporter() {
     ? process.env.EMAIL_SECURE === "true"
     : port === 465;
   const service = process.env.EMAIL_SERVICE || process.env.SMTP_SERVICE || null;
-  const fromAddress = process.env.EMAIL_FROM || process.env.SMTP_FROM || user;
 
   const transportOptions = {
     auth: { user, pass },
@@ -31,6 +28,7 @@ async function getTransporter() {
     greetingTimeout: 20000,
     socketTimeout: 30000,
     family: 4,
+    ...overrides,
   };
 
   if (service) {
@@ -39,32 +37,67 @@ async function getTransporter() {
     transportOptions.host = host;
     transportOptions.port = port;
     transportOptions.secure = secure;
-
-    try {
-      const lookup = await dns.promises.lookup(host, { family: 4 });
-      transportOptions.host = lookup.address;
-      console.log("📧 Resolved SMTP host to IPv4:", transportOptions.host);
-    } catch (lookupErr) {
-      console.warn("⚠️ SMTP host lookup failed, continuing with host name:", host, lookupErr.message || lookupErr);
-    }
   }
+
+  return { transportOptions, service, host, port, secure };
+}
+
+async function getTransporter() {
+  if (transporter) return transporter;
+
+  const { transportOptions, service, host, port, secure } = buildTransportOptions();
+  const currentTransport = nodemailer.createTransport(transportOptions);
+
+  currentTransport
+    .verify()
+    .then(() => {
+      transporter = currentTransport;
+      console.log("✅ SMTP ready");
+    })
+    .catch((err) => {
+      transporter = null;
+      console.error("❌ SMTP verify failed:", err.stack || err);
+    });
 
   console.log("📧 SMTP config:", {
     host: service ? undefined : host,
     port: service ? undefined : port,
     secure: service ? undefined : secure,
     service,
-    from: fromAddress ? fromAddress.replace(/.(?=.{4})/g, "*") : undefined,
+    from: process.env.EMAIL_FROM || process.env.SMTP_FROM || process.env.EMAIL_USER || process.env.SMTP_USER,
   });
 
-  transporter = nodemailer.createTransport(transportOptions);
+  return currentTransport;
+}
 
-  transporter
+async function getFallbackTransport() {
+  const { transportOptions, service, host, port, secure } = buildTransportOptions({
+    port: 587,
+    secure: false,
+    requireTLS: true,
+  });
+
+  const fallbackTransport = nodemailer.createTransport(transportOptions);
+
+  fallbackTransport
     .verify()
-    .then(() => console.log("✅ SMTP ready"))
-    .catch((err) => console.error("❌ SMTP verify failed:", err.stack || err));
+    .then(() => {
+      transporter = fallbackTransport;
+      console.log("✅ SMTP fallback ready");
+    })
+    .catch((err) => {
+      console.error("❌ SMTP fallback verify failed:", err.stack || err);
+    });
 
-  return transporter;
+  console.log("📧 SMTP fallback config:", {
+    host: service ? undefined : host,
+    port: 587,
+    secure: false,
+    service,
+    from: process.env.EMAIL_FROM || process.env.SMTP_FROM || process.env.EMAIL_USER || process.env.SMTP_USER,
+  });
+
+  return fallbackTransport;
 }
 
 function getSendGrid() {
@@ -146,6 +179,31 @@ async function sendEmail(to, subject, text, html) {
     if (err.response) {
       console.error("❌ SMTP response:", err.response);
     }
+
+    // Retry once using STARTTLS on port 587 for Gmail-like servers.
+    if (!sendGridKey) {
+      console.log("🔁 Retrying SMTP with fallback transport (port 587 / STARTTLS)");
+      transporter = null;
+      try {
+        const fallbackTransport = await getFallbackTransport();
+        const fallbackInfo = await fallbackTransport.sendMail({
+          from: `"Bliss Connect" <${fromAddress}>`,
+          to,
+          subject,
+          text,
+          html,
+        });
+
+        console.log("📧 SMTP fallback email sent:", fallbackInfo.messageId, fallbackInfo);
+        return true;
+      } catch (fallbackErr) {
+        console.error("❌ SMTP fallback error:", fallbackErr.stack || fallbackErr);
+        if (fallbackErr.response) {
+          console.error("❌ SMTP fallback response:", fallbackErr.response);
+        }
+      }
+    }
+
     return false;
   }
 }
