@@ -30,6 +30,7 @@ function getTransporter() {
     connectionTimeout: 20000,
     greetingTimeout: 20000,
     socketTimeout: 30000,
+    family: 4,
   };
 
   if (service) {
