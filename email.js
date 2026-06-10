@@ -5,6 +5,7 @@ dns.setDefaultResultOrder("ipv4first");
 
 let transporter;
 let sgMail;
+let resendClient;
 
 function isSmtpEnabled() {
   return !(process.env.EMAIL_DISABLE_SMTP === "true" || process.env.DISABLE_SMTP === "true");
@@ -127,6 +128,36 @@ function getSendGrid() {
   return sgMail;
 }
 
+function getResend() {
+  if (resendClient) return resendClient;
+  const key = process.env.RESEND_API_KEY || process.env.RESEND_KEY || process.env.RESEND;
+  if (!key) return null;
+  try {
+    const { Resend } = require('resend');
+    resendClient = new Resend(key);
+    return resendClient;
+  } catch (err) {
+    console.warn('⚠️ Resend package not available or failed to initialize:', err.message || err);
+    return null;
+  }
+}
+
+async function sendMailWithResend(to, subject, text, html) {
+  const resend = getResend();
+  if (!resend) throw new Error('RESEND_API_KEY missing');
+
+  const from = process.env.EMAIL_FROM || process.env.RESEND_FROM || process.env.EMAIL_USER || 'no-reply@blissconnect.com';
+
+  const resp = await resend.emails.send({
+    from,
+    to,
+    subject,
+    html,
+  });
+  console.log('📧 Resend response:', resp && resp.id ? resp.id : resp);
+  return resp;
+}
+
 async function sendMailWithSendGrid(to, subject, text, html) {
   const sg = getSendGrid();
   if (!sg) {
@@ -175,7 +206,21 @@ async function sendEmail(to, subject, text, html) {
     from: fromAddress ? fromAddress.replace(/.(?=.{4})/g, "*") : undefined,
   });
 
-  // Try SendGrid first (if key is valid)
+  // Try Resend first (preferred for this deployment)
+  const resendKey = process.env.RESEND_API_KEY || process.env.RESEND_KEY || process.env.RESEND;
+  const hasResend = typeof resendKey === 'string' && resendKey.startsWith('re_');
+  if (hasResend) {
+    try {
+      await sendMailWithResend(to, subject, text, html);
+      console.log('📧 Resend email queued');
+      return true;
+    } catch (err) {
+      console.error('❌ Resend error:', err.stack || err);
+      // fall through to other providers
+    }
+  }
+
+  // Try SendGrid (if key is valid)
   if (sendGridKey) {
     if (!isSendGridKeyValid) {
       console.warn("⚠️ Skipping SendGrid: invalid SENDGRID_API_KEY format");
