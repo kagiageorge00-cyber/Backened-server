@@ -210,12 +210,30 @@ router.post(
           try {
             await sendEmail(
               email,
-              "Payment Approved ✅",
-              `Hello ${name}, your payment is approved.`,
-              `<h2>Payment Approved ✅</h2>
-               <p>Hello ${name}</p>
-               <p>Complete form:</p>
-               <a href="${link}">Open Form</a>`
+              "Payment Approved – Bliss Connect",
+              `Hello ${name}, your payment has been approved. Please complete the next step by submitting your candidate form.`,
+              `
+              <div style="font-family: Arial, sans-serif; color: #333; padding: 24px; max-width: 600px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; border-bottom: 1px solid #e0e0e0; padding-bottom: 16px;">
+                  <div>
+                    <img src="https://blissconnect12.netlify.app/assets/images/logo.png" alt="Bliss Connect" style="max-height: 48px;" />
+                  </div>
+                  <div style="text-align: right; color: #777; font-size: 14px;">
+                    <p style="margin: 0;">Payment Approved</p>
+                  </div>
+                </div>
+                <p style="font-size: 16px; line-height: 1.6; margin: 0 0 16px;">Hello ${name},</p>
+                <p style="font-size: 16px; line-height: 1.6; margin: 0 0 16px;">Your payment has been reviewed and approved successfully. Thank you for completing this step.</p>
+                <p style="font-size: 16px; line-height: 1.6; margin: 0 0 16px;">Please proceed to complete your candidate form using the link below:</p>
+                <p style="margin: 0 0 24px;"><a href="${link}" style="display: inline-block; padding: 12px 20px; background-color: #0056d6; color: #ffffff; text-decoration: none; border-radius: 4px;">Complete Candidate Form</a></p>
+                <p style="font-size: 16px; line-height: 1.6; margin: 0 0 16px;">If you need assistance, reply to this email and our support team will be happy to help.</p>
+                <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #e0e0e0; color: #777; font-size: 14px;">
+                  <p style="margin: 0;">Bliss Connect</p>
+                  <p style="margin: 4px 0 0;">Dedicated support for overseas placement.</p>
+                  <p style="margin: 4px 0 0;">Need assistance? Email <a href="mailto:blssspprtteam@gmail.com" style="color: #0056d6; text-decoration: none;">blssspprtteam@gmail.com</a></p>
+                </div>
+              </div>
+              `
             );
           } catch (emailErr) {
             console.error("❌ Approval email error:", emailErr);
