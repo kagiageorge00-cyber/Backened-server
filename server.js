@@ -1,6 +1,7 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
 require('dotenv').config();
@@ -20,6 +21,32 @@ app.use(express.urlencoded({ extended: true }));
 // STATIC FILES
 // ======================
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+const downloadsDir = path.join(__dirname, 'downloads');
+app.use('/downloads', express.static(downloadsDir));
+
+app.get('/api/downloads/latest', (req, res) => {
+  const fileName = 'BlissConnect.apk';
+  const filePath = path.join(downloadsDir, fileName);
+
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({
+      success: false,
+      error:
+        'APK not available. Place BlissConnect.apk in backend/downloads to enable direct download.',
+    });
+  }
+
+  const host = req.get('host');
+  const protocol = req.protocol;
+  const downloadUrl = `${protocol}://${host}/downloads/${fileName}`;
+
+  return res.json({
+    success: true,
+    fileName,
+    downloadUrl,
+    message: 'Download the latest Bliss Connect Android APK from the backend.',
+  });
+});
 
 // ======================
 // MODELS
