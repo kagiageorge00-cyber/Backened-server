@@ -6,6 +6,7 @@ const router = express.Router();
 const bcrypt = require("bcryptjs");
 
 const Candidate = require("../models/candidate");
+const { FRONTEND_URL } = require("../config");
 const {
   notifyRegistrationSuccess,
   notifyMarketplaceListing,
@@ -41,12 +42,15 @@ router.get("/", (req, res) => {
       "email",
       "phone",
       "country",
-      "skills",
-      "experience",
       "photoUrl",
       "videoUrl",
       "passportUrl",
       "medicalUrl",
+      "conductUrl"
+    ],
+    optionalFields: [
+      "resumeUrl",
+      "additionalUrl"
     ],
   });
 });
@@ -58,7 +62,7 @@ router.post("/", async (req, res) => {
   try {
     const {
       fullName,
-      phone,
+      email,
       country,
       photoUrl,
       videoUrl,
@@ -69,18 +73,17 @@ router.post("/", async (req, res) => {
       additionalUrl,
     } = req.body;
 
+    const phone = req.body.phone || req.query.phone;
+
     // ======================
     // VALIDATION
     // ======================
     const requiredFields = [
-      { key: 'fullName', value: fullName },
       { key: 'phone', value: phone },
-      { key: 'country', value: country },
       { key: 'photoUrl', value: photoUrl },
       { key: 'videoUrl', value: videoUrl },
-      { key: 'passportUrl', value: passportUrl },
       { key: 'medicalUrl', value: medicalUrl },
-      { key: 'conductUrl', value: req.body.conductUrl },
+      { key: 'conductUrl', value: conductUrl },
     ];
 
     const missingField = requiredFields.find((field) => {
@@ -120,6 +123,7 @@ router.post("/", async (req, res) => {
     const candidate = await Candidate.create({
       fullName,
       name: fullName, // 🔥 matches your schema
+      email,
       phone,
       country,
       photoUrl,
