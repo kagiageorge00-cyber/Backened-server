@@ -30,21 +30,41 @@ function generateCandidateCode() {
 }
 
 // ======================
+// REGISTER ROUTE INFO
+// ======================
+router.get("/", (req, res) => {
+  return res.status(200).json({
+    success: true,
+    message: "Use POST /api/register with candidate data to register a candidate.",
+    requiredFields: [
+      "fullName",
+      "email",
+      "phone",
+      "country",
+      "skills",
+      "experience",
+      "photoUrl",
+      "videoUrl",
+      "passportUrl",
+      "medicalUrl",
+    ],
+  });
+});
+
+// ======================
 // 🚀 REGISTER CANDIDATE
 // ======================
 router.post("/", async (req, res) => {
   try {
     const {
       fullName,
-      email,
       phone,
       country,
-      skills,
-      experience,
       photoUrl,
       videoUrl,
       passportUrl,
       medicalUrl,
+      conductUrl,
       resumeUrl,
       additionalUrl,
     } = req.body;
@@ -56,12 +76,11 @@ router.post("/", async (req, res) => {
       { key: 'fullName', value: fullName },
       { key: 'phone', value: phone },
       { key: 'country', value: country },
-      { key: 'skills', value: skills },
-      { key: 'experience', value: experience },
       { key: 'photoUrl', value: photoUrl },
       { key: 'videoUrl', value: videoUrl },
       { key: 'passportUrl', value: passportUrl },
       { key: 'medicalUrl', value: medicalUrl },
+      { key: 'conductUrl', value: req.body.conductUrl },
     ];
 
     const missingField = requiredFields.find((field) => {
@@ -79,9 +98,7 @@ router.post("/", async (req, res) => {
     // ======================
     // CHECK EXISTING
     // ======================
-    const existing = await Candidate.findOne({
-      $or: [{ phone }, { email }],
-    });
+    const existing = await Candidate.findOne({ phone });
     if (existing) {
       return res.status(409).json({
         success: false,
@@ -103,15 +120,13 @@ router.post("/", async (req, res) => {
     const candidate = await Candidate.create({
       fullName,
       name: fullName, // 🔥 matches your schema
-      email,
       phone,
       country,
-      skills,
-      experience,
       photoUrl,
       videoUrl,
       passportUrl,
       medicalUrl,
+      conductUrl,
       resumeUrl,
       additionalUrl,
       uniqueCode, // ✅ correct field (not candidateId)
@@ -121,6 +136,9 @@ router.post("/", async (req, res) => {
       paymentStatus: "completed",
       status: "available",
     });
+
+    const candidatePortalLink = `${FRONTEND_URL}/candidate-portal`;
+    const marketplaceProfileLink = `${FRONTEND_URL}/marketplace?candidate=${encodeURIComponent(uniqueCode)}`;
 
     // ======================
     // SEND EMAILS 📧 (BACKGROUND ONLY)
@@ -132,6 +150,8 @@ router.post("/", async (req, res) => {
           name: fullName,
           uniqueCode,
           password: passwordPlain,
+          candidatePortalLink,
+          marketplaceProfileLink,
         });
       } catch (notificationError) {
         console.error('❌ notifyRegistrationSuccess failed:', notificationError);
@@ -143,6 +163,8 @@ router.post("/", async (req, res) => {
         await notifyMarketplaceListing({
           email,
           name: fullName,
+          uniqueCode,
+          marketplaceProfileLink,
         });
       } catch (notificationError) {
         console.error('❌ notifyMarketplaceListing failed:', notificationError);
@@ -157,6 +179,8 @@ router.post("/", async (req, res) => {
       message: 'Candidate registered successfully',
       candidateId: uniqueCode,
       data: candidate,
+      candidatePortalLink,
+      marketplaceProfileLink,
     };
 
     // include plain password so frontend can display it once (only on create)

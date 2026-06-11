@@ -34,6 +34,7 @@ class _CandidateFormScreenState extends State<CandidateFormScreen> {
     'photo': null,
     'video': null,
     'medical': null,
+    'conduct': null,
     'resume': null,
     'additional': null,
   };
@@ -49,7 +50,8 @@ class _CandidateFormScreenState extends State<CandidateFormScreen> {
     candidateId = widget.candidateId ?? uri.queryParameters['candidateId'];
     phone = widget.phone ?? uri.queryParameters['phone'];
 
-    if ((candidateId == null || phone == null) && Uri.base.fragment.isNotEmpty) {
+    if ((candidateId == null || phone == null) &&
+        Uri.base.fragment.isNotEmpty) {
       var frag = Uri.base.fragment;
       if (frag.startsWith('#')) frag = frag.substring(1);
       if (frag.startsWith('/#/')) frag = frag.substring(2);
@@ -70,12 +72,14 @@ class _CandidateFormScreenState extends State<CandidateFormScreen> {
       docs['passport'] != null &&
       docs['photo'] != null &&
       docs['video'] != null &&
-      docs['medical'] != null;
+      docs['medical'] != null &&
+      docs['conduct'] != null;
 
   void saveDoc(String key, String url) {
     setState(() {
       docs[key] = url;
     });
+    debugPrint('CandidateForm: saved doc $key => $url');
   }
 
   String _generateCandidateId() {
@@ -85,7 +89,7 @@ class _CandidateFormScreenState extends State<CandidateFormScreen> {
     return 'CAND-$year-$seq';
   }
 
-  String _generatePassword({int length = 8}) {
+  String _generatePassword() {
     // Temporary password format: BLISS####
     final random = Random();
     final num = 1000 + random.nextInt(9000);
@@ -101,7 +105,9 @@ class _CandidateFormScreenState extends State<CandidateFormScreen> {
     }
 
     if (!canSubmit) {
-      error('Passport, Photo, Video and Medical Report are required');
+      final required = ['passport', 'photo', 'video', 'medical'];
+      final missing = required.where((k) => docs[k] == null).toList();
+      error('Missing required documents: ${missing.join(', ')}');
       return;
     }
 
@@ -118,16 +124,13 @@ class _CandidateFormScreenState extends State<CandidateFormScreen> {
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'fullName': 'Candidate',
-          'email': '',
           'phone': contactPhone,
           'country': 'Kenya',
-          'skills': '',
-          'experience': '',
-          'registrationPaid': true,
           'passportUrl': docs['passport'],
           'photoUrl': docs['photo'],
           'videoUrl': docs['video'],
           'medicalUrl': docs['medical'],
+          'conductUrl': docs['conduct'],
           'resumeUrl': docs['resume'],
           'additionalUrl': docs['additional'],
         }),
@@ -135,7 +138,8 @@ class _CandidateFormScreenState extends State<CandidateFormScreen> {
 
       final data = jsonDecode(response.body);
 
-      if ((response.statusCode == 200 || response.statusCode == 201) && data['success'] == true) {
+      if ((response.statusCode == 200 || response.statusCode == 201) &&
+          data['success'] == true) {
         final serverId = data['candidateId'] ?? newCandidateId;
         final serverPassword = data['password'] ?? tempPassword;
 
@@ -343,6 +347,11 @@ class _CandidateFormScreenState extends State<CandidateFormScreen> {
             uploadTile(
               'Medical Report',
               'medical',
+              ['pdf'],
+            ),
+            uploadTile(
+              'Good Conduct Certificate (Required)',
+              'conduct',
               ['pdf'],
             ),
             uploadTile(
