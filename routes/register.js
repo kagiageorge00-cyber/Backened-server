@@ -58,15 +58,13 @@ router.post("/", async (req, res) => {
   try {
     const {
       fullName,
-      email,
       phone,
       country,
-      skills,
-      experience,
       photoUrl,
       videoUrl,
       passportUrl,
       medicalUrl,
+      conductUrl,
       resumeUrl,
       additionalUrl,
     } = req.body;
@@ -78,12 +76,11 @@ router.post("/", async (req, res) => {
       { key: 'fullName', value: fullName },
       { key: 'phone', value: phone },
       { key: 'country', value: country },
-      { key: 'skills', value: skills },
-      { key: 'experience', value: experience },
       { key: 'photoUrl', value: photoUrl },
       { key: 'videoUrl', value: videoUrl },
       { key: 'passportUrl', value: passportUrl },
       { key: 'medicalUrl', value: medicalUrl },
+      { key: 'conductUrl', value: req.body.conductUrl },
     ];
 
     const missingField = requiredFields.find((field) => {
@@ -101,9 +98,7 @@ router.post("/", async (req, res) => {
     // ======================
     // CHECK EXISTING
     // ======================
-    const existing = await Candidate.findOne({
-      $or: [{ phone }, { email }],
-    });
+    const existing = await Candidate.findOne({ phone });
     if (existing) {
       return res.status(409).json({
         success: false,
@@ -125,15 +120,13 @@ router.post("/", async (req, res) => {
     const candidate = await Candidate.create({
       fullName,
       name: fullName, // 🔥 matches your schema
-      email,
       phone,
       country,
-      skills,
-      experience,
       photoUrl,
       videoUrl,
       passportUrl,
       medicalUrl,
+      conductUrl,
       resumeUrl,
       additionalUrl,
       uniqueCode, // ✅ correct field (not candidateId)
