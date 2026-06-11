@@ -4,7 +4,7 @@ const router = express.Router();
 const Payment = require("../models/Payment");
 const Candidate = require("../models/candidate");
 const { createNotification } = require("../utils/notificationHelper");
-const sendEmail = require("../email");
+const { sendEmail } = require("../email");
 const { FRONTEND_URL } = require('../config');
 
 // ======================

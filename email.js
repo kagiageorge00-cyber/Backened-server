@@ -304,8 +304,7 @@ async function notifyPaymentSuccess({ email, name }) {
 console.log("EMAIL MODULE LOADED");
 console.log("sendEmail type:", typeof sendEmail);
 
-module.exports = {
-  sendEmail,
-  sendEmailAsync: sendEmail,
-  notifyPaymentSuccess,
-};
+module.exports = sendEmail;
+module.exports.sendEmail = sendEmail;
+module.exports.sendEmailAsync = sendEmail;
+module.exports.notifyPaymentSuccess = notifyPaymentSuccess;

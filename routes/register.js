@@ -30,9 +30,31 @@ function generateCandidateCode() {
 }
 
 // ======================
+// REGISTER ROUTE INFO
+// ======================
+router.get("/", (req, res) => {
+  return res.status(200).json({
+    success: true,
+    message: "Use POST /api/register with candidate data to register a candidate.",
+    requiredFields: [
+      "fullName",
+      "email",
+      "phone",
+      "country",
+      "skills",
+      "experience",
+      "photoUrl",
+      "videoUrl",
+      "passportUrl",
+      "medicalUrl",
+    ],
+  });
+});
+
+// ======================
 // 🚀 REGISTER CANDIDATE
 // ======================
-router.post("/register", async (req, res) => {
+router.post("/", async (req, res) => {
   try {
     const {
       fullName,
@@ -62,7 +84,6 @@ router.post("/register", async (req, res) => {
       { key: 'videoUrl', value: videoUrl },
       { key: 'passportUrl', value: passportUrl },
       { key: 'medicalUrl', value: medicalUrl },
-      { key: 'resumeUrl', value: resumeUrl },
     ];
 
     const missingField = requiredFields.find((field) => {

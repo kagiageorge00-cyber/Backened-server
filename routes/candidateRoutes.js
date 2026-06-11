@@ -7,7 +7,7 @@ const fs = require('fs');
 const router = express.Router();
 
 const Candidate = require('../models/candidate');
-const sendEmail = require('../email');
+const { sendEmail } = require('../email');
 const { FRONTEND_URL } = require('../config');
 
 const documentStorage = multer.diskStorage({

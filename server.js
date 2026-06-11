@@ -453,6 +453,26 @@ app.get('/api/marketplace', async (req, res) => {
 });
 
 // ======================
+// ERROR HANDLING
+// ======================
+app.use((err, req, res, next) => {
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    console.error('❌ Invalid JSON payload received:', err.message);
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid JSON payload',
+      details: err.message,
+    });
+  }
+
+  console.error('❌ Unexpected server error:', err);
+  res.status(err.status || 500).json({
+    success: false,
+    error: err.message || 'Server error',
+  });
+});
+
+// ======================
 // 404
 // ======================
 app.use((req, res) => {
