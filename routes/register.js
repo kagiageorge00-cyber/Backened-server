@@ -101,48 +101,70 @@ router.post("/", async (req, res) => {
     // ======================
     // CHECK EXISTING
     // ======================
-    const existing = await Candidate.findOne({ phone });
-    if (existing) {
-      return res.status(409).json({
-        success: false,
-        error: "Candidate already registered",
+    let candidate = await Candidate.findOne({ phone });
+    let passwordPlain;
+    let uniqueCode;
+    
+    if (candidate) {
+      // Update only the uploaded documents and preserve existing profile data
+      candidate.fullName = fullName || candidate.fullName;
+      candidate.name = fullName || candidate.name;
+      candidate.email = email || candidate.email;
+      candidate.country = country || candidate.country;
+      candidate.photoUrl = photoUrl || candidate.photoUrl;
+      candidate.videoUrl = videoUrl || candidate.videoUrl;
+      candidate.passportUrl = passportUrl || candidate.passportUrl;
+      candidate.medicalUrl = medicalUrl || candidate.medicalUrl;
+      candidate.conductUrl = conductUrl || candidate.conductUrl;
+      candidate.resumeUrl = resumeUrl || candidate.resumeUrl;
+      candidate.additionalUrl = additionalUrl || candidate.additionalUrl;
+      candidate.isVerified = true;
+      candidate.paymentStatus = "completed";
+      candidate.status = "available";
+      candidate.uniqueCode = candidate.uniqueCode || generateCandidateCode();
+
+      if (!candidate.password) {
+        passwordPlain = `BLISS${Math.floor(1000 + Math.random() * 9000)}`;
+        candidate.password = await bcrypt.hash(passwordPlain, 10);
+      }
+
+      await candidate.save();
+    } else {
+      // ======================
+      // GENERATE CREDENTIALS
+      // ======================
+      // Temporary password format: BLISS####
+      passwordPlain = `BLISS${Math.floor(1000 + Math.random() * 9000)}`;
+      const hashedPassword = await bcrypt.hash(passwordPlain, 10);
+      uniqueCode = generateCandidateCode();
+
+      // ======================
+      // CREATE CANDIDATE
+      // ======================
+      candidate = await Candidate.create({
+        fullName,
+        name: fullName, // 🔥 matches your schema
+        email,
+        phone,
+        country,
+        photoUrl,
+        videoUrl,
+        passportUrl,
+        medicalUrl,
+        conductUrl,
+        resumeUrl,
+        additionalUrl,
+        uniqueCode, // ✅ correct field (not candidateId)
+        password: hashedPassword,
+
+        isVerified: true,
+        paymentStatus: "completed",
+        status: "available",
       });
     }
 
-    // ======================
-    // GENERATE CREDENTIALS
-    // ======================
-    // Temporary password format: BLISS####
-    const passwordPlain = `BLISS${Math.floor(1000 + Math.random() * 9000)}`;
-    const hashedPassword = await bcrypt.hash(passwordPlain, 10);
-    const uniqueCode = generateCandidateCode();
-
-    // ======================
-    // CREATE CANDIDATE
-    // ======================
-    const candidate = await Candidate.create({
-      fullName,
-      name: fullName, // 🔥 matches your schema
-      email,
-      phone,
-      country,
-      photoUrl,
-      videoUrl,
-      passportUrl,
-      medicalUrl,
-      conductUrl,
-      resumeUrl,
-      additionalUrl,
-      uniqueCode, // ✅ correct field (not candidateId)
-      password: hashedPassword,
-
-      isVerified: true,
-      paymentStatus: "completed",
-      status: "available",
-    });
-
     const candidatePortalLink = `${FRONTEND_URL}/candidate-portal`;
-    const marketplaceProfileLink = `${FRONTEND_URL}/marketplace?candidate=${encodeURIComponent(uniqueCode)}`;
+    const marketplaceProfileLink = `${FRONTEND_URL}/marketplace?candidate=${encodeURIComponent(candidate.uniqueCode)}`;
 
     // ======================
     // SEND EMAILS 📧 (BACKGROUND ONLY)
