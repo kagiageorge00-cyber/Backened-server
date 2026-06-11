@@ -136,6 +136,11 @@ router.get('/form/data', async (req, res) => {
 
     return res.json({
       success: true,
+      lookup: {
+        by: candidateId ? 'candidateId' : 'phone',
+        value: lookupValue
+      },
+      candidateId: candidate.uniqueCode,
       data: candidate,
       formLink: `${FRONTEND_URL}/candidate-form?phone=${candidate.phone}`,
     });

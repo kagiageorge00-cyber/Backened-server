@@ -199,20 +199,33 @@ app.get('/api/candidate-form/data', async (req, res) => {
       });
     }
 
+    const lookupSource = phone ? 'phone' : 'candidateId';
+    const lookupValue = phone || candidateId;
+
     // ✅ RETURN SUCCESS EVEN IF CANDIDATE NOT FOUND
     if (!candidate) {
       return res.status(200).json({
         success: true,
         candidateExists: false,
-        data: {
-          phone: phone || candidateId || ''
-        }
+        lookup: {
+          by: lookupSource,
+          value: lookupValue
+        },
+        candidateId: null,
+        phone: phone || candidateId || '',
+        data: null
       });
     }
 
     return res.status(200).json({
       success: true,
       candidateExists: true,
+      lookup: {
+        by: lookupSource,
+        value: lookupValue
+      },
+      candidateId: candidate.uniqueCode,
+      phone: candidate.phone,
       data: candidate,
       isVerified: candidate.isVerified,
       paymentStatus: candidate.paymentStatus
