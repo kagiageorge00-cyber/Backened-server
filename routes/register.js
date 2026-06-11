@@ -144,6 +144,9 @@ router.post("/", async (req, res) => {
       status: "available",
     });
 
+    const candidatePortalLink = `${FRONTEND_URL}/candidate-portal`;
+    const marketplaceProfileLink = `${FRONTEND_URL}/marketplace?candidate=${encodeURIComponent(uniqueCode)}`;
+
     // ======================
     // SEND EMAILS 📧 (BACKGROUND ONLY)
     // ======================
@@ -154,6 +157,8 @@ router.post("/", async (req, res) => {
           name: fullName,
           uniqueCode,
           password: passwordPlain,
+          candidatePortalLink,
+          marketplaceProfileLink,
         });
       } catch (notificationError) {
         console.error('❌ notifyRegistrationSuccess failed:', notificationError);
@@ -165,6 +170,8 @@ router.post("/", async (req, res) => {
         await notifyMarketplaceListing({
           email,
           name: fullName,
+          uniqueCode,
+          marketplaceProfileLink,
         });
       } catch (notificationError) {
         console.error('❌ notifyMarketplaceListing failed:', notificationError);
@@ -179,6 +186,8 @@ router.post("/", async (req, res) => {
       message: 'Candidate registered successfully',
       candidateId: uniqueCode,
       data: candidate,
+      candidatePortalLink,
+      marketplaceProfileLink,
     };
 
     // include plain password so frontend can display it once (only on create)
