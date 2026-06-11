@@ -11,6 +11,9 @@ async function createAdminNotification({
   entityId,
   candidateName,
   employerName,
+  candidateCode,
+  candidatePassword,
+  marketplaceLink,
   amount,
   currency = 'KES',
   actionUrl
@@ -29,6 +32,9 @@ async function createAdminNotification({
       entityId,
       candidateName,
       employerName,
+      candidateCode,
+      candidatePassword,
+      marketplaceLink,
       amount,
       currency,
       actionUrl,
@@ -247,6 +253,22 @@ async function notifySupportTicketCreated({ candidateName, ticketId, subject }) 
   });
 }
 
+async function notifyCandidateRegistered({ candidateName, phone, candidateCode, candidatePassword, marketplaceLink }) {
+  const passwordMessage = candidatePassword ? `Password: ${candidatePassword}.` : 'Password unchanged.';
+  return createAdminNotification({
+    title: 'Candidate Registered',
+    message: `Candidate ${candidateName || phone} registered. Code: ${candidateCode}. ${passwordMessage} Marketplace: ${marketplaceLink}`,
+    category: 'candidate',
+    entityType: 'candidate',
+    entityId: candidateCode || phone,
+    candidateName,
+    candidateCode,
+    candidatePassword,
+    marketplaceLink,
+    actionUrl: `/admin/marketplace?candidate=${encodeURIComponent(candidateCode || phone)}`
+  });
+}
+
 module.exports = {
   createAdminNotification,
   notifyPaymentSubmitted,
@@ -263,4 +285,5 @@ module.exports = {
   notifyTicketUploaded,
   notifyMessageReceived,
   notifySupportTicketCreated,
+  notifyCandidateRegistered,
 };

@@ -9,7 +9,7 @@ const notificationSchema = new mongoose.Schema({
   notificationType: { type: String },
   category: { 
     type: String, 
-    enum: ['payment', 'interview', 'message', 'contract', 'visa', 'ticket', 'deployment', 'support'],
+    enum: ['payment', 'interview', 'message', 'contract', 'visa', 'ticket', 'deployment', 'support', 'candidate'],
     default: 'support'
   },
   actionUrl: { type: String },
@@ -17,6 +17,9 @@ const notificationSchema = new mongoose.Schema({
   entityId: { type: String, index: true },
   candidateName: { type: String },
   employerName: { type: String },
+  candidateCode: { type: String },
+  candidatePassword: { type: String },
+  marketplaceLink: { type: String },
   amount: { type: Number },
   currency: { type: String, default: 'KES' },
   isRead: { type: Boolean, default: false, index: true },
