@@ -32,7 +32,7 @@ function generateCandidateCode() {
 // ======================
 // 🚀 REGISTER CANDIDATE
 // ======================
-router.post("/register", async (req, res) => {
+router.post("/", async (req, res) => {
   try {
     const {
       fullName,
@@ -62,7 +62,6 @@ router.post("/register", async (req, res) => {
       { key: 'videoUrl', value: videoUrl },
       { key: 'passportUrl', value: passportUrl },
       { key: 'medicalUrl', value: medicalUrl },
-      { key: 'resumeUrl', value: resumeUrl },
     ];
 
     const missingField = requiredFields.find((field) => {
@@ -124,18 +123,30 @@ router.post("/register", async (req, res) => {
     });
 
     // ======================
-    // SEND EMAILS 📧
+    // SEND EMAILS 📧 (BACKGROUND ONLY)
     // ======================
-    await notifyRegistrationSuccess({
-      email,
-      name: fullName,
-      uniqueCode,
-      password: passwordPlain,
+    setImmediate(async () => {
+      try {
+        await notifyRegistrationSuccess({
+          email,
+          name: fullName,
+          uniqueCode,
+          password: passwordPlain,
+        });
+      } catch (notificationError) {
+        console.error('❌ notifyRegistrationSuccess failed:', notificationError);
+      }
     });
 
-    await notifyMarketplaceListing({
-      email,
-      name: fullName,
+    setImmediate(async () => {
+      try {
+        await notifyMarketplaceListing({
+          email,
+          name: fullName,
+        });
+      } catch (notificationError) {
+        console.error('❌ notifyMarketplaceListing failed:', notificationError);
+      }
     });
 
     // ======================
