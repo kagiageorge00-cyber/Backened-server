@@ -217,6 +217,10 @@ app.get('/api/candidate-form/data', async (req, res) => {
       });
     }
 
+    const candidateData = candidate.toObject ? candidate.toObject() : candidate;
+    candidateData.candidateId = candidate.uniqueCode;
+    candidateData.id = candidate.uniqueCode;
+
     return res.status(200).json({
       success: true,
       candidateExists: true,
@@ -226,7 +230,7 @@ app.get('/api/candidate-form/data', async (req, res) => {
       },
       candidateId: candidate.uniqueCode,
       phone: candidate.phone,
-      data: candidate,
+      data: candidateData,
       isVerified: candidate.isVerified,
       paymentStatus: candidate.paymentStatus
     });

@@ -134,6 +134,10 @@ router.get('/form/data', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Candidate not found' });
     }
 
+    const candidateData = candidate.toObject ? candidate.toObject() : candidate;
+    candidateData.candidateId = candidate.uniqueCode;
+    candidateData.id = candidate.uniqueCode;
+
     return res.json({
       success: true,
       lookup: {
@@ -141,7 +145,7 @@ router.get('/form/data', async (req, res) => {
         value: lookupValue
       },
       candidateId: candidate.uniqueCode,
-      data: candidate,
+      data: candidateData,
       formLink: `${FRONTEND_URL}/candidate-form?phone=${candidate.phone}`,
     });
   } catch (error) {
