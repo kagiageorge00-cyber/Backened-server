@@ -1,11 +1,31 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 const router = express.Router();
 
 const Candidate = require('../models/candidate');
-const sendEmail = require('../email');
+const { sendEmail } = require('../email');
 const { FRONTEND_URL } = require('../config');
+
+const documentStorage = multer.diskStorage({
+  destination(req, file, cb) {
+    const uploadDir = path.join(__dirname, '..', 'uploads', 'candidate_documents');
+    fs.mkdirSync(uploadDir, { recursive: true });
+    cb(null, uploadDir);
+  },
+  filename(req, file, cb) {
+    const safeName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
+    cb(null, `${Date.now()}-${safeName}`);
+  },
+});
+
+const documentUpload = multer({
+  storage: documentStorage,
+  limits: { fileSize: 50 * 1024 * 1024 },
+});
 
 // POST /login-id - authenticate using Candidate ID and password
 router.post('/login-id', async (req, res) => {
@@ -45,6 +65,14 @@ function generateTemporaryPassword(length = 10) {
   return `BLISS${Math.floor(1000 + Math.random() * 9000)}`;
 }
 
+function normalizeCandidate(candidate) {
+  const candidateObj = candidate.toObject ? candidate.toObject() : { ...candidate };
+  if (!candidateObj.candidateId) {
+    candidateObj.candidateId = candidateObj.uniqueCode || (candidateObj._id ? candidateObj._id.toString() : null);
+  }
+  return candidateObj;
+}
+
 // GET /
 router.get('/', async (req, res) => {
   try {
@@ -52,7 +80,7 @@ router.get('/', async (req, res) => {
     return res.json({
       success: true,
       count: candidates.length,
-      data: candidates,
+      data: candidates.map(normalizeCandidate),
     });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
@@ -62,11 +90,25 @@ router.get('/', async (req, res) => {
 // GET /marketplace
 router.get('/marketplace', async (req, res) => {
   try {
-    const candidates = await Candidate.find().sort({ createdAt: -1 });
+    const candidates = await Candidate.find({ isVerified: true, status: 'available' }).sort({ createdAt: -1 });
     return res.json({
       success: true,
       count: candidates.length,
-      data: candidates,
+      data: candidates.map(normalizeCandidate),
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// GET /deployed
+router.get('/deployed', async (req, res) => {
+  try {
+    const candidates = await Candidate.find({ status: 'deployed' }).sort({ createdAt: -1 });
+    return res.json({
+      success: true,
+      count: candidates.length,
+      data: candidates.map(normalizeCandidate),
     });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
@@ -100,9 +142,18 @@ router.get('/form/data', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Candidate not found' });
     }
 
+    const candidateData = candidate.toObject ? candidate.toObject() : candidate;
+    candidateData.candidateId = candidate.uniqueCode;
+    candidateData.id = candidate.uniqueCode;
+
     return res.json({
       success: true,
-      data: candidate,
+      lookup: {
+        by: candidateId ? 'candidateId' : 'phone',
+        value: lookupValue
+      },
+      candidateId: candidate.uniqueCode,
+      data: candidateData,
       formLink: `${FRONTEND_URL}/candidate-form?phone=${candidate.phone}`,
     });
   } catch (error) {
@@ -127,6 +178,7 @@ router.post('/form/submit', async (req, res) => {
       medicalUrl,
       resumeUrl,
       additionalUrl,
+      paymentId,
     } = req.body;
 
     const requiredFields = [
@@ -178,7 +230,7 @@ router.post('/form/submit', async (req, res) => {
       passwordPlain = generateTemporaryPassword();
       const hashedPassword = await bcrypt.hash(passwordPlain, 10);
 
-      candidate = await Candidate.create({
+      const createObj = {
         fullName,
         name: fullName,
         email,
@@ -197,7 +249,19 @@ router.post('/form/submit', async (req, res) => {
         isVerified: true,
         status: 'available',
         paymentStatus: 'completed',
-      });
+        documents: {
+          passportPhoto: passportUrl || null,
+          nationalId: null,
+          cv: resumeUrl || null,
+          certificates: [],
+          coverLetter: null,
+          uploads: [],
+        },
+      };
+
+      if (paymentId) createObj.paymentId = paymentId;
+
+      candidate = await Candidate.create(createObj);
     } else {
       candidate.uniqueCode = candidate.uniqueCode || generateCandidateCode();
 
@@ -213,15 +277,37 @@ router.post('/form/submit', async (req, res) => {
       candidate.country = country || candidate.country;
       candidate.skills = skills || candidate.skills;
       candidate.experience = experience || candidate.experience;
-      candidate.photoUrl = photoUrl;
-      candidate.videoUrl = videoUrl;
-      candidate.passportUrl = passportUrl;
-      candidate.medicalUrl = medicalUrl;
-      candidate.resumeUrl = resumeUrl;
+      candidate.photoUrl = photoUrl || candidate.photoUrl;
+      candidate.videoUrl = videoUrl || candidate.videoUrl;
+      candidate.passportUrl = passportUrl || candidate.passportUrl;
+      candidate.medicalUrl = medicalUrl || candidate.medicalUrl;
+      candidate.resumeUrl = resumeUrl || candidate.resumeUrl;
       candidate.additionalUrl = additionalUrl || candidate.additionalUrl;
+      candidate.documents = {
+        ...(candidate.documents || {}),
+        passportPhoto: passportUrl || candidate.documents?.passportPhoto || candidate.passportUrl,
+        cv: resumeUrl || candidate.documents?.cv || candidate.resumeUrl,
+        certificates: candidate.documents?.certificates || [],
+        nationalId: candidate.documents?.nationalId || null,
+        coverLetter: candidate.documents?.coverLetter || null,
+        uploads: candidate.documents?.uploads || [],
+      };
       candidate.isVerified = true;
       candidate.status = 'available';
       candidate.paymentStatus = 'completed';
+      if (paymentId) {
+        candidate.paymentId = paymentId;
+        try {
+          const PaymentModel = require('../models/Payment');
+          const pay = await PaymentModel.findById(paymentId);
+          if (pay) {
+            pay.formLink = pay.formLink || `${FRONTEND_URL}/#/candidate-form/${pay._id}`;
+            await pay.save();
+          }
+        } catch (err) {
+          console.warn('Could not link payment to candidate:', err.message || err);
+        }
+      }
 
       await candidate.save();
     }
@@ -274,6 +360,166 @@ router.post('/form/submit', async (req, res) => {
   }
 });
 
+// GET /documents
+router.get('/documents', async (req, res) => {
+  try {
+    const candidateId = req.query.candidateId || req.query.id;
+    if (!candidateId) {
+      return res.status(400).json({ success: false, error: 'candidateId query parameter is required' });
+    }
+
+    const searchCriteria = [];
+    if (mongoose.Types.ObjectId.isValid(candidateId)) {
+      searchCriteria.push({ _id: candidateId });
+    }
+
+    searchCriteria.push(
+      { uniqueCode: candidateId },
+      { phone: candidateId },
+      { email: candidateId }
+    );
+
+    const candidate = await Candidate.findOne({ $or: searchCriteria });
+    if (!candidate) {
+      return res.status(404).json({ success: false, error: 'Candidate not found' });
+    }
+
+    return res.json({ success: true, data: candidate.documents || [] });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// POST /uploadDocument
+router.post('/uploadDocument', documentUpload.single('file'), async (req, res) => {
+  try {
+    const candidateId = req.body.candidateId || req.body.id;
+    const documentType = req.body.documentType || req.body.type || 'other';
+
+    if (!candidateId) {
+      return res.status(400).json({ success: false, error: 'candidateId is required' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'file is required' });
+    }
+
+    const searchCriteria = [];
+    if (mongoose.Types.ObjectId.isValid(candidateId)) {
+      searchCriteria.push({ _id: candidateId });
+    }
+    searchCriteria.push(
+      { uniqueCode: candidateId },
+      { phone: candidateId },
+      { email: candidateId }
+    );
+
+    const candidate = await Candidate.findOne({ $or: searchCriteria });
+    if (!candidate) {
+      return res.status(404).json({ success: false, error: 'Candidate not found' });
+    }
+
+    const fileUrl = `${req.protocol}://${req.get('host')}/uploads/candidate_documents/${req.file.filename}`;
+
+    candidate.documents = {
+      ...(candidate.documents || {}),
+      uploads: candidate.documents?.uploads || [],
+    };
+
+    if (documentType === 'passportPhoto') {
+      candidate.documents.passportPhoto = fileUrl;
+    } else if (documentType === 'nationalId') {
+      candidate.documents.nationalId = fileUrl;
+    } else if (documentType === 'cv') {
+      candidate.documents.cv = fileUrl;
+    } else if (documentType === 'coverLetter') {
+      candidate.documents.coverLetter = fileUrl;
+    } else if (documentType === 'certificates') {
+      candidate.documents.certificates = [
+        ...(candidate.documents.certificates || []),
+        fileUrl,
+      ];
+    } else {
+      candidate.documents.uploads.push({
+        type: documentType,
+        filename: req.file.originalname,
+        url: fileUrl,
+      });
+    }
+
+    await candidate.save();
+
+    return res.json({ success: true, data: candidate.documents });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// POST /upload-documents alias
+router.post('/upload-documents', documentUpload.single('file'), async (req, res) => {
+  try {
+    const candidateId = req.body.candidateId || req.body.id;
+    const documentType = req.body.documentType || req.body.type || 'other';
+
+    if (!candidateId) {
+      return res.status(400).json({ success: false, error: 'candidateId is required' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'file is required' });
+    }
+
+    const searchCriteria = [];
+    if (mongoose.Types.ObjectId.isValid(candidateId)) {
+      searchCriteria.push({ _id: candidateId });
+    }
+    searchCriteria.push({
+      uniqueCode: candidateId,
+      phone: candidateId,
+      email: candidateId,
+    });
+
+    const candidate = await Candidate.findOne({ $or: searchCriteria });
+    if (!candidate) {
+      return res.status(404).json({ success: false, error: 'Candidate not found' });
+    }
+
+    const fileUrl = `${req.protocol}://${req.get('host')}/uploads/candidate_documents/${req.file.filename}`;
+
+    candidate.documents = {
+      ...(candidate.documents || {}),
+      uploads: candidate.documents?.uploads || [],
+    };
+
+    if (documentType === 'passportPhoto') {
+      candidate.documents.passportPhoto = fileUrl;
+    } else if (documentType === 'nationalId') {
+      candidate.documents.nationalId = fileUrl;
+    } else if (documentType === 'cv') {
+      candidate.documents.cv = fileUrl;
+    } else if (documentType === 'coverLetter') {
+      candidate.documents.coverLetter = fileUrl;
+    } else if (documentType === 'certificates') {
+      candidate.documents.certificates = [
+        ...(candidate.documents.certificates || []),
+        fileUrl,
+      ];
+    } else {
+      candidate.documents.uploads.push({
+        type: documentType,
+        filename: req.file.originalname,
+        url: fileUrl,
+      });
+    }
+
+    await candidate.save();
+
+    return res.json({ success: true, data: candidate.documents });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // GET /:id
 router.get('/:id', async (req, res) => {
   try {
@@ -313,6 +559,7 @@ router.put('/:id/documents', async (req, res) => {
       medicalUrl,
       resumeUrl,
       additionalUrl,
+      documents = {},
     } = req.body;
 
     const searchCriteria = [];
@@ -338,6 +585,16 @@ router.put('/:id/documents', async (req, res) => {
     if (medicalUrl !== undefined) candidate.medicalUrl = medicalUrl;
     if (resumeUrl !== undefined) candidate.resumeUrl = resumeUrl;
     if (additionalUrl !== undefined) candidate.additionalUrl = additionalUrl;
+
+    candidate.documents = {
+      ...(candidate.documents || {}),
+      passportPhoto: documents.passportPhoto ?? candidate.documents?.passportPhoto,
+      nationalId: documents.nationalId ?? candidate.documents?.nationalId,
+      cv: documents.cv ?? candidate.documents?.cv ?? candidate.resumeUrl,
+      certificates: documents.certificates ?? candidate.documents?.certificates ?? [],
+      coverLetter: documents.coverLetter ?? candidate.documents?.coverLetter,
+      uploads: candidate.documents?.uploads ?? [],
+    };
 
     await candidate.save();
 

@@ -16,6 +16,36 @@ const candidateSchema = new mongoose.Schema({
   medicalUrl: String,
   resumeUrl: String,
   additionalUrl: String,
+  gender: String,
+  dateOfBirth: String,
+  idNumber: String,
+  county: String,
+  jobAppliedFor: String,
+  education: String,
+  applicationDate: Date,
+  paymentId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Payment',
+    default: null,
+  },
+  documents: {
+    passportPhoto: String,
+    nationalId: String,
+    cv: String,
+    certificates: [String],
+    coverLetter: String,
+    uploads: [
+      {
+        type: String,
+        filename: String,
+        url: String,
+        uploadedAt: {
+          type: Date,
+          default: Date.now,
+        },
+      }
+    ],
+  },
   uniqueCode: {
     type: String,
     unique: true,
@@ -40,9 +70,11 @@ const candidateSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  resetToken: String,
+  resetTokenExpires: Date,
   status: {
     type: String,
-    enum: ['available', 'in_process', 'deployed'],
+    enum: ['available', 'in_process', 'deployed', 'approved', 'rejected'],
     default: 'available',
   },
   paymentStatus: {
@@ -53,6 +85,22 @@ const candidateSchema = new mongoose.Schema({
   createdAt: {
     type: Date,
     default: Date.now,
+  },
+  candidateId: {
+    type: String,
+    unique: false,
+    index: true,
+    default: null,
+  },
+  profilePhoto: String,
+  languages: [String],
+  profileCompletion: {
+    type: Number,
+    default: 0,
+  },
+  currentStatus: {
+    type: String,
+    default: 'Registration',
   },
 });
 

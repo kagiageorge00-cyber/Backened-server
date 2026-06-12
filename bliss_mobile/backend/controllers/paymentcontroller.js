@@ -1,6 +1,6 @@
 // backend/controllers/paymentController.js
 
-const { v4: uuidv4 } = require("uuid");
+const crypto = require("crypto");
 const Payment = require("../models/payment");
 const { stkPush } = require("../services/mpesaService");
 const flutterwaveService = require("../services/flutterwaveService");
@@ -18,7 +18,7 @@ exports.createIntent = async (req, res) => {
       });
     }
 
-    const intentId = uuidv4();
+    const intentId = crypto.randomUUID();
 
     const payment = await Payment.create({
       intentId,

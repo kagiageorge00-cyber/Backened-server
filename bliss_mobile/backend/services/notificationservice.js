@@ -55,6 +55,8 @@ async function notifyPaymentSuccess(user) {
 // ===============================================
 async function notifyRegistrationSuccess(user) {
   const message = user.message || 'Welcome to Bliss Connect 🎉. Your account has been created successfully.';
+  const portalLink = user.candidatePortalLink || `${FRONTEND_URL}/candidate-portal`;
+  const marketplaceLink = user.marketplaceProfileLink || `${FRONTEND_URL}/marketplace`;
   
   setImmediate(async () => {
     try {
@@ -64,13 +66,32 @@ async function notifyRegistrationSuccess(user) {
     }
   });
 
-  // Send welcome email
+  // Send welcome email with login credentials and marketplace profile link
   if (user.email) {
-    sendEmail(
-      user.email,
-      'Welcome to Bliss Connect 🎉',
-      `Hello ${user.name || 'there'},\n\nWelcome to Bliss Connect! 🎉\n\nYour account has been created successfully.\n\nNext steps:\n1. Complete your payment\n2. Fill out your candidate form\n3. Get matched with opportunities\n\nBest regards,\nBliss Connect Team`
-    );
+    setImmediate(async () => {
+      try {
+        await sendEmail(
+          user.email,
+          'Welcome to Bliss Connect 🎉',
+          `Hello ${user.name || 'there'},\n\nWelcome to Bliss Connect! 🎉\n\nYour account is ready. Use the details below to sign in to the candidate portal:\n\nCandidate ID: ${user.uniqueCode || 'N/A'}\nPassword: ${user.password || 'N/A'}\n\nLogin here: ${portalLink}\n\nYour marketplace profile is live and can be viewed here:\n${marketplaceLink}\n\nBest regards,\nBliss Connect Team`,
+          `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff; padding: 24px; border-radius: 8px; border: 1px solid #e5e7eb;">
+            <h2 style="color: #1d4ed8; margin-top: 0;">Welcome to Bliss Connect 🎉</h2>
+            <p>Hello ${user.name || 'there'},</p>
+            <p>Your account has been created successfully. Use the login details below to access the candidate portal.</p>
+            <table style="width: 100%; margin: 16px 0; font-size: 15px;">
+              <tr><td style="font-weight: 600; padding: 8px 0;">Candidate ID:</td><td style="padding: 8px 0;">${user.uniqueCode || 'N/A'}</td></tr>
+              <tr><td style="font-weight: 600; padding: 8px 0;">Password:</td><td style="padding: 8px 0;">${user.password || 'N/A'}</td></tr>
+            </table>
+            <p><a href="${portalLink}" style="display: inline-block; background: #2563eb; color: #ffffff; padding: 12px 20px; text-decoration: none; border-radius: 6px;">Login to Candidate Portal</a></p>
+            <p style="margin-top: 20px;">Your marketplace profile is live. Employers can now view you here:</p>
+            <p><a href="${marketplaceLink}" style="color: #2563eb; text-decoration: none;">View your marketplace profile</a></p>
+            <p style="margin-top: 24px; color: #6b7280; font-size: 13px;">Bliss Connect Team</p>
+          </div>`
+        );
+      } catch (emailErr) {
+        console.error('❌ Registration email failed:', emailErr.message || emailErr);
+      }
+    });
   }
 }
 
@@ -102,6 +123,7 @@ async function notifyApplicationUpdate(user) {
 // ===============================================
 async function notifyMarketplaceListing(user) {
   const message = 'Congratulations! 🎉 You are now listed on the Bliss Connect marketplace. Employers can now view your profile.';
+  const marketplaceLink = user.marketplaceProfileLink || `${FRONTEND_URL}/marketplace`;
   
   setImmediate(async () => {
     try {
@@ -112,13 +134,27 @@ async function notifyMarketplaceListing(user) {
   });
 
   if (user.email) {
-    sendEmail(
-      user.email,
-      'You\'re Now on Bliss Marketplace! 🎉',
-      `Hello ${user.name || 'there'},\n\nCongratulations! 🎉 You are now listed on the Bliss Connect marketplace.\n\nEmployers can now view your profile and contact you with opportunities.\n\nBest regards,\nBliss Connect Team`
-    );
+    setImmediate(async () => {
+      try {
+        await sendEmail(
+          user.email,
+          'You\'re Now on Bliss Marketplace! 🎉',
+          `Hello ${user.name || 'there'},\n\nCongratulations! 🎉 You are now listed on the Bliss Connect marketplace.\n\nYour marketplace profile is live and can be viewed here:\n${marketplaceLink}\n\nEmployers can now view your profile and contact you with opportunities.\n\nBest regards,\nBliss Connect Team`,
+          `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff; padding: 24px; border-radius: 8px; border: 1px solid #e5e7eb;">
+            <h2 style="color: #16a34a; margin-top: 0;">You’re Live on Bliss Marketplace 🎉</h2>
+            <p>Hello ${user.name || 'there'},</p>
+            <p>Your candidate marketplace profile is now live. Employers can view your profile and reach out with opportunities.</p>
+            <p><a href="${marketplaceLink}" style="display: inline-block; background: #10b981; color: #ffffff; padding: 12px 20px; text-decoration: none; border-radius: 6px;">View Your Marketplace Profile</a></p>
+            <p style="margin-top: 24px; color: #6b7280; font-size: 13px;">Bliss Connect Team</p>
+          </div>`
+        );
+      } catch (emailErr) {
+        console.error('❌ Marketplace listing email failed:', emailErr.message || emailErr);
+      }
+    });
   }
 }
+
 
 module.exports = {
   notifyPaymentSuccess,

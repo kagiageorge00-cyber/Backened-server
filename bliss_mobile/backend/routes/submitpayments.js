@@ -15,21 +15,35 @@ async function handleSubmitPayment(req, res) {
   try {
     const {
       userId: userIdFromBody,
+      user_id,
+      candidateId,
+      candidate_id,
       email,
       name,
       amount,
       transactionCode,
+      transactionId,
+      transaction_id,
       paymentMethod,
       phone,
-      candidateId,
     } = req.body;
 
-    const userId = userIdFromBody || phone || candidateId || email;
+    const userId = userIdFromBody || user_id || phone || candidateId || candidate_id || email;
+    const transactionKey = transactionCode || transactionId || transaction_id;
+    const parsedAmount = typeof amount === 'string' ? amount.trim() : amount;
 
-    if (!userId || !amount || !transactionCode) {
+    if (!userId || parsedAmount == null || !transactionKey) {
       return res.status(400).json({
         success: false,
-        error: "userId, amount, transactionCode required",
+        error: "userId, amount, transactionCode/transactionId required",
+      });
+    }
+
+    const finalAmount = Number(parsedAmount);
+    if (Number.isNaN(finalAmount) || finalAmount <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid amount",
       });
     }
 
@@ -37,7 +51,7 @@ async function handleSubmitPayment(req, res) {
     // CHECK DUPLICATE PAYMENT
     // ==========================
     const exists = await Payment.findOne({
-      transactionId: transactionCode,
+      transactionId: transactionKey,
     });
 
     if (exists) {
@@ -53,11 +67,11 @@ async function handleSubmitPayment(req, res) {
     const payment = await Payment.create({
       intentId: "intent_" + Date.now(),
       userId,
-      amount,
+      amount: finalAmount,
       title: "Application Payment",
       method: paymentMethod || "mpesa",
       status: "pending",
-      transactionId: transactionCode,
+      transactionId: transactionKey,
       metadata: { name, email },
     });
 
@@ -112,21 +126,48 @@ async function handleSubmitPayment(req, res) {
 
         console.log("📧 Sending payment email to:", notifyEmail);
 
-        await sendEmail(
+        const emailSent = await sendEmail(
           notifyEmail,
-          "Payment Received ✅ - Bliss Connect",
-          `Hello ${notifyName || "User"}, your payment has been received successfully.`,
+          "Payment Received – Bliss Connect",
+          `Hello ${notifyName || "Candidate"}, your payment has been received and is pending verification.`,
           `
-          <div style="font-family: Arial; padding: 20px;">
-            <h2>Payment Received ✅</h2>
-            <p>Hello ${notifyName || "User"},</p>
-            <p>Your payment has been received successfully.</p>
-            <p>Status: <b>Pending Verification</b></p>
-            <br/>
-            <p>Bliss Connect Team</p>
+          <div style="font-family: Arial, sans-serif; color: #333; padding: 24px; max-width: 600px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; border-bottom: 1px solid #e0e0e0; padding-bottom: 16px;">
+              <div>
+                <img src="https://blissconnect12.netlify.app/assets/images/logo.png" alt="Bliss Connect" style="max-height: 48px;" />
+              </div>
+              <div style="text-align: right; color: #777; font-size: 14px;">
+                <p style="margin: 0;">Payment Confirmation</p>
+              </div>
+            </div>
+            <h1 style="margin: 0 0 16px; font-size: 24px; color: #1a202c;">Payment Received</h1>
+            <p style="font-size: 16px; line-height: 1.6; margin: 0 0 16px;">Hello ${notifyName || "Candidate"},</p>
+            <p style="font-size: 16px; line-height: 1.6; margin: 0 0 16px;">Thank you for your payment to Bliss Connect. We have successfully received your transaction and it is currently under review.</p>
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px;">
+              <tr>
+                <td style="padding: 8px 0; color: #555; width: 160px;">Status:</td>
+                <td style="padding: 8px 0; color: #111;"><strong>Pending verification</strong></td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; color: #555;">Amount:</td>
+                <td style="padding: 8px 0; color: #111;"><strong>${payment.amount}</strong></td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; color: #555;">Transaction ID:</td>
+                <td style="padding: 8px 0; color: #111;"><strong>${payment.transactionId}</strong></td>
+              </tr>
+            </table>
+            <p style="font-size: 16px; line-height: 1.6; margin: 0 0 16px;">A member of our team will verify the payment shortly. Once approved, you will receive a follow-up email with the next steps.</p>
+            <p style="font-size: 16px; line-height: 1.6; margin: 0;">If you have any questions, please reply to this message or contact our support team.</p>
+            <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #e0e0e0; color: #777; font-size: 14px;">
+              <p style="margin: 0;">Bliss Connect</p>
+              <p style="margin: 4px 0 0;">Professional placement support for overseas candidates.</p>
+              <p style="margin: 4px 0 0;">Need help? Email <a href="mailto:blssspprtteam@gmail.com" style="color: #0056d6; text-decoration: none;">blssspprtteam@gmail.com</a></p>
+            </div>
           </div>
           `
         );
+        console.log("📧 Payment notification result:", { email: notifyEmail, sent: emailSent });
       } catch (err) {
         console.error("Background email error:", err);
       }

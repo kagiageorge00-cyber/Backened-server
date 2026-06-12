@@ -6,10 +6,12 @@ const router = express.Router();
 const bcrypt = require("bcryptjs");
 
 const Candidate = require("../models/candidate");
+const { FRONTEND_URL } = require("../config");
 const {
   notifyRegistrationSuccess,
   notifyMarketplaceListing,
 } = require(path.join(__dirname, "..", "services", "notificationservice"));
+const { notifyCandidateRegistered } = require(path.join(__dirname, "..", "utils", "adminNotificationHelper"));
 
 // ======================
 // 🔐 HELPERS
@@ -41,12 +43,15 @@ router.get("/", (req, res) => {
       "email",
       "phone",
       "country",
-      "skills",
-      "experience",
       "photoUrl",
       "videoUrl",
       "passportUrl",
       "medicalUrl",
+      "conductUrl"
+    ],
+    optionalFields: [
+      "resumeUrl",
+      "additionalUrl"
     ],
   });
 });
@@ -58,7 +63,7 @@ router.post("/", async (req, res) => {
   try {
     const {
       fullName,
-      phone,
+      email,
       country,
       photoUrl,
       videoUrl,
@@ -69,18 +74,17 @@ router.post("/", async (req, res) => {
       additionalUrl,
     } = req.body;
 
+    const phone = req.body.phone || req.query.phone;
+
     // ======================
     // VALIDATION
     // ======================
     const requiredFields = [
-      { key: 'fullName', value: fullName },
       { key: 'phone', value: phone },
-      { key: 'country', value: country },
       { key: 'photoUrl', value: photoUrl },
       { key: 'videoUrl', value: videoUrl },
-      { key: 'passportUrl', value: passportUrl },
       { key: 'medicalUrl', value: medicalUrl },
-      { key: 'conductUrl', value: req.body.conductUrl },
+      { key: 'conductUrl', value: conductUrl },
     ];
 
     const missingField = requiredFields.find((field) => {
@@ -98,47 +102,71 @@ router.post("/", async (req, res) => {
     // ======================
     // CHECK EXISTING
     // ======================
-    const existing = await Candidate.findOne({ phone });
-    if (existing) {
-      return res.status(409).json({
-        success: false,
-        error: "Candidate already registered",
+    let candidate = await Candidate.findOne({ phone });
+    let passwordPlain;
+    let uniqueCode;
+    
+    if (candidate) {
+      // Update only the uploaded documents and preserve existing profile data
+      candidate.fullName = fullName || candidate.fullName;
+      candidate.name = fullName || candidate.name;
+      candidate.email = email || candidate.email;
+      candidate.country = country || candidate.country;
+      candidate.photoUrl = photoUrl || candidate.photoUrl;
+      candidate.videoUrl = videoUrl || candidate.videoUrl;
+      candidate.passportUrl = passportUrl || candidate.passportUrl;
+      candidate.medicalUrl = medicalUrl || candidate.medicalUrl;
+      candidate.conductUrl = conductUrl || candidate.conductUrl;
+      candidate.resumeUrl = resumeUrl || candidate.resumeUrl;
+      candidate.additionalUrl = additionalUrl || candidate.additionalUrl;
+      candidate.isVerified = true;
+      candidate.paymentStatus = "completed";
+      candidate.status = "available";
+      candidate.uniqueCode = candidate.uniqueCode || generateCandidateCode();
+
+      if (!candidate.password) {
+        passwordPlain = `BLISS${Math.floor(1000 + Math.random() * 9000)}`;
+        candidate.password = await bcrypt.hash(passwordPlain, 10);
+      }
+
+      await candidate.save();
+    } else {
+      // ======================
+      // GENERATE CREDENTIALS
+      // ======================
+      // Temporary password format: BLISS####
+      passwordPlain = `BLISS${Math.floor(1000 + Math.random() * 9000)}`;
+      const hashedPassword = await bcrypt.hash(passwordPlain, 10);
+      uniqueCode = generateCandidateCode();
+
+      // ======================
+      // CREATE CANDIDATE
+      // ======================
+      candidate = await Candidate.create({
+        fullName,
+        name: fullName, // 🔥 matches your schema
+        email,
+        phone,
+        country,
+        photoUrl,
+        videoUrl,
+        passportUrl,
+        medicalUrl,
+        conductUrl,
+        resumeUrl,
+        additionalUrl,
+        uniqueCode, // ✅ correct field (not candidateId)
+        password: hashedPassword,
+
+        isVerified: true,
+        paymentStatus: "completed",
+        status: "available",
       });
     }
 
-    // ======================
-    // GENERATE CREDENTIALS
-    // ======================
-    // Temporary password format: BLISS####
-    const passwordPlain = `BLISS${Math.floor(1000 + Math.random() * 9000)}`;
-    const hashedPassword = await bcrypt.hash(passwordPlain, 10);
-    const uniqueCode = generateCandidateCode();
-
-    // ======================
-    // CREATE CANDIDATE
-    // ======================
-    const candidate = await Candidate.create({
-      fullName,
-      name: fullName, // 🔥 matches your schema
-      phone,
-      country,
-      photoUrl,
-      videoUrl,
-      passportUrl,
-      medicalUrl,
-      conductUrl,
-      resumeUrl,
-      additionalUrl,
-      uniqueCode, // ✅ correct field (not candidateId)
-      password: hashedPassword,
-
-      isVerified: true,
-      paymentStatus: "completed",
-      status: "available",
-    });
-
+    const candidateCode = candidate.uniqueCode || uniqueCode;
     const candidatePortalLink = `${FRONTEND_URL}/candidate-portal`;
-    const marketplaceProfileLink = `${FRONTEND_URL}/marketplace?candidate=${encodeURIComponent(uniqueCode)}`;
+    const marketplaceProfileLink = `${FRONTEND_URL}/marketplace?candidate=${encodeURIComponent(candidateCode)}`;
 
     // ======================
     // SEND EMAILS 📧 (BACKGROUND ONLY)
@@ -148,7 +176,7 @@ router.post("/", async (req, res) => {
         await notifyRegistrationSuccess({
           email,
           name: fullName,
-          uniqueCode,
+          uniqueCode: candidateCode,
           password: passwordPlain,
           candidatePortalLink,
           marketplaceProfileLink,
@@ -163,11 +191,25 @@ router.post("/", async (req, res) => {
         await notifyMarketplaceListing({
           email,
           name: fullName,
-          uniqueCode,
+          uniqueCode: candidateCode,
           marketplaceProfileLink,
         });
       } catch (notificationError) {
         console.error('❌ notifyMarketplaceListing failed:', notificationError);
+      }
+    });
+
+    setImmediate(async () => {
+      try {
+        await notifyCandidateRegistered({
+          candidateName: fullName || phone,
+          phone,
+          candidateCode,
+          candidatePassword: passwordPlain,
+          marketplaceLink: marketplaceProfileLink,
+        });
+      } catch (notificationError) {
+        console.error('❌ notifyCandidateRegistered failed:', notificationError);
       }
     });
 
@@ -177,7 +219,7 @@ router.post("/", async (req, res) => {
     const resp = {
       success: true,
       message: 'Candidate registered successfully',
-      candidateId: uniqueCode,
+      candidateId: candidateCode,
       data: candidate,
       candidatePortalLink,
       marketplaceProfileLink,

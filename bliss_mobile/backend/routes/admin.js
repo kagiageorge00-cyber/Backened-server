@@ -7,6 +7,12 @@ const bcrypt = require("bcryptjs");
 const User = require("../models/User");
 const Candidate = require("../models/candidate");
 const Payment = require("../models/Payment");
+const Notification = require("../models/Notification");
+const { createNotification } = require("../utils/notificationHelper");
+const {
+  notifyPaymentApproved,
+  notifyPaymentRejected,
+} = require("../utils/adminNotificationHelper");
 
 // ✅ FIX: correct import
 const { sendEmail } = require("../email");
@@ -33,6 +39,7 @@ const adminSessions = new Map();
 function requireAdminAuth(req, res, next) {
   const token =
     req.headers.authorization?.replace("Bearer ", "") ||
+    req.query.token ||
     req.body.token;
 
   if (!token || !adminSessions.has(token)) {
@@ -138,66 +145,95 @@ router.post(
           .json({ success: false, error: "Payment not found" });
       }
 
-      payment.status = "completed";
+      payment.status = "approved";
+      // generate application form link and save
+      try {
+        const formLink = `${FRONTEND_URL}/#/candidate-form/${payment._id}`;
+        payment.formLink = formLink;
+        payment.linkGeneratedAt = new Date();
+        await payment.save();
+      } catch (linkErr) {
+        console.error('❌ Failed to generate/save form link:', linkErr);
+      }
       await payment.save();
 
-      let user = null;
+      const candidate = await Candidate.findOne({
+        $or: [
+          { phone: payment.userId },
+          { email: payment.userId },
+          { uniqueCode: payment.userId },
+        ],
+      });
 
-      if (payment.userId) {
-        user =
-          (await User.findOne({
-            $or: [
-              { phone: payment.userId },
-              { email: payment.userId },
-              { uniqueCode: payment.userId },
-            ],
-          })) ||
-          (await Candidate.findOne({
-            $or: [
-              { phone: payment.userId },
-              { email: payment.userId },
-              { uniqueCode: payment.userId },
-            ],
-          }));
+      if (candidate) {
+        candidate.isVerified = true;
+        candidate.paymentStatus = "completed";
+        candidate.status = "approved";
+        await candidate.save();
       }
 
-      const email = user?.email || payment.metadata?.email;
-      const name =
-        user?.name || user?.fullName || payment.metadata?.name;
+      await createNotification({
+        userId: payment.userId,
+        title: 'Payment Approved',
+        message: 'Your payment has been approved. Continue your application.',
+        type: 'approval',
+        actionUrl: `/candidate-form?phone=${encodeURIComponent(candidate?.phone || payment.userId)}`,
+      });
 
-      if (!email) {
-        console.warn("⚠️ No email found for approval");
-        return res.json({
-          success: true,
-          message: "Payment approved (no email sent)",
-        });
-      }
-
-      const phoneParam = user?.phone || payment.userId;
-
-      const link = `${FRONTEND_URL}/candidate-form?phone=${encodeURIComponent(
-        phoneParam
-      )}`;
-
-      console.log("📧 Sending approval email:", email);
+      // Notify admin about payment approval
+      setImmediate(async () => {
+        try {
+          await notifyPaymentApproved({
+            candidateName: candidate?.fullName || candidate?.name || 'Candidate',
+            amount: payment.amount,
+            currency: payment.metadata?.currency || 'KES',
+            paymentId: payment._id,
+          });
+        } catch (err) {
+          console.error('❌ Error creating admin notification:', err);
+        }
+      });
 
       res.json({
         success: true,
-        message: "Payment approved",
+        message: "Payment approved successfully",
+        formLink: payment.formLink || null,
       });
+
+      const email = candidate?.email || payment.metadata?.email;
+      const name = candidate?.fullName || candidate?.name || payment.metadata?.name || 'Candidate';
+      const phoneParam = candidate?.phone || payment.userId;
+      const link = `${FRONTEND_URL}/candidate-form?phone=${encodeURIComponent(phoneParam)}`;
 
       if (email) {
         setImmediate(async () => {
           try {
-            console.log("📧 Sending approval email:", email);
             await sendEmail(
               email,
-              "Payment Approved ✅",
-              `Hello ${name}, your payment is approved.`,
-              `<h2>Payment Approved ✅</h2>
-               <p>Hello ${name}</p>
-               <p>Complete form:</p>
-               <a href="${link}">Open Form</a>`
+              "Payment Approved – Bliss Connect",
+              `Hello ${name}, your payment has been approved. Please complete the next step by submitting your candidate form.`,
+              `
+              <div style="font-family: Arial, sans-serif; color: #333; padding: 24px; max-width: 600px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; border-bottom: 1px solid #e0e0e0; padding-bottom: 16px;">
+                  <div>
+                    <img src="https://blissconnect12.netlify.app/assets/images/logo.png" alt="Bliss Connect" style="max-height: 48px;" />
+                  </div>
+                  <div style="text-align: right; color: #777; font-size: 14px;">
+                    <p style="margin: 0;">Payment Approved</p>
+                  </div>
+                </div>
+                <p style="font-size: 16px; line-height: 1.6; margin: 0 0 16px;">Hello ${name},</p>
+                <p style="font-size: 16px; line-height: 1.6; margin: 0 0 16px;">Your payment has been reviewed and approved successfully. Thank you for completing this step.</p>
+                <p style="font-size: 16px; line-height: 1.6; margin: 0 0 16px;">Please proceed to complete your candidate form using the link below:</p>
+                <p style="margin: 0 0 24px;"><a href="${link}" style="display: inline-block; padding: 12px 20px; background-color: #0056d6; color: #ffffff; text-decoration: none; border-radius: 4px;">Complete Candidate Form</a></p>
+                <p style="font-size: 16px; line-height: 1.6; margin: 0 0 16px;">If you need assistance, reply to this email and our support team will be happy to help.</p>
+                <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #e0e0e0; color: #777; font-size: 14px;">
+                  <p style="margin: 0;">Bliss Connect</p>
+                  <p style="margin: 4px 0 0;">Dedicated support for overseas placement.</p>
+                  <p style="margin: 4px 0 0;">Need assistance? Email <a href="mailto:blssspprtteam@gmail.com" style="color: #0056d6; text-decoration: none;">blssspprtteam@gmail.com</a></p>
+                </div>
+              </div>
+              `
             );
           } catch (emailErr) {
             console.error("❌ Approval email error:", emailErr);
@@ -214,35 +250,57 @@ router.post(
   }
 );
 
-// ======================
-// MARKETPLACE - VIEW CANDIDATES (ADMIN PANEL)
-// ======================
-router.get("/candidates", requireAdminAuth, async (req, res) => {
+async function fetchCandidates(req, res) {
   try {
-    const { limit = 50, skip = 0, status = "available" } = req.query;
+    const { limit = 50, skip = 0, status } = req.query;
 
-    const filter = status ? { status } : {};
+    const filter = {};
+    if (status) {
+      filter.status = status;
+    }
 
     const candidates = await Candidate.find(filter)
-      .limit(parseInt(limit))
-      .skip(parseInt(skip))
+      .select("_id fullName phone email status createdAt")
+      .limit(parseInt(limit, 10))
+      .skip(parseInt(skip, 10))
       .sort({ createdAt: -1 });
 
     const total = await Candidate.countDocuments(filter);
 
     res.json({
       success: true,
+      count: total,
       data: candidates,
-      total,
-      limit: parseInt(limit),
-      skip: parseInt(skip),
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
-});
+}
 
-router.get("/candidates/:id", requireAdminAuth, async (req, res) => {
+async function fetchCandidateById(req, res) {
+
+// ======================
+// GET FORM LINK (ADMIN)
+// ======================
+router.get('/payments/:paymentId/form-link', requireAdminAuth, async (req, res) => {
+  try {
+    const { paymentId } = req.params;
+    const payment = await Payment.findById(paymentId);
+    if (!payment) return res.status(404).json({ success: false, error: 'Payment not found' });
+
+    const candidate = await Candidate.findOne({ $or: [ { phone: payment.userId }, { email: payment.userId }, { uniqueCode: payment.userId } ] });
+
+    return res.json({
+      success: true,
+      paymentId: payment._id,
+      phone: payment.userId,
+      candidateName: candidate ? (candidate.fullName || candidate.name) : null,
+      formLink: payment.formLink || null,
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
   try {
     const { id } = req.params;
 
@@ -259,44 +317,29 @@ router.get("/candidates/:id", requireAdminAuth, async (req, res) => {
       return res.status(404).json({ success: false, error: "Candidate not found" });
     }
 
+    const payment = await Payment.findOne({
+      userId: { $in: [candidate.phone, candidate.email, candidate.uniqueCode, candidate._id.toString()] },
+    }).sort({ createdAt: -1 });
+
     res.json({
       success: true,
-      data: candidate,
+      candidate,
+      payment: payment || null,
+      documents: candidate.documents || {
+        passportPhoto: candidate.passportUrl || null,
+        cv: candidate.resumeUrl || null,
+        certificates: [],
+        coverLetter: null,
+        nationalId: null,
+        uploads: [],
+      },
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
-});
+}
 
-router.get("/marketplace/candidates", requireAdminAuth, async (req, res) => {
-  try {
-    const { limit = 50, skip = 0, status = "available" } = req.query;
-
-    const filter = status ? { status } : {};
-
-    const candidates = await Candidate.find(filter)
-      .limit(parseInt(limit))
-      .skip(parseInt(skip))
-      .sort({ createdAt: -1 });
-
-    const total = await Candidate.countDocuments(filter);
-
-    res.json({
-      success: true,
-      data: candidates,
-      total,
-      limit: parseInt(limit),
-      skip: parseInt(skip),
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// ======================
-// MARKETPLACE - GET CANDIDATE DETAILS
-// ======================
-router.get("/marketplace/candidates/:id", requireAdminAuth, async (req, res) => {
+async function fetchCandidateDocuments(req, res) {
   try {
     const { id } = req.params;
 
@@ -313,15 +356,320 @@ router.get("/marketplace/candidates/:id", requireAdminAuth, async (req, res) => 
       return res.status(404).json({ success: false, error: "Candidate not found" });
     }
 
-    res.json({
+    return res.json({
       success: true,
-      data: candidate,
+      documents: {
+        passportPhoto: candidate.documents?.passportPhoto || null,
+        nationalId: candidate.documents?.nationalId || null,
+        cv: candidate.documents?.cv || null,
+        certificates: candidate.documents?.certificates || [],
+        coverLetter: candidate.documents?.coverLetter || null,
+        uploads: candidate.documents?.uploads || [],
+      },
     });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+}
+
+router.get("/candidates", requireAdminAuth, fetchCandidates);
+router.get("/marketplace/candidates", requireAdminAuth, fetchCandidates);
+router.get("/candidates/:id", requireAdminAuth, fetchCandidateById);
+router.get("/marketplace/candidates/:id", requireAdminAuth, fetchCandidateById);
+router.get("/candidates/:id/documents", requireAdminAuth, fetchCandidateDocuments);
+router.post("/payments/:paymentId/reject", requireAdminAuth, async (req, res) => {
+  try {
+    const { paymentId } = req.params;
+    const { reason } = req.body;
+    const payment = await Payment.findById(paymentId);
+
+    if (!payment) {
+      return res.status(404).json({ success: false, error: "Payment not found" });
+    }
+
+    const candidate = await Candidate.findOne({
+      $or: [
+        { phone: payment.userId },
+        { email: payment.userId },
+        { uniqueCode: payment.userId },
+      ],
+    });
+
+    payment.status = "rejected";
+    await payment.save();
+
+    await createNotification({
+      userId: payment.userId,
+      title: 'Payment Rejected',
+      message: 'Your payment could not be verified.',
+      type: 'rejection',
+      actionUrl: `/candidate/support`,
+    });
+
+    // Notify admin about payment rejection
+    setImmediate(async () => {
+      try {
+        await notifyPaymentRejected({
+          candidateName: candidate?.fullName || candidate?.name || 'Candidate',
+          amount: payment.amount,
+          currency: payment.metadata?.currency || 'KES',
+          paymentId: payment._id,
+          reason: reason || 'No reason provided',
+        });
+      } catch (err) {
+        console.error('❌ Error creating admin notification:', err);
+      }
+    });
+
+    res.json({ success: true, message: 'Payment rejected' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
+router.post('/logout', requireAdminAuth, (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '') || req.body.token;
+    if (token) {
+      adminSessions.delete(token);
+    }
+    return res.json({ success: true, message: 'Logged out' });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/verify-user', requireAdminAuth, async (req, res) => {
+  try {
+    const { phone } = req.body;
+    if (!phone) {
+      return res.status(400).json({ success: false, error: 'Phone is required' });
+    }
+
+    const candidate = await Candidate.findOneAndUpdate(
+      { phone },
+      { isVerified: true },
+      { new: true }
+    );
+
+    if (!candidate) {
+      return res.status(404).json({ success: false, error: 'Candidate not found' });
+    }
+
+    return res.json({ success: true, message: 'Candidate verified', data: candidate });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/status', requireAdminAuth, async (req, res) => {
+  try {
+    const { phone, status } = req.body;
+    if (!phone || !status) {
+      return res.status(400).json({ success: false, error: 'Phone and status are required' });
+    }
+
+    const candidate = await Candidate.findOneAndUpdate(
+      { phone },
+      { status },
+      { new: true }
+    );
+
+    if (!candidate) {
+      return res.status(404).json({ success: false, error: 'Candidate not found' });
+    }
+
+    return res.json({ success: true, message: `Status updated to ${status}`, data: candidate });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.get('/notifications/count', requireAdminAuth, async (req, res) => {
+  try {
+    const total = await Notification.countDocuments({ userType: 'admin' });
+    const unread = await Notification.countDocuments({ userType: 'admin', isRead: false });
+    return res.json({ success: true, total, unread });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ======================
+// ADMIN NOTIFICATION CENTER
+// ======================
+
+// Get all admin notifications
+router.get('/notifications', requireAdminAuth, async (req, res) => {
+  try {
+    const { limit = 50, skip = 0, category, isRead } = req.query;
+    
+    const filter = { userType: 'admin' };
+    
+    if (category && category !== 'all') {
+      filter.category = category;
+    }
+    
+    if (isRead !== undefined) {
+      filter.isRead = isRead === 'true';
+    }
+
+    const notifications = await Notification.find(filter)
+      .sort({ createdAt: -1 })
+      .limit(parseInt(limit, 10))
+      .skip(parseInt(skip, 10));
+
+    const total = await Notification.countDocuments(filter);
+    const unread = await Notification.countDocuments({ ...filter, isRead: false });
+
+    return res.json({ 
+      success: true, 
+      data: notifications, 
+      total,
+      unread,
+      count: notifications.length 
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Get unread notification count
+router.get('/notifications/unread/count', requireAdminAuth, async (req, res) => {
+  try {
+    const unread = await Notification.countDocuments({ userType: 'admin', isRead: false });
+    return res.json({ success: true, unread });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Get single notification
+router.get('/notifications/:notificationId', requireAdminAuth, async (req, res) => {
+  try {
+    const { notificationId } = req.params;
+    const notification = await Notification.findOne({ notificationId });
+    
+    if (!notification) {
+      return res.status(404).json({ success: false, error: 'Notification not found' });
+    }
+    
+    return res.json({ success: true, data: notification });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Mark notification as read
+router.patch('/notifications/:notificationId/read', requireAdminAuth, async (req, res) => {
+  try {
+    const { notificationId } = req.params;
+    const notification = await Notification.findOneAndUpdate(
+      { notificationId },
+      { isRead: true },
+      { new: true }
+    );
+    
+    if (!notification) {
+      return res.status(404).json({ success: false, error: 'Notification not found' });
+    }
+    
+    return res.json({ success: true, data: notification });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Mark all notifications as read
+router.patch('/notifications/read-all', requireAdminAuth, async (req, res) => {
+  try {
+    const result = await Notification.updateMany(
+      { userType: 'admin', isRead: false },
+      { isRead: true }
+    );
+    
+    return res.json({ success: true, modifiedCount: result.modifiedCount });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Delete notification
+router.delete('/notifications/:notificationId', requireAdminAuth, async (req, res) => {
+  try {
+    const { notificationId } = req.params;
+    const result = await Notification.deleteOne({ notificationId });
+    
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ success: false, error: 'Notification not found' });
+    }
+    
+    return res.json({ success: true, message: 'Notification deleted' });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Delete all notifications
+router.delete('/notifications', requireAdminAuth, async (req, res) => {
+  try {
+    const result = await Notification.deleteMany({ userType: 'admin' });
+    return res.json({ success: true, deletedCount: result.deletedCount });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Search notifications
+router.get('/notifications/search/query', requireAdminAuth, async (req, res) => {
+  try {
+    const { q, category } = req.query;
+    
+    const filter = { userType: 'admin' };
+    
+    if (category && category !== 'all') {
+      filter.category = category;
+    }
+    
+    if (q) {
+      filter.$or = [
+        { title: { $regex: q, $options: 'i' } },
+        { message: { $regex: q, $options: 'i' } },
+        { candidateName: { $regex: q, $options: 'i' } },
+        { employerName: { $regex: q, $options: 'i' } },
+      ];
+    }
+
+    const notifications = await Notification.find(filter)
+      .sort({ createdAt: -1 })
+      .limit(100);
+
+    return res.json({ success: true, data: notifications, count: notifications.length });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.get('/dashboard/summary', requireAdminAuth, async (req, res) => {
+  try {
+    const totalCandidates = await Candidate.countDocuments();
+    const pendingPayments = await Payment.countDocuments({ status: 'pending' });
+    const approvedPayments = await Payment.countDocuments({ status: 'approved' });
+    const rejectedPayments = await Payment.countDocuments({ status: 'rejected' });
+    const notifications = await Notification.countDocuments();
+
+    return res.json({
+      success: true,
+      totalCandidates,
+      pendingPayments,
+      approvedPayments,
+      rejectedPayments,
+      notifications,
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
 // ======================
 // MARKETPLACE - SEARCH CANDIDATES
 // ======================

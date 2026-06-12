@@ -37,7 +37,7 @@ const paymentSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["pending", "completed", "failed"],
+      enum: ["pending", "approved", "rejected", "completed", "failed"],
       default: "pending",
       index: true,
     },
@@ -51,6 +51,14 @@ const paymentSchema = new mongoose.Schema(
     metadata: {
       type: mongoose.Schema.Types.Mixed, // more flexible than Object
       default: {},
+    },
+    formLink: {
+      type: String,
+      default: null,
+    },
+    linkGeneratedAt: {
+      type: Date,
+      default: null,
     },
   },
   {

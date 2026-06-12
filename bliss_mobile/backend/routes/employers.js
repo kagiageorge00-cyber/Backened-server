@@ -189,15 +189,22 @@ router.post('/register', async (req, res) => {
 
 router.post('/login', async (req, res) => {
   try {
-    const { employerId, password, candidateId } = req.body;
-    if (!employerId || !password) {
+    const { employerId, email, password, candidateId } = req.body;
+    if ((!employerId && !email) || !password) {
       return res.status(400).json({
         success: false,
-        error: 'employerId and password are required',
+        error: 'employerId or email and password are required',
       });
     }
 
-    const employer = await Employer.findOne({ employerId: sanitizeValue(employerId) });
+    const normalizedLogin = sanitizeValue(employerId || email || '');
+    const employer = await Employer.findOne({
+      $or: [
+        { employerId: normalizedLogin },
+        { email: normalizedLogin.toLowerCase() },
+      ],
+    });
+
     if (!employer) {
       return res.status(401).json({ success: false, error: 'Invalid Employer ID or password' });
     }
@@ -249,6 +256,12 @@ router.post('/login', async (req, res) => {
         employerId: employer.employerId,
         companyName: employer.companyName,
         contactPerson: employer.contactPerson,
+        email: employer.email,
+        phone: employer.phone,
+        country: employer.country,
+        industry: employer.industry,
+        companyAddress: employer.companyAddress,
+        website: employer.website,
         verificationStatus: employer.verificationStatus,
       },
       counts: {
@@ -293,6 +306,68 @@ router.get('/:employerId/profile', async (req, res) => {
     });
   } catch (error) {
     console.error('Employer profile error:', error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ======================
+// UPDATE EMPLOYER PROFILE
+// Allows employer to complete or update their company details
+// ======================
+router.put('/:employerId', async (req, res) => {
+  try {
+    const { employerId } = req.params;
+    if (!employerId) {
+      return res.status(400).json({ success: false, error: 'employerId parameter is required' });
+    }
+
+    const allowed = [
+      'companyName',
+      'contactPerson',
+      'email',
+      'phone',
+      'country',
+      'industry',
+      'companyAddress',
+      'website',
+    ];
+
+    const updates = {};
+    for (const key of allowed) {
+      if (Object.prototype.hasOwnProperty.call(req.body, key)) {
+        const val = req.body[key];
+        if (typeof val === 'string') updates[key] = val.trim();
+      }
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ success: false, error: 'No valid fields provided to update' });
+    }
+
+    const updated = await Employer.findOneAndUpdate(
+      { employerId: sanitizeValue(employerId) },
+      updates,
+      { new: true }
+    );
+
+    if (!updated) {
+      return res.status(404).json({ success: false, error: 'Employer not found' });
+    }
+
+    return res.json({ success: true, message: 'Employer profile updated', data: {
+      employerId: updated.employerId,
+      companyName: updated.companyName,
+      contactPerson: updated.contactPerson,
+      email: updated.email,
+      phone: updated.phone,
+      country: updated.country,
+      industry: updated.industry,
+      companyAddress: updated.companyAddress,
+      website: updated.website,
+      verificationStatus: updated.verificationStatus,
+    }});
+  } catch (error) {
+    console.error('Employer update error:', error);
     return res.status(500).json({ success: false, error: error.message });
   }
 });

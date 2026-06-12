@@ -43,8 +43,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (ok) {
         GoRouter.of(context).go('/');
       } else {
-        setState(
-            () => errorMsg = 'Invalid credentials. Try boss/boss123 for demo.');
+        setState(() => errorMsg = 'Invalid candidate code or password.');
       }
     } catch (e) {
       if (mounted) {
@@ -160,12 +159,12 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         if (errorMsg != null) const SizedBox(height: 16),
 
-                        // ID Field
+                        // Candidate Code Field
                         TextField(
                           controller: _idCtrl,
                           enabled: !loading,
                           decoration: InputDecoration(
-                            labelText: 'Candidate ID, Email, or Phone',
+                            labelText: 'Candidate Code',
                             prefixIcon: const Icon(Icons.badge_outlined),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
@@ -274,51 +273,6 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                         const SizedBox(height: 20),
-
-                        // Demo Credentials
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.blue[50],
-                            border: Border.all(color: Colors.blue[200]!),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Column(
-                            children: [
-                              Text(
-                                'Demo Credentials',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.blue[900],
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Text(
-                                    'ID: boss',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.blue[700],
-                                      fontFamily: 'monospace',
-                                    ),
-                                  ),
-                                  const SizedBox(width: 16),
-                                  Text(
-                                    'Password: boss123',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.blue[700],
-                                      fontFamily: 'monospace',
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
                       ],
                     ),
                   ),

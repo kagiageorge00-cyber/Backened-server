@@ -1,6 +1,7 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
 require('dotenv').config();
@@ -20,6 +21,32 @@ app.use(express.urlencoded({ extended: true }));
 // STATIC FILES
 // ======================
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+const downloadsDir = path.join(__dirname, 'downloads');
+app.use('/downloads', express.static(downloadsDir));
+
+app.get('/api/downloads/latest', (req, res) => {
+  const fileName = 'BlissConnect.apk';
+  const filePath = path.join(downloadsDir, fileName);
+
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({
+      success: false,
+      error:
+        'APK not available. Place BlissConnect.apk in backend/downloads to enable direct download.',
+    });
+  }
+
+  const host = req.get('host');
+  const protocol = req.protocol;
+  const downloadUrl = `${protocol}://${host}/downloads/${fileName}`;
+
+  return res.json({
+    success: true,
+    fileName,
+    downloadUrl,
+    message: 'Download the latest Bliss Connect Android APK from the backend.',
+  });
+});
 
 // ======================
 // MODELS
@@ -59,6 +86,7 @@ const deploymentsRoutes = require('./routes/deployments');
 const notificationsRoutes = require('./routes/notifications');
 const contractsRoutes = require('./routes/contracts');
 const adminStatsRoutes = require('./routes/adminStats');
+const candidateApiRoutes = require('./routes/candidate_api');
 
 // Gracefully handle flightSearch module (may not exist in all deployments)
 let flightSearch;
@@ -76,9 +104,9 @@ try {
 // ======================
 app.use('/api', submitPaymentsLegacy);
 app.use('/api/candidates', candidateRoutes);
+app.use('/api/candidate', candidateRoutes);
 app.use('/api/apply', applyRoutes);
 app.use('/api/register', registerRoutes);
-app.use('/api/candidate', registerRoutes);
 app.use('/api/employers', employerRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/upload', uploadRoutes);
@@ -92,6 +120,8 @@ app.use('/api/deployments', deploymentsRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/contracts', contractsRoutes);
 app.use('/api/admin/stats', adminStatsRoutes);
+app.use('/api/candidate_portal', candidateApiRoutes);
+app.use('/api/candidate/v2', candidateApiRoutes);
 // debug routes removed
 
 // ======================
@@ -169,21 +199,38 @@ app.get('/api/candidate-form/data', async (req, res) => {
       });
     }
 
+    const lookupSource = phone ? 'phone' : 'candidateId';
+    const lookupValue = phone || candidateId;
+
     // ✅ RETURN SUCCESS EVEN IF CANDIDATE NOT FOUND
     if (!candidate) {
       return res.status(200).json({
         success: true,
         candidateExists: false,
-        data: {
-          phone: phone || candidateId || ''
-        }
+        lookup: {
+          by: lookupSource,
+          value: lookupValue
+        },
+        candidateId: null,
+        phone: phone || candidateId || '',
+        data: null
       });
     }
+
+    const candidateData = candidate.toObject ? candidate.toObject() : candidate;
+    candidateData.candidateId = candidate.uniqueCode;
+    candidateData.id = candidate.uniqueCode;
 
     return res.status(200).json({
       success: true,
       candidateExists: true,
-      data: candidate,
+      lookup: {
+        by: lookupSource,
+        value: lookupValue
+      },
+      candidateId: candidate.uniqueCode,
+      phone: candidate.phone,
+      data: candidateData,
       isVerified: candidate.isVerified,
       paymentStatus: candidate.paymentStatus
     });
@@ -420,6 +467,26 @@ app.get('/api/marketplace', async (req, res) => {
       error: error.message
     });
   }
+});
+
+// ======================
+// ERROR HANDLING
+// ======================
+app.use((err, req, res, next) => {
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    console.error('❌ Invalid JSON payload received:', err.message);
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid JSON payload',
+      details: err.message,
+    });
+  }
+
+  console.error('❌ Unexpected server error:', err);
+  res.status(err.status || 500).json({
+    success: false,
+    error: err.message || 'Server error',
+  });
 });
 
 // ======================

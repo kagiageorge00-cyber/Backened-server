@@ -2,6 +2,14 @@ const express = require('express');
 const Candidate = require('../models/candidate');
 const router = express.Router();
 
+function normalizeMarketplaceCandidate(candidate) {
+  const candidateObj = candidate.toObject ? candidate.toObject() : { ...candidate };
+  if (!candidateObj.candidateId) {
+    candidateObj.candidateId = candidateObj.uniqueCode || (candidateObj._id ? candidateObj._id.toString() : null);
+  }
+  return candidateObj;
+}
+
 // GET /api/marketplace/candidates
 router.get('/candidates', async (req, res) => {
   try {
@@ -15,7 +23,7 @@ router.get('/candidates', async (req, res) => {
     const skip = (Number(page) - 1) * Number(limit);
     const candidates = await Candidate.find(query).skip(skip).limit(Number(limit)).select('-password');
 
-    return res.json({ success: true, data: candidates });
+    return res.json({ success: true, data: candidates.map(normalizeMarketplaceCandidate) });
   } catch (err) {
     console.error('Marketplace error:', err);
     return res.status(500).json({ success: false, error: err.message });
