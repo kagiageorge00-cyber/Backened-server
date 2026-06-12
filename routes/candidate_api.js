@@ -76,6 +76,54 @@ router.post('/auth/change-password', jwtAuth, async (req, res) => {
   }
 });
 
+router.get('/auth/me', jwtAuth, async (req, res) => {
+  try {
+    const candidate = req.candidate;
+    return res.json({
+      success: true,
+      data: {
+        uniqueCode: candidate.uniqueCode || candidate._id,
+        name: candidate.fullName || candidate.name,
+        fullName: candidate.fullName || candidate.name,
+        email: candidate.email,
+        phone: candidate.phone,
+      }
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.put('/auth/profile', jwtAuth, async (req, res) => {
+  try {
+    const candidate = req.candidate;
+    const allowed = ['fullName', 'email', 'phone', 'country', 'nationality', 'skills', 'experience', 'gender', 'dateOfBirth', 'idNumber', 'county', 'education'];
+    const updates = {};
+    for (const key of allowed) {
+      if (req.body[key] !== undefined) {
+        updates[key] = req.body[key];
+      }
+    }
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ success: false, error: 'No valid profile fields provided' });
+    }
+    Object.assign(candidate, updates);
+    await candidate.save();
+    return res.json({
+      success: true,
+      data: {
+        uniqueCode: candidate.uniqueCode || candidate._id,
+        name: candidate.fullName || candidate.name,
+        fullName: candidate.fullName || candidate.name,
+        email: candidate.email,
+        phone: candidate.phone,
+      }
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 router.post('/auth/forgot-password', async (req, res) => {
   try {
     const { candidateId } = req.body;
@@ -156,9 +204,18 @@ router.post('/interviews/:id/accept', jwtAuth, async (req, res) => {
     const interview = await Interview.findById(req.params.id);
     if (!interview || interview.candidateId.toString() !== candidate._id.toString()) return res.status(404).json({ success: false, error: 'Interview not found' });
     interview.interviewStatus = 'accepted';
+    
+    // Generate Agora channel and token if video/voice interview
+    if (interview.interviewType && ['video', 'voice'].includes(interview.interviewType)) {
+      interview.channelName = `interview_${interview._id}`;
+      // TODO: Generate actual Agora token using Agora REST API
+      // For now, use a placeholder token - in production, call Agora's token generation service
+      interview.agoraToken = `token_${Date.now()}_placeholder`;
+    }
+    
     await interview.save();
     await Notification.create({ notificationId: `n_${Date.now()}`, userId: interview.employerId, userType: 'employer', title: 'Interview Accepted', message: `Candidate accepted interview ${interview.interviewId}` });
-    return res.json({ success: true });
+    return res.json({ success: true, data: interview });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });
   }
@@ -173,6 +230,27 @@ router.post('/interviews/:id/decline', jwtAuth, async (req, res) => {
     await interview.save();
     await Notification.create({ notificationId: `n_${Date.now()}`, userId: interview.employerId, userType: 'employer', title: 'Interview Declined', message: `Candidate declined interview ${interview.interviewId}` });
     return res.json({ success: true });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// -------------------------
+// PROFILE PHOTO
+// -------------------------
+router.post('/profile/photo', jwtAuth, upload.single('file'), async (req, res) => {
+  try {
+    const candidate = req.candidate;
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'No file provided' });
+    }
+    const photoUrl = `${req.protocol}://${req.get('host')}/uploads/candidate_documents/${req.file.filename}`;
+    const updated = await Candidate.findByIdAndUpdate(
+      candidate._id,
+      { photoUrl },
+      { new: true }
+    );
+    return res.json({ success: true, photoUrl, data: updated });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });
   }
@@ -225,7 +303,59 @@ router.get('/conversations', jwtAuth, async (req, res) => {
   try {
     const candidate = req.candidate;
     const convos = await Conversation.find({ participants: candidate._id.toString() }).sort({ updatedAt: -1 });
-    return res.json({ success: true, data: convos });
+    const enriched = await Promise.all(convos.map(async (conv) => {
+      const otherParticipant = conv.participants.find(
+        (p) => p.toString() !== candidate._id.toString(),
+      );
+      let name = 'Conversation';
+      if (otherParticipant === 'support') {
+        name = 'Support Team';
+      } else if (otherParticipant === 'employer') {
+        name = 'Employer';
+      } else if (typeof otherParticipant === 'string' && otherParticipant.startsWith('EMP-')) {
+        name = 'Employer';
+      } else if (typeof otherParticipant === 'string' && otherParticipant) {
+        name = `Chat with ${otherParticipant}`;
+      }
+      const lastMessage = await Message.findOne({ conversationId: conv._id.toString() }).sort({ createdAt: -1 });
+      return {
+        ...conv.toObject(),
+        name,
+        lastMessage: lastMessage?.message || '',
+      };
+    }));
+    return res.json({ success: true, data: enriched });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/conversations', jwtAuth, async (req, res) => {
+  try {
+    const candidate = req.candidate;
+    const { participants } = req.body;
+    if (!participants || !Array.isArray(participants) || participants.length === 0) {
+      return res.status(400).json({ success: false, error: 'participants array required' });
+    }
+    const resolvedParticipants = Array.from(
+      new Set([
+        candidate._id.toString(),
+        ...participants.map((p) => p.toString()),
+      ]),
+    );
+    if (resolvedParticipants.length < 2) {
+      return res.status(400).json({ success: false, error: 'At least two unique participants are required' });
+    }
+    const existing = await Conversation.findOne({
+      participants: { $all: resolvedParticipants },
+      $expr: { $eq: [{ $size: '$participants' }, resolvedParticipants.length] },
+    });
+    if (existing) {
+      return res.json({ success: true, data: existing });
+    }
+    const conversationId = `CONV-${Date.now()}`;
+    const conv = await Conversation.create({ conversationId, participants: resolvedParticipants });
+    return res.status(201).json({ success: true, data: conv });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });
   }
@@ -253,7 +383,14 @@ router.post('/conversations/:id/messages', jwtAuth, async (req, res) => {
 router.get('/notifications', jwtAuth, async (req, res) => {
   try {
     const candidate = req.candidate;
-    const notes = await Notification.find({ userId: candidate._id.toString() }).sort({ createdAt: -1 });
+    const identifiers = [
+      candidate._id?.toString(),
+      candidate.phone,
+      candidate.email,
+      candidate.uniqueCode,
+      candidate.candidateId,
+    ].filter((id) => id != null && id.toString().trim().length > 0).map((id) => id.toString());
+    const notes = await Notification.find({ userId: { $in: identifiers } }).sort({ createdAt: -1 });
     return res.json({ success: true, data: notes });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });
@@ -265,8 +402,85 @@ router.put('/notifications/read', jwtAuth, async (req, res) => {
     const candidate = req.candidate;
     const { ids } = req.body; // array of notification ids
     if (!Array.isArray(ids)) return res.status(400).json({ success: false, error: 'ids array required' });
-    await Notification.updateMany({ notificationId: { $in: ids }, userId: candidate._id.toString() }, { $set: { isRead: true } });
+    const identifiers = [
+      candidate._id?.toString(),
+      candidate.phone,
+      candidate.email,
+      candidate.uniqueCode,
+      candidate.candidateId,
+    ].filter((id) => id != null && id.toString().trim().length > 0).map((id) => id.toString());
+    await Notification.updateMany({ notificationId: { $in: ids }, userId: { $in: identifiers } }, { $set: { isRead: true } });
     return res.json({ success: true });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// -------------------------
+// OPPORTUNITIES (Jobs)
+// -------------------------
+router.get('/opportunities', jwtAuth, async (req, res) => {
+  try {
+    const candidate = req.candidate;
+    // Return sample job opportunities; in production, fetch from Job model
+    const opportunities = [
+      {
+        _id: 'JOB-001',
+        jobTitle: 'Domestic Worker - Saudi Arabia',
+        position: 'Housemaid',
+        country: 'Saudi Arabia',
+        salary: 1500,
+        currency: 'SAR',
+        employer: 'Gulf Staffing Solutions',
+        employerId: 'EMP-001',
+        description: 'Seeking experienced housemaid for villa in Riyadh. Accommodation and food provided.',
+        requirements: '5+ years experience, references required',
+        postedDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+      },
+      {
+        _id: 'JOB-002',
+        jobTitle: 'Nanny - United Arab Emirates',
+        position: 'Childcare',
+        country: 'United Arab Emirates',
+        salary: 2000,
+        currency: 'AED',
+        employer: 'Premium Recruitment',
+        employerId: 'EMP-002',
+        description: 'Full-time nanny position for 2 children. Dubai location. English speaking preferred.',
+        requirements: 'Experience with children 1-5 years, CPR certified',
+        postedDate: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+      },
+      {
+        _id: 'JOB-003',
+        jobTitle: 'Caregiver - United States',
+        position: 'Senior Care',
+        country: 'United States',
+        salary: 2500,
+        currency: 'USD',
+        employer: 'American Care Services',
+        employerId: 'EMP-003',
+        description: 'Live-in caregiver for elderly patient in New York. Flexible hours, competitive benefits.',
+        requirements: 'Healthcare background, valid visa sponsorship',
+        postedDate: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
+      },
+    ];
+    return res.json({ success: true, data: opportunities });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/opportunities/:jobId/apply', jwtAuth, async (req, res) => {
+  try {
+    const candidate = req.candidate;
+    const { jobId } = req.params;
+    const application = await Application.create({
+      candidateId: candidate._id.toString(),
+      jobId,
+      status: 'Submitted',
+      employerId: 'system',
+    });
+    return res.json({ success: true, data: application, message: 'Application submitted successfully' });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });
   }

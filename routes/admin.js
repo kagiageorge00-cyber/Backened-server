@@ -260,7 +260,7 @@ async function fetchCandidates(req, res) {
     }
 
     const candidates = await Candidate.find(filter)
-      .select("_id fullName phone email status createdAt")
+      .select('-password')
       .limit(parseInt(limit, 10))
       .skip(parseInt(skip, 10))
       .sort({ createdAt: -1 });

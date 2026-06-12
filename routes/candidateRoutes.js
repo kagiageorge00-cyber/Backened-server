@@ -65,6 +65,14 @@ function generateTemporaryPassword(length = 10) {
   return `BLISS${Math.floor(1000 + Math.random() * 9000)}`;
 }
 
+function normalizeCandidate(candidate) {
+  const candidateObj = candidate.toObject ? candidate.toObject() : { ...candidate };
+  if (!candidateObj.candidateId) {
+    candidateObj.candidateId = candidateObj.uniqueCode || (candidateObj._id ? candidateObj._id.toString() : null);
+  }
+  return candidateObj;
+}
+
 // GET /
 router.get('/', async (req, res) => {
   try {
@@ -72,7 +80,7 @@ router.get('/', async (req, res) => {
     return res.json({
       success: true,
       count: candidates.length,
-      data: candidates,
+      data: candidates.map(normalizeCandidate),
     });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
@@ -82,11 +90,11 @@ router.get('/', async (req, res) => {
 // GET /marketplace
 router.get('/marketplace', async (req, res) => {
   try {
-    const candidates = await Candidate.find().sort({ createdAt: -1 });
+    const candidates = await Candidate.find({ isVerified: true, status: 'available' }).sort({ createdAt: -1 });
     return res.json({
       success: true,
       count: candidates.length,
-      data: candidates,
+      data: candidates.map(normalizeCandidate),
     });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
@@ -100,7 +108,7 @@ router.get('/deployed', async (req, res) => {
     return res.json({
       success: true,
       count: candidates.length,
-      data: candidates,
+      data: candidates.map(normalizeCandidate),
     });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
