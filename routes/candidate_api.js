@@ -12,10 +12,129 @@ const Document = require('../models/Document');
 const Notification = require('../models/Notification');
 const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
+const Employer = require('../models/Employer');
+const Job = require('../models/Job');
 
 const jwtAuth = require('../middleware/jwtAuth');
 
 const JWT_SECRET = process.env.CANDIDATE_JWT_SECRET || 'candidate_secret_key';
+
+function normalizeCandidate(candidate) {
+  if (!candidate) return null;
+  const candidateObj = candidate.toObject ? candidate.toObject() : { ...candidate };
+  return {
+    uniqueCode: candidateObj.uniqueCode || candidateObj.candidateId || (candidateObj._id ? candidateObj._id.toString() : null),
+    candidateId: candidateObj.candidateId || candidateObj.uniqueCode || (candidateObj._id ? candidateObj._id.toString() : null),
+    name: candidateObj.fullName || candidateObj.name,
+    fullName: candidateObj.fullName || candidateObj.name,
+    email: candidateObj.email,
+    phone: candidateObj.phone,
+    country: candidateObj.country,
+    nationality: candidateObj.nationality,
+    skills: candidateObj.skills || [],
+    experience: candidateObj.experience,
+    gender: candidateObj.gender,
+    dateOfBirth: candidateObj.dateOfBirth,
+    idNumber: candidateObj.idNumber,
+    education: candidateObj.education,
+    profilePhoto: candidateObj.profilePhoto || candidateObj.photoUrl,
+    photoUrl: candidateObj.photoUrl,
+    videoUrl: candidateObj.videoUrl,
+    isVerified: candidateObj.isVerified,
+    status: candidateObj.status,
+    currentStatus: candidateObj.currentStatus,
+    paymentStatus: candidateObj.paymentStatus,
+    profileCompletion: candidateObj.profileCompletion || 0,
+    createdAt: candidateObj.createdAt,
+  };
+}
+
+function getCandidateIdentifiers(candidate) {
+  return Array.from(
+    new Set([
+      candidate._id?.toString(),
+      candidate.phone,
+      candidate.email,
+      candidate.uniqueCode,
+      candidate.candidateId,
+    ]
+      .filter((id) => id != null && id.toString().trim().length > 0)
+      .map((id) => id.toString())),
+  );
+}
+
+async function enrichApplication(application) {
+  const app = application.toObject ? application.toObject() : { ...application };
+  const result = { ...app };
+  if (app.jobId) {
+    const job = await Job.findOne({ jobId: app.jobId }).lean();
+    if (job) {
+      result.job = {
+        jobId: job.jobId,
+        title: job.title,
+        position: job.position,
+        country: job.country,
+        location: job.location,
+        salary: job.salary,
+        currency: job.currency,
+        description: job.description,
+        requirements: job.requirements,
+        employerId: job.employerId,
+        employerName: job.employerName,
+        postedDate: job.postedDate,
+      };
+    }
+  }
+  if (app.employerId && !result.job?.employerName) {
+    const employer = await Employer.findOne({ employerId: app.employerId }).lean();
+    if (employer) {
+      result.employer = {
+        employerId: employer.employerId,
+        companyName: employer.companyName,
+        country: employer.country,
+      };
+    }
+  }
+  return result;
+}
+
+async function enrichInterview(interview) {
+  const item = interview.toObject ? interview.toObject() : { ...interview };
+  const result = { ...item };
+  if (item.employerId) {
+    const employer = await Employer.findOne({ employerId: item.employerId }).lean();
+    if (employer) {
+      result.employer = {
+        employerId: employer.employerId,
+        companyName: employer.companyName,
+        country: employer.country,
+      };
+    }
+  }
+  if (item.interviewId) {
+    const application = await Application.findOne({ interviewId: item.interviewId }).lean();
+    if (application) {
+      result.application = {
+        applicationId: application._id.toString(),
+        status: application.status,
+        jobTitle: application.jobTitle,
+        jobId: application.jobId,
+      };
+    }
+  }
+  return result;
+}
+
+function computeProfileCompletion(candidate) {
+  const fields = ['fullName', 'email', 'phone', 'country', 'nationality', 'skills', 'experience', 'gender', 'dateOfBirth', 'idNumber', 'education'];
+  const candidateObj = candidate.toObject ? candidate.toObject() : { ...candidate };
+  const present = fields.reduce((count, key) => {
+    const value = candidateObj[key];
+    if (Array.isArray(value)) return value.length > 0 ? count + 1 : count;
+    return value ? count + 1 : count;
+  }, 0);
+  return Math.min(100, Math.round((present / fields.length) * 100));
+}
 
 // multer setup
 const storage = multer.diskStorage({
@@ -79,16 +198,7 @@ router.post('/auth/change-password', jwtAuth, async (req, res) => {
 router.get('/auth/me', jwtAuth, async (req, res) => {
   try {
     const candidate = req.candidate;
-    return res.json({
-      success: true,
-      data: {
-        uniqueCode: candidate.uniqueCode || candidate._id,
-        name: candidate.fullName || candidate.name,
-        fullName: candidate.fullName || candidate.name,
-        email: candidate.email,
-        phone: candidate.phone,
-      }
-    });
+    return res.json({ success: true, data: normalizeCandidate(candidate) });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });
   }
@@ -97,7 +207,7 @@ router.get('/auth/me', jwtAuth, async (req, res) => {
 router.put('/auth/profile', jwtAuth, async (req, res) => {
   try {
     const candidate = req.candidate;
-    const allowed = ['fullName', 'email', 'phone', 'country', 'nationality', 'skills', 'experience', 'gender', 'dateOfBirth', 'idNumber', 'county', 'education'];
+    const allowed = ['fullName', 'email', 'phone', 'country', 'nationality', 'skills', 'experience', 'gender', 'dateOfBirth', 'idNumber', 'county', 'education', 'maritalStatus', 'numberOfChildren', 'religion', 'educationalLevel'];
     const updates = {};
     for (const key of allowed) {
       if (req.body[key] !== undefined) {
@@ -108,15 +218,48 @@ router.put('/auth/profile', jwtAuth, async (req, res) => {
       return res.status(400).json({ success: false, error: 'No valid profile fields provided' });
     }
     Object.assign(candidate, updates);
+    candidate.profileCompletion = computeProfileCompletion(candidate);
     await candidate.save();
+    return res.json({ success: true, data: normalizeCandidate(candidate) });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.get('/dashboard', jwtAuth, async (req, res) => {
+  try {
+    const candidate = req.candidate;
+    const identifiers = getCandidateIdentifiers(candidate);
+    const docs = await Document.find({ candidateId: { $in: identifiers } }).sort({ createdAt: -1 }).lean();
+    const interviews = await Interview.find({ candidateId: { $in: identifiers } }).sort({ interviewDate: -1 }).lean();
+    const applications = await Application.find({ candidateId: { $in: identifiers } }).sort({ createdAt: -1 }).lean();
+    const notifications = await Notification.find({ userId: { $in: identifiers } }).sort({ createdAt: -1 }).limit(5).lean();
+    const upcomingInterview = interviews.find((item) => ['requested', 'accepted', 'scheduled'].includes(item.interviewStatus));
+    const docsCount = docs.length;
+    const appsCount = applications.length;
+    const interviewsAccepted = interviews.filter((item) => item.interviewStatus === 'accepted').length;
+    const progress = Math.min(100, 10 + (docsCount > 0 ? 20 : 0) + (candidate.isVerified ? 20 : 0) + (appsCount > 0 ? 15 : 0) + (interviewsAccepted > 0 ? 15 : 0) + (candidate.profileCompletion || 0));
     return res.json({
       success: true,
       data: {
-        uniqueCode: candidate.uniqueCode || candidate._id,
-        name: candidate.fullName || candidate.name,
-        fullName: candidate.fullName || candidate.name,
-        email: candidate.email,
-        phone: candidate.phone,
+        candidate: normalizeCandidate(candidate),
+        summary: {
+          activeApplications: applications.length,
+          upcomingInterview: upcomingInterview ? {
+            interviewId: upcomingInterview.interviewId,
+            employerId: upcomingInterview.employerId,
+            interviewDate: upcomingInterview.interviewDate,
+            interviewTime: upcomingInterview.interviewTime,
+            interviewStatus: upcomingInterview.interviewStatus,
+            meetingLink: upcomingInterview.meetingLink,
+          } : null,
+          documentsUploaded: docsCount,
+          notificationsUnread: notifications.filter((note) => !note.isRead).length,
+          progress,
+        },
+        recentApplications: await Promise.all(applications.slice(0, 5).map(enrichApplication)),
+        recentInterviews: await Promise.all(interviews.slice(0, 5).map(enrichInterview)),
+        recentNotifications: notifications,
       }
     });
   } catch (err) {
@@ -124,7 +267,7 @@ router.put('/auth/profile', jwtAuth, async (req, res) => {
   }
 });
 
-router.post('/auth/forgot-password', async (req, res) => {
+async function handleForgotPassword(req, res) {
   try {
     const { candidateId } = req.body;
     if (!candidateId) return res.status(400).json({ success: false, error: 'candidateId required' });
@@ -140,9 +283,9 @@ router.post('/auth/forgot-password', async (req, res) => {
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });
   }
-});
+}
 
-router.post('/auth/reset-password', async (req, res) => {
+async function handleResetPassword(req, res) {
   try {
     const { resetToken, newPassword } = req.body;
     if (!resetToken || !newPassword) return res.status(400).json({ success: false, error: 'resetToken and newPassword required' });
@@ -159,7 +302,12 @@ router.post('/auth/reset-password', async (req, res) => {
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });
   }
-});
+}
+
+router.post('/auth/forgot-password', handleForgotPassword);
+router.post('/forgot-password', handleForgotPassword);
+router.post('/auth/reset-password', handleResetPassword);
+router.post('/reset-password', handleResetPassword);
 
 // -------------------------
 // APPLICATIONS
@@ -167,7 +315,47 @@ router.post('/auth/reset-password', async (req, res) => {
 router.get('/applications', jwtAuth, async (req, res) => {
   try {
     const candidate = req.candidate;
-    const apps = await Application.find({ candidateId: candidate._id.toString() }).sort({ createdAt: -1 });
+    const identifiers = getCandidateIdentifiers(candidate);
+    let apps = await Application.find({ candidateId: { $in: identifiers } }).sort({ createdAt: -1 }).lean();
+
+    if (!apps.length && (candidate.jobAppliedFor || candidate.appliedJobId || candidate.appliedJobTitle)) {
+      const fallback = {
+        _id: `REG-${candidate._id}`,
+        candidateId: candidate._id.toString(),
+        employerId: candidate.appliedEmployerId || 'unknown',
+        jobId: candidate.appliedJobId || null,
+        jobTitle: candidate.appliedJobTitle || candidate.jobAppliedFor || 'Registered Application',
+        country: candidate.country || null,
+        status: 'Submitted',
+        applicationSource: 'registration',
+        appliedEmployerName: candidate.appliedEmployerName || null,
+        createdAt: candidate.applicationDate || candidate.createdAt,
+        updatedAt: candidate.applicationDate || candidate.createdAt,
+      };
+      if (fallback.jobId) {
+        const job = await Job.findOne({ jobId: fallback.jobId }).lean();
+        if (job) {
+          fallback.job = {
+            jobId: job.jobId,
+            title: job.title,
+            position: job.position,
+            country: job.country,
+            location: job.location,
+            salary: job.salary,
+            currency: job.currency,
+            description: job.description,
+            requirements: job.requirements,
+            employerId: job.employerId,
+            employerName: job.employerName,
+            postedDate: job.postedDate,
+          };
+        }
+      }
+      apps = [fallback];
+    } else {
+      apps = await Promise.all(apps.map(enrichApplication));
+    }
+
     return res.json({ success: true, data: apps });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });
@@ -177,8 +365,52 @@ router.get('/applications', jwtAuth, async (req, res) => {
 router.get('/applications/:id', jwtAuth, async (req, res) => {
   try {
     const candidate = req.candidate;
-    const app = await Application.findById(req.params.id);
-    if (!app || app.candidateId.toString() !== candidate._id.toString()) return res.status(404).json({ success: false, error: 'Application not found' });
+    const identifiers = getCandidateIdentifiers(candidate);
+    const id = req.params.id;
+    let app = null;
+
+    if (id.startsWith('REG-')) {
+      if (candidate._id.toString() !== id.replace('REG-', '')) {
+        return res.status(404).json({ success: false, error: 'Application not found' });
+      }
+      app = {
+        _id: id,
+        candidateId: candidate._id.toString(),
+        employerId: candidate.appliedEmployerId || 'unknown',
+        jobId: candidate.appliedJobId || null,
+        jobTitle: candidate.appliedJobTitle || candidate.jobAppliedFor || 'Registered Application',
+        country: candidate.country || null,
+        status: 'Submitted',
+        applicationSource: 'registration',
+        appliedEmployerName: candidate.appliedEmployerName || null,
+        createdAt: candidate.applicationDate || candidate.createdAt,
+        updatedAt: candidate.applicationDate || candidate.createdAt,
+      };
+      if (app.jobId) {
+        const job = await Job.findOne({ jobId: app.jobId }).lean();
+        if (job) {
+          app.job = {
+            jobId: job.jobId,
+            title: job.title,
+            position: job.position,
+            country: job.country,
+            location: job.location,
+            salary: job.salary,
+            currency: job.currency,
+            description: job.description,
+            requirements: job.requirements,
+            employerId: job.employerId,
+            employerName: job.employerName,
+            postedDate: job.postedDate,
+          };
+        }
+      }
+    } else {
+      const application = await Application.findById(id);
+      if (!application || !identifiers.includes(application.candidateId.toString())) return res.status(404).json({ success: false, error: 'Application not found' });
+      app = await enrichApplication(application);
+    }
+
     return res.json({ success: true, data: app });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });
@@ -492,14 +724,15 @@ router.post('/opportunities/:jobId/apply', jwtAuth, async (req, res) => {
 router.get('/progress', jwtAuth, async (req, res) => {
   try {
     const candidate = req.candidate;
+    const identifiers = getCandidateIdentifiers(candidate);
     // Heuristic-based progress
     let score = 10; // registration
-    const docs = await Document.find({ candidateId: candidate._id.toString() });
+    const docs = await Document.find({ candidateId: { $in: identifiers } });
     if (docs.length > 0) score += 25;
     if (candidate.isVerified) score += 20;
-    const apps = await Application.find({ candidateId: candidate._id.toString() });
+    const apps = await Application.find({ candidateId: { $in: identifiers } });
     if (apps.length > 0) score += 10;
-    const interviews = await Interview.find({ candidateId: candidate._id.toString(), interviewStatus: 'accepted' });
+    const interviews = await Interview.find({ candidateId: { $in: identifiers }, interviewStatus: 'accepted' });
     if (interviews.length > 0) score += 10;
     // cap max 100
     score = Math.min(100, score);

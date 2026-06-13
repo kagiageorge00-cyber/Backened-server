@@ -21,6 +21,10 @@ const candidateSchema = new mongoose.Schema({
   idNumber: String,
   county: String,
   jobAppliedFor: String,
+  appliedJobId: String,
+  appliedJobTitle: String,
+  appliedEmployerId: String,
+  appliedEmployerName: String,
   education: String,
   applicationDate: Date,
   paymentId: {

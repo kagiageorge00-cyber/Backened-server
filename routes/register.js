@@ -72,6 +72,11 @@ router.post("/", async (req, res) => {
       conductUrl,
       resumeUrl,
       additionalUrl,
+      jobAppliedFor,
+      appliedJobId,
+      appliedJobTitle,
+      appliedEmployerId,
+      appliedEmployerName,
     } = req.body;
 
     const phone = req.body.phone || req.query.phone;
@@ -119,6 +124,11 @@ router.post("/", async (req, res) => {
       candidate.conductUrl = conductUrl || candidate.conductUrl;
       candidate.resumeUrl = resumeUrl || candidate.resumeUrl;
       candidate.additionalUrl = additionalUrl || candidate.additionalUrl;
+      candidate.jobAppliedFor = jobAppliedFor || candidate.jobAppliedFor;
+      candidate.appliedJobId = appliedJobId || candidate.appliedJobId;
+      candidate.appliedJobTitle = appliedJobTitle || candidate.appliedJobTitle;
+      candidate.appliedEmployerId = appliedEmployerId || candidate.appliedEmployerId;
+      candidate.appliedEmployerName = appliedEmployerName || candidate.appliedEmployerName;
       candidate.isVerified = true;
       candidate.paymentStatus = "completed";
       candidate.status = "available";
@@ -155,6 +165,11 @@ router.post("/", async (req, res) => {
         conductUrl,
         resumeUrl,
         additionalUrl,
+        jobAppliedFor,
+        appliedJobId,
+        appliedJobTitle,
+        appliedEmployerId,
+        appliedEmployerName,
         uniqueCode, // ✅ correct field (not candidateId)
         password: hashedPassword,
 
