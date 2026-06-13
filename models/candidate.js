@@ -98,6 +98,9 @@ const candidateSchema = new mongoose.Schema({
   },
   profilePhoto: String,
   languages: [String],
+  destinationPreference: [String],
+  preferredDestination: [String],
+  preferredDestinations: [String],
   profileCompletion: {
     type: Number,
     default: 0,

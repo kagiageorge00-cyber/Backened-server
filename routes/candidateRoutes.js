@@ -67,10 +67,82 @@ function generateTemporaryPassword(length = 10) {
 
 function normalizeCandidate(candidate) {
   const candidateObj = candidate.toObject ? candidate.toObject() : { ...candidate };
-  if (!candidateObj.candidateId) {
-    candidateObj.candidateId = candidateObj.uniqueCode || (candidateObj._id ? candidateObj._id.toString() : null);
-  }
-  return candidateObj;
+  const birthDate = candidateObj.dateOfBirth ? new Date(candidateObj.dateOfBirth) : null;
+  const age = birthDate && !Number.isNaN(birthDate.getTime())
+    ? new Date().getFullYear() - birthDate.getFullYear()
+    : null;
+  return {
+    _id: candidateObj._id,
+    uniqueCode: candidateObj.uniqueCode || candidateObj.candidateId || (candidateObj._id ? candidateObj._id.toString() : null),
+    candidateId: candidateObj.candidateId || candidateObj.uniqueCode || (candidateObj._id ? candidateObj._id.toString() : null),
+    name: candidateObj.fullName || candidateObj.name,
+    fullName: candidateObj.fullName || candidateObj.name,
+    email: candidateObj.email,
+    phone: candidateObj.phone,
+    country: candidateObj.country,
+    nationality: candidateObj.nationality,
+    religion: candidateObj.religion,
+    education: candidateObj.education,
+    educationalLevel: candidateObj.educationalLevel,
+    experience: candidateObj.experience,
+    skills: candidateObj.skills || [],
+    languages: candidateObj.languages || [],
+    age,
+    gender: candidateObj.gender,
+    status: candidateObj.status,
+    availability: candidateObj.status === 'available' ? 'Available' : candidateObj.status,
+    currentStatus: candidateObj.currentStatus,
+    paymentStatus: candidateObj.paymentStatus,
+    profileCompletion: candidateObj.profileCompletion || 0,
+    profilePhoto: candidateObj.profilePhoto || candidateObj.photoUrl,
+    photoUrl: candidateObj.photoUrl || candidateObj.profilePhoto,
+    videoUrl: candidateObj.videoUrl,
+    passportUrl: candidateObj.passportUrl,
+    medicalUrl: candidateObj.medicalUrl,
+    resumeUrl: candidateObj.resumeUrl,
+    additionalUrl: candidateObj.additionalUrl,
+    jobType: candidateObj.jobType,
+    destinationPreference: candidateObj.destinationPreference || candidateObj.preferredDestination || candidateObj.preferredDestinations || null,
+    documents: candidateObj.documents || { certificates: [], uploads: [] },
+    createdAt: candidateObj.createdAt,
+  };
+}
+
+function buildMarketplaceCandidate(candidate) {
+  const candidateObj = normalizeCandidate(candidate);
+  const experience = candidateObj.experience || '';
+  const experienceLabel = typeof experience === 'string' && experience.trim().length > 0
+    ? experience
+    : experience !== undefined && experience !== null
+      ? `${experience} Years`
+      : null;
+  const languages = Array.isArray(candidateObj.languages) ? candidateObj.languages : [];
+  const skills = Array.isArray(candidateObj.skills) ? candidateObj.skills : [];
+  const destination = Array.isArray(candidateObj.destinationPreference)
+    ? candidateObj.destinationPreference.join(', ')
+    : candidateObj.destinationPreference || null;
+
+  return {
+    candidateId: candidateObj.candidateId,
+    name: candidateObj.name,
+    fullName: candidateObj.fullName,
+    age: candidateObj.age,
+    ageLabel: candidateObj.age !== null ? `${candidateObj.age} Years` : null,
+    nationality: candidateObj.nationality,
+    religion: candidateObj.religion,
+    experience: experienceLabel,
+    languages: languages,
+    languagesLabel: languages.length > 0 ? languages.join(', ') : null,
+    skills: skills,
+    skillsLabel: skills.length > 0 ? skills.join(', ') : null,
+    education: candidateObj.education || candidateObj.educationalLevel,
+    destinationPreference: destination,
+    availability: candidateObj.status === 'available' ? 'Available ✔' : candidateObj.status || 'Unavailable',
+    photoUrl: candidateObj.photoUrl,
+    profileCompletion: candidateObj.profileCompletion,
+    currentStatus: candidateObj.currentStatus,
+    status: candidateObj.status,
+  };
 }
 
 // GET /
@@ -94,7 +166,45 @@ router.get('/marketplace', async (req, res) => {
     return res.json({
       success: true,
       count: candidates.length,
-      data: candidates.map(normalizeCandidate),
+      data: candidates.map(buildMarketplaceCandidate),
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// GET /marketplace/profile/:candidateId
+router.get('/marketplace/profile/:candidateId', async (req, res) => {
+  try {
+    const { candidateId } = req.params;
+    if (!candidateId) {
+      return res.status(400).json({ success: false, error: 'candidateId is required' });
+    }
+
+    const searchCriteria = [];
+    if (mongoose.Types.ObjectId.isValid(candidateId)) {
+      searchCriteria.push({ _id: candidateId });
+    }
+    searchCriteria.push(
+      { uniqueCode: candidateId },
+      { candidateId },
+      { phone: candidateId },
+      { email: candidateId }
+    );
+
+    const candidate = await Candidate.findOne({
+      $or: searchCriteria,
+      isVerified: true,
+      status: 'available',
+    });
+
+    if (!candidate) {
+      return res.status(404).json({ success: false, error: 'Candidate not found' });
+    }
+
+    return res.json({
+      success: true,
+      data: buildMarketplaceCandidate(candidate),
     });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
@@ -170,8 +280,20 @@ router.post('/form/submit', async (req, res) => {
       fullName,
       email,
       country,
+      nationality,
+      religion,
+      education,
       skills,
+      languages,
       experience,
+      gender,
+      dateOfBirth,
+      maritalStatus,
+      jobType,
+      destinationPreference,
+      preferredDestination,
+      preferredDestinations,
+      currentStatus,
       photoUrl,
       videoUrl,
       passportUrl,
@@ -236,8 +358,18 @@ router.post('/form/submit', async (req, res) => {
         email,
         phone,
         country,
+        nationality,
+        religion,
+        education,
         skills,
+        languages,
         experience,
+        gender,
+        dateOfBirth,
+        maritalStatus,
+        jobType,
+        destinationPreference: destinationPreference || preferredDestination || preferredDestinations || [],
+        currentStatus,
         photoUrl,
         videoUrl,
         passportUrl,
@@ -275,8 +407,18 @@ router.post('/form/submit', async (req, res) => {
       candidate.email = email || candidate.email;
       candidate.phone = phone || candidate.phone;
       candidate.country = country || candidate.country;
+      candidate.nationality = nationality || candidate.nationality;
+      candidate.religion = religion || candidate.religion;
+      candidate.education = education || candidate.education;
       candidate.skills = skills || candidate.skills;
+      candidate.languages = languages || candidate.languages;
       candidate.experience = experience || candidate.experience;
+      candidate.gender = gender || candidate.gender;
+      candidate.dateOfBirth = dateOfBirth || candidate.dateOfBirth;
+      candidate.maritalStatus = maritalStatus || candidate.maritalStatus;
+      candidate.jobType = jobType || candidate.jobType;
+      candidate.destinationPreference = destinationPreference || preferredDestination || preferredDestinations || candidate.destinationPreference;
+      candidate.currentStatus = currentStatus || candidate.currentStatus;
       candidate.photoUrl = photoUrl || candidate.photoUrl;
       candidate.videoUrl = videoUrl || candidate.videoUrl;
       candidate.passportUrl = passportUrl || candidate.passportUrl;

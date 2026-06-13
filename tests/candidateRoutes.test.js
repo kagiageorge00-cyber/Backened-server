@@ -33,7 +33,17 @@ describe('Candidate portal routes', () => {
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.count).toBe(1);
-    expect(res.body.data).toEqual([{ _id: 'cand_1', fullName: 'Test User' }]);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0]).toEqual(expect.objectContaining({
+      _id: 'cand_1',
+      fullName: 'Test User',
+      name: 'Test User',
+      uniqueCode: 'cand_1',
+      candidateId: 'cand_1',
+      skills: [],
+      languages: [],
+      profileCompletion: 0,
+    }));
     expect(Candidate.find).toHaveBeenCalled();
   });
 
@@ -67,8 +77,8 @@ describe('Candidate portal routes', () => {
     expect(Candidate.create).toHaveBeenCalled();
   });
 
-  test('GET /api/candidates/marketplace returns verified available candidates', async () => {
-    Candidate.find.mockReturnValue(mockSortResult([{ _id: 'cand_3', fullName: 'Market User' }]));
+  test('GET /api/candidates/marketplace returns verified available candidates with profile fields', async () => {
+    Candidate.find.mockReturnValue(mockSortResult([{ _id: 'cand_3', fullName: 'Market User', uniqueCode: 'CAND-2026-0003', status: 'available', nationality: 'Kenyan', religion: 'Christian', education: 'High School', experience: '4', skills: ['Cleaning', 'Child Care'], languages: ['English', 'Arabic'], dateOfBirth: '2000-01-01' }]));
 
     const app = express();
     app.use('/api/candidates', candidateRoutes);
@@ -78,7 +88,55 @@ describe('Candidate portal routes', () => {
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(Array.isArray(res.body.data)).toBe(true);
+    expect(res.body.data[0]).toEqual(expect.objectContaining({
+      candidateId: 'CAND-2026-0003',
+      name: 'Market User',
+      fullName: 'Market User',
+      nationality: 'Kenyan',
+      religion: 'Christian',
+      education: 'High School',
+      experience: '4 Years',
+      languagesLabel: 'English, Arabic',
+      skillsLabel: 'Cleaning, Child Care',
+      destinationPreference: null,
+      availability: 'Available ✔',
+    }));
     expect(Candidate.find).toHaveBeenCalledWith({ isVerified: true, status: 'available' });
+  });
+
+  test('GET /api/candidates/marketplace/profile/:candidateId returns a single formatted candidate card', async () => {
+    Candidate.findOne.mockResolvedValue({ _id: 'cand_4', fullName: 'Card User', uniqueCode: 'CAND-2026-0004', candidateId: 'CAND-2026-0004', status: 'available', nationality: 'Kenyan', religion: 'Christian', education: 'High School', experience: '4', skills: ['Cleaning', 'Child Care'], languages: ['English', 'Arabic'], dateOfBirth: '2000-01-01', photoUrl: 'https://example.com/photo.jpg' });
+
+    const app = express();
+    app.use('/api/candidates', candidateRoutes);
+
+    const res = await request(app).get('/api/candidates/marketplace/profile/CAND-2026-0004');
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data).toEqual(expect.objectContaining({
+      candidateId: 'CAND-2026-0004',
+      name: 'Card User',
+      fullName: 'Card User',
+      nationality: 'Kenyan',
+      religion: 'Christian',
+      education: 'High School',
+      experience: '4 Years',
+      languagesLabel: 'English, Arabic',
+      skillsLabel: 'Cleaning, Child Care',
+      availability: 'Available ✔',
+      photoUrl: 'https://example.com/photo.jpg',
+    }));
+    expect(Candidate.findOne).toHaveBeenCalledWith({
+      $or: [
+        { uniqueCode: 'CAND-2026-0004' },
+        { candidateId: 'CAND-2026-0004' },
+        { phone: 'CAND-2026-0004' },
+        { email: 'CAND-2026-0004' }
+      ],
+      isVerified: true,
+      status: 'available',
+    });
   });
 
   test('GET /api/candidates/:id returns a candidate by ID', async () => {

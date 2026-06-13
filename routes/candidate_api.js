@@ -318,7 +318,16 @@ router.get('/applications', jwtAuth, async (req, res) => {
     const identifiers = getCandidateIdentifiers(candidate);
     let apps = await Application.find({ candidateId: { $in: identifiers } }).sort({ createdAt: -1 }).lean();
 
-    if (!apps.length && (candidate.jobAppliedFor || candidate.appliedJobId || candidate.appliedJobTitle)) {
+    const hasFallbackApplication = !!(
+      candidate.jobAppliedFor ||
+      candidate.appliedJobId ||
+      candidate.appliedJobTitle ||
+      candidate.appliedEmployerId ||
+      candidate.appliedEmployerName ||
+      candidate.applicationDate
+    );
+
+    if (!apps.length && hasFallbackApplication) {
       const fallback = {
         _id: `REG-${candidate._id}`,
         candidateId: candidate._id.toString(),
