@@ -568,19 +568,31 @@ router.post('/uploadDocument', documentUpload.single('file'), async (req, res) =
       uploads: candidate.documents?.uploads || [],
     };
 
-    if (documentType === 'passportPhoto') {
+    if (documentType == 'passportPhoto' || documentType == 'passportUrl') {
+      candidate.passportUrl = fileUrl;
       candidate.documents.passportPhoto = fileUrl;
-    } else if (documentType === 'nationalId') {
+    } else if (documentType == 'nationalId') {
       candidate.documents.nationalId = fileUrl;
-    } else if (documentType === 'cv') {
+    } else if (documentType == 'cv' || documentType == 'resumeUrl') {
+      candidate.resumeUrl = fileUrl;
       candidate.documents.cv = fileUrl;
-    } else if (documentType === 'coverLetter') {
+    } else if (documentType == 'coverLetter' || documentType == 'additionalUrl') {
+      candidate.additionalUrl = fileUrl;
       candidate.documents.coverLetter = fileUrl;
-    } else if (documentType === 'certificates') {
+    } else if (documentType == 'certificates') {
       candidate.documents.certificates = [
         ...(candidate.documents.certificates || []),
         fileUrl,
       ];
+    } else if (documentType == 'photo' || documentType == 'photoUrl') {
+      candidate.photoUrl = fileUrl;
+      candidate.documents.profilePhoto = fileUrl;
+    } else if (documentType == 'video' || documentType == 'videoUrl') {
+      candidate.videoUrl = fileUrl;
+    } else if (documentType == 'medical' || documentType == 'medicalUrl') {
+      candidate.medicalUrl = fileUrl;
+    } else if (documentType == 'conduct' || documentType == 'conductUrl') {
+      candidate.conductUrl = fileUrl;
     } else {
       candidate.documents.uploads.push({
         type: documentType,
@@ -633,19 +645,31 @@ router.post('/upload-documents', documentUpload.single('file'), async (req, res)
       uploads: candidate.documents?.uploads || [],
     };
 
-    if (documentType === 'passportPhoto') {
+    if (documentType == 'passportPhoto' || documentType == 'passportUrl') {
+      candidate.passportUrl = fileUrl;
       candidate.documents.passportPhoto = fileUrl;
-    } else if (documentType === 'nationalId') {
+    } else if (documentType == 'nationalId') {
       candidate.documents.nationalId = fileUrl;
-    } else if (documentType === 'cv') {
+    } else if (documentType == 'cv' || documentType == 'resumeUrl') {
+      candidate.resumeUrl = fileUrl;
       candidate.documents.cv = fileUrl;
-    } else if (documentType === 'coverLetter') {
+    } else if (documentType == 'coverLetter' || documentType == 'additionalUrl') {
+      candidate.additionalUrl = fileUrl;
       candidate.documents.coverLetter = fileUrl;
-    } else if (documentType === 'certificates') {
+    } else if (documentType == 'certificates') {
       candidate.documents.certificates = [
         ...(candidate.documents.certificates || []),
         fileUrl,
       ];
+    } else if (documentType == 'photo' || documentType == 'photoUrl') {
+      candidate.photoUrl = fileUrl;
+      candidate.documents.profilePhoto = fileUrl;
+    } else if (documentType == 'video' || documentType == 'videoUrl') {
+      candidate.videoUrl = fileUrl;
+    } else if (documentType == 'medical' || documentType == 'medicalUrl') {
+      candidate.medicalUrl = fileUrl;
+    } else if (documentType == 'conduct' || documentType == 'conductUrl') {
+      candidate.conductUrl = fileUrl;
     } else {
       candidate.documents.uploads.push({
         type: documentType,

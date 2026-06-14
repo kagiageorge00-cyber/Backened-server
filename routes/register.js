@@ -134,6 +134,24 @@ router.post("/", async (req, res) => {
       candidate.status = "available";
       candidate.uniqueCode = candidate.uniqueCode || generateCandidateCode();
 
+      candidate.documents = {
+        ...(candidate.documents || {}),
+        passportPhoto: passportUrl || candidate.documents?.passportPhoto || candidate.passportUrl,
+        cv: resumeUrl || candidate.documents?.cv || candidate.resumeUrl,
+        coverLetter: additionalUrl || candidate.documents?.coverLetter || candidate.additionalUrl,
+        certificates: candidate.documents?.certificates || [],
+        uploads: candidate.documents?.uploads || [],
+      };
+
+      candidate.documents = {
+        ...(candidate.documents || {}),
+        passportPhoto: passportUrl || candidate.documents?.passportPhoto || candidate.passportUrl,
+        cv: resumeUrl || candidate.documents?.cv || candidate.resumeUrl,
+        coverLetter: additionalUrl || candidate.documents?.coverLetter || candidate.additionalUrl,
+        certificates: candidate.documents?.certificates || [],
+        uploads: candidate.documents?.uploads || [],
+      };
+
       if (!candidate.password) {
         passwordPlain = `BLISS${Math.floor(1000 + Math.random() * 9000)}`;
         candidate.password = await bcrypt.hash(passwordPlain, 10);
@@ -172,7 +190,13 @@ router.post("/", async (req, res) => {
         appliedEmployerName,
         uniqueCode, // ✅ correct field (not candidateId)
         password: hashedPassword,
-
+        documents: {
+          passportPhoto: passportUrl || null,
+          cv: resumeUrl || null,
+          coverLetter: additionalUrl || null,
+          certificates: [],
+          uploads: [],
+        },
         isVerified: true,
         paymentStatus: "completed",
         status: "available",
