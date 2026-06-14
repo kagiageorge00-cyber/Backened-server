@@ -79,10 +79,22 @@ router.post("/", async (req, res) => {
       appliedEmployerName,
     } = req.body;
 
-    const phone = req.body.phone || req.query.phone;
+    // normalize phone for lookup: strip spaces and non-digits, keep leading + if present
+    let phone = req.body.phone || req.query.phone;
+    const normalizePhone = (p) => {
+      if (!p) return p;
+      // remove spaces, dashes, parentheses and leading '#'
+      return p.replace(/[#\s\-()]/g, '').trim();
+    };
+    phone = normalizePhone(phone);
 
     // ======================
-    // VALIDATION
+    // CHECK EXISTING FIRST
+    // ======================
+    let candidate = await Candidate.findOne({ phone });
+
+    // ======================
+    // VALIDATION (allow existing candidate's stored docs)
     // ======================
     const requiredFields = [
       { key: 'phone', value: phone },
@@ -92,9 +104,53 @@ router.post("/", async (req, res) => {
       { key: 'conductUrl', value: conductUrl },
     ];
 
+    const looksLikeVideoFile = (str) => {
+      if (!str || typeof str !== 'string') return false;
+      const s = str.toLowerCase();
+      return s.includes('.mp4') || s.includes('.mov') || s.includes('.mpeg') || s.includes('video');
+    };
+
+    const hasStored = (fieldKey) => {
+      if (!candidate) return false;
+      // direct fields
+      const direct = candidate[fieldKey];
+      if (direct && !(typeof direct === 'string' && !direct.trim())) return true;
+
+      // check documents container
+      if (candidate.documents) {
+        if (fieldKey === 'passportUrl' && candidate.documents.passportPhoto) return true;
+        if (fieldKey === 'resumeUrl' && candidate.documents.cv) return true;
+        if (fieldKey === 'additionalUrl' && candidate.documents.coverLetter) return true;
+
+        // check uploads array for matching filename or url
+        if (Array.isArray(candidate.documents.uploads)) {
+          const found = candidate.documents.uploads.find((u) => {
+            if (!u) return false;
+            if (u.filename && looksLikeVideoFile(u.filename)) return true;
+            if (u.url && looksLikeVideoFile(u.url)) return true;
+            return false;
+          });
+          if (found) return true;
+        }
+      }
+
+      return false;
+    };
+
     const missingField = requiredFields.find((field) => {
       const value = field.value;
-      return value === undefined || value === null || (typeof value === 'string' && !value.trim());
+
+      const isEmpty = value === undefined || value === null || (typeof value === 'string' && !value.trim());
+      if (!isEmpty) return false; // present in request
+
+      // if candidate exists, check if candidate already has this value stored or equivalent
+      if (candidate) {
+        if (hasStored(field.key)) return false;
+        // special-case video: look for uploads that look like videos
+        if (field.key === 'videoUrl' && hasStored('videoUrl')) return false;
+      }
+
+      return true; // missing both in request and stored candidate
     });
 
     if (missingField) {
@@ -103,11 +159,6 @@ router.post("/", async (req, res) => {
         error: `${missingField.key} is required`,
       });
     }
-
-    // ======================
-    // CHECK EXISTING
-    // ======================
-    let candidate = await Candidate.findOne({ phone });
     let passwordPlain;
     let uniqueCode;
     
