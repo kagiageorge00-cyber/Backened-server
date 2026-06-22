@@ -259,7 +259,6 @@ router.post('/register', async (req, res) => {
         success: false,
         error: `${missingField.key} is required`,
       });
-      });
     }
 
     const existingEmail = await Employer.findOne({ email: normalized.email.toLowerCase() });
