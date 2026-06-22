@@ -27,6 +27,54 @@ const documentUpload = multer({
   limits: { fileSize: 50 * 1024 * 1024 },
 });
 
+// POST / - create a candidate
+router.post('/', async (req, res) => {
+  try {
+    const {
+      fullName,
+      name,
+      email,
+      phone,
+      country,
+      skills,
+      experience,
+      photoUrl,
+      videoUrl,
+    } = req.body || {};
+
+    if (!email || !phone) {
+      return res.status(400).json({ success: false, error: 'email and phone are required' });
+    }
+
+    const existingCandidate = await Candidate.findOne({ $or: [{ email }, { phone }] });
+    if (existingCandidate) {
+      return res.status(409).json({ success: false, error: 'Candidate already exists' });
+    }
+
+    const payload = {
+      fullName: fullName || name || '',
+      name: name || fullName || '',
+      email,
+      phone,
+      country,
+      skills: Array.isArray(skills) ? skills : (skills ? [skills] : []),
+      experience,
+      photoUrl,
+      videoUrl,
+      uniqueCode: generateCandidateCode(),
+      isVerified: false,
+      status: 'in_process',
+      paymentStatus: 'pending',
+      createdAt: new Date(),
+    };
+
+    const candidate = await Candidate.create(payload);
+    return res.status(201).json({ success: true, data: candidate });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // POST /login-id - authenticate using Candidate ID and password
 router.post('/login-id', async (req, res) => {
   try {
@@ -110,12 +158,14 @@ function normalizeCandidate(candidate) {
 
 function buildMarketplaceCandidate(candidate) {
   const candidateObj = normalizeCandidate(candidate);
-  const experience = candidateObj.experience || '';
-  const experienceLabel = typeof experience === 'string' && experience.trim().length > 0
-    ? experience
-    : experience !== undefined && experience !== null
-      ? `${experience} Years`
-      : null;
+  const experience = candidateObj.experience;
+  const experienceLabel = experience !== undefined && experience !== null
+    ? (typeof experience === 'string'
+        ? experience.trim().length > 0
+          ? (/^\d+$/.test(experience.trim()) ? `${experience.trim()} Years` : experience.trim())
+          : null
+        : `${experience} Years`)
+    : null;
   const languages = Array.isArray(candidateObj.languages) ? candidateObj.languages : [];
   const skills = Array.isArray(candidateObj.skills) ? candidateObj.skills : [];
   const destination = Array.isArray(candidateObj.destinationPreference)
@@ -378,9 +428,9 @@ router.post('/form/submit', async (req, res) => {
         additionalUrl,
         uniqueCode: generateCandidateCode(),
         password: hashedPassword,
-        isVerified: true,
-        status: 'available',
-        paymentStatus: 'completed',
+        isVerified: false,
+        status: 'in_process',
+        paymentStatus: 'pending',
         documents: {
           passportPhoto: passportUrl || null,
           nationalId: null,
@@ -434,9 +484,11 @@ router.post('/form/submit', async (req, res) => {
         coverLetter: candidate.documents?.coverLetter || null,
         uploads: candidate.documents?.uploads || [],
       };
-      candidate.isVerified = true;
-      candidate.status = 'available';
-      candidate.paymentStatus = 'completed';
+      candidate.isVerified = candidate.isVerified || false;
+      candidate.status = ['available', 'deployed'].includes(candidate.status)
+        ? candidate.status
+        : 'in_process';
+      candidate.paymentStatus = candidate.paymentStatus === 'completed' ? 'completed' : 'pending';
       if (paymentId) {
         candidate.paymentId = paymentId;
         try {

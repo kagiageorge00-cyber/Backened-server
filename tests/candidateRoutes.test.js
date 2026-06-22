@@ -5,6 +5,8 @@ jest.mock('../models/candidate', () => ({
   findById: jest.fn(),
   findByIdAndUpdate: jest.fn(),
   findByIdAndDelete: jest.fn(),
+  findOneAndUpdate: jest.fn(),
+  findOneAndDelete: jest.fn(),
 }));
 
 const express = require('express');
@@ -140,7 +142,7 @@ describe('Candidate portal routes', () => {
   });
 
   test('GET /api/candidates/:id returns a candidate by ID', async () => {
-    Candidate.findById.mockResolvedValue({ _id: 'cand_4', fullName: 'Fetched Candidate' });
+    Candidate.findOne.mockResolvedValue({ _id: 'cand_4', fullName: 'Fetched Candidate' });
 
     const app = express();
     app.use('/api/candidates', candidateRoutes);
@@ -150,12 +152,17 @@ describe('Candidate portal routes', () => {
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.data._id).toBe('cand_4');
-    expect(Candidate.findById).toHaveBeenCalledWith('cand_4');
+    expect(Candidate.findOne).toHaveBeenCalledWith({
+      $or: [
+        { uniqueCode: 'cand_4' },
+        { phone: 'cand_4' },
+        { email: 'cand_4' }
+      ]
+    });
   });
 
   test('PUT /api/candidates/:id updates candidate data', async () => {
-    Candidate.findById.mockResolvedValue({ _id: 'cand_5', fullName: 'Existing Candidate', email: 'existing@example.com', phone: '254700000005', status: 'available', paymentStatus: 'pending' });
-    Candidate.findByIdAndUpdate.mockResolvedValue({ _id: 'cand_5', fullName: 'Updated Candidate' });
+    Candidate.findOneAndUpdate.mockResolvedValue({ _id: 'cand_5', fullName: 'Updated Candidate' });
 
     const app = express();
     app.use(express.json());
@@ -168,11 +175,21 @@ describe('Candidate portal routes', () => {
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.data.fullName).toBe('Updated Candidate');
-    expect(Candidate.findByIdAndUpdate).toHaveBeenCalledWith('cand_5', expect.any(Object), { new: true, runValidators: true });
+    expect(Candidate.findOneAndUpdate).toHaveBeenCalledWith(
+      {
+        $or: [
+          { uniqueCode: 'cand_5' },
+          { phone: 'cand_5' },
+          { email: 'cand_5' }
+        ]
+      },
+      { $set: { fullName: 'Updated Candidate' } },
+      { new: true }
+    );
   });
 
   test('DELETE /api/candidates/:id removes a candidate', async () => {
-    Candidate.findByIdAndDelete.mockResolvedValue({ _id: 'cand_6' });
+    Candidate.findOneAndDelete.mockResolvedValue({ _id: 'cand_6' });
 
     const app = express();
     app.use('/api/candidates', candidateRoutes);
@@ -182,6 +199,12 @@ describe('Candidate portal routes', () => {
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.message).toContain('Candidate deleted successfully');
-    expect(Candidate.findByIdAndDelete).toHaveBeenCalledWith('cand_6');
+    expect(Candidate.findOneAndDelete).toHaveBeenCalledWith({
+      $or: [
+        { uniqueCode: 'cand_6' },
+        { phone: 'cand_6' },
+        { email: 'cand_6' }
+      ]
+    });
   });
 });

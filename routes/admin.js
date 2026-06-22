@@ -6,6 +6,8 @@ const bcrypt = require("bcryptjs");
 
 const User = require("../models/User");
 const Candidate = require("../models/candidate");
+const Employer = require("../models/Employer");
+const EmployerNotification = require("../models/EmployerNotification");
 const Payment = require("../models/Payment");
 const Notification = require("../models/Notification");
 const { createNotification } = require("../utils/notificationHelper");
@@ -58,6 +60,10 @@ function requireAdminAuth(req, res, next) {
   }
 
   next();
+}
+
+function sanitizeValue(value) {
+  return typeof value === 'string' ? value.trim() : value;
 }
 
 // ======================
@@ -181,18 +187,20 @@ router.post(
       });
 
       // Notify admin about payment approval
-      setImmediate(async () => {
-        try {
-          await notifyPaymentApproved({
-            candidateName: candidate?.fullName || candidate?.name || 'Candidate',
-            amount: payment.amount,
-            currency: payment.metadata?.currency || 'KES',
-            paymentId: payment._id,
-          });
-        } catch (err) {
-          console.error('❌ Error creating admin notification:', err);
-        }
-      });
+      if (process.env.NODE_ENV !== 'test') {
+        setImmediate(async () => {
+          try {
+            await notifyPaymentApproved({
+              candidateName: candidate?.fullName || candidate?.name || 'Candidate',
+              amount: payment.amount,
+              currency: payment.metadata?.currency || 'KES',
+              paymentId: payment._id,
+            });
+          } catch (err) {
+            console.error('❌ Error creating admin notification:', err);
+          }
+        });
+      }
 
       res.json({
         success: true,
@@ -657,6 +665,9 @@ router.get('/dashboard/summary', requireAdminAuth, async (req, res) => {
     const approvedPayments = await Payment.countDocuments({ status: 'approved' });
     const rejectedPayments = await Payment.countDocuments({ status: 'rejected' });
     const notifications = await Notification.countDocuments();
+    const totalEmployers = await Employer.countDocuments();
+    const pendingEmployers = await Employer.countDocuments({ status: 'pending' });
+    const activeEmployers = await Employer.countDocuments({ status: 'active' });
 
     return res.json({
       success: true,
@@ -665,11 +676,187 @@ router.get('/dashboard/summary', requireAdminAuth, async (req, res) => {
       approvedPayments,
       rejectedPayments,
       notifications,
+      totalEmployers,
+      pendingEmployers,
+      activeEmployers,
     });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });
   }
 });
+
+router.get('/employers', requireAdminAuth, async (req, res) => {
+  try {
+    const { limit = 50, skip = 0, status, verificationStatus, query } = req.query;
+    const filter = {};
+
+    if (status) filter.status = status;
+    if (verificationStatus) filter.verificationStatus = verificationStatus;
+    if (query) {
+      filter.$or = [
+        { employerId: { $regex: query, $options: 'i' } },
+        { companyName: { $regex: query, $options: 'i' } },
+        { fullName: { $regex: query, $options: 'i' } },
+        { email: { $regex: query, $options: 'i' } },
+        { phone: { $regex: query, $options: 'i' } },
+      ];
+    }
+
+    const employers = await Employer.find(filter)
+      .sort({ createdAt: -1 })
+      .skip(parseInt(skip, 10))
+      .limit(parseInt(limit, 10));
+
+    const total = await Employer.countDocuments(filter);
+
+    return res.json({ success: true, data: employers, count: employers.length, total });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.get('/employers/:employerId', requireAdminAuth, async (req, res) => {
+  try {
+    const { employerId } = req.params;
+    const employer = await Employer.findOne({ employerId: sanitizeValue(employerId) });
+    if (!employer) {
+      return res.status(404).json({ success: false, error: 'Employer not found' });
+    }
+
+    return res.json({ success: true, data: employer });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/employers/:employerId/approve', requireAdminAuth, async (req, res) => {
+  try {
+    const { employerId } = req.params;
+    const employer = await Employer.findOne({ employerId: sanitizeValue(employerId) });
+    if (!employer) {
+      return res.status(404).json({ success: false, error: 'Employer not found' });
+    }
+
+    if (!employer.emailVerified || !employer.phoneVerified) {
+      return res.status(400).json({
+        success: false,
+        error: 'Employer must verify email and phone before approval',
+      });
+    }
+
+    employer.status = 'active';
+    employer.verificationStatus = 'verified_employer';
+    employer.verificationHistory = employer.verificationHistory || [];
+    employer.verificationHistory.push({
+      action: 'approved',
+      by: 'admin',
+      reason: req.body.reason || 'Approved by admin',
+      timestamp: new Date(),
+    });
+    await employer.save();
+
+    await EmployerNotification.create({
+      employerId: employer.employerId,
+      type: 'approval',
+      category: 'info',
+      title: 'Employer Approved',
+      message: 'Your employer account has been approved and is now active.',
+      data: { employerId: employer.employerId },
+    });
+
+    if (employer.email) {
+      await sendEmail(
+        employer.email,
+        'Your Bliss Connect Employer Account Is Approved',
+        `Hello ${employer.companyName || employer.fullName}, your employer account has been approved and is now active.`,
+        `<p>Hello ${employer.companyName || employer.fullName},</p><p>Your employer account has been approved and is now active. You can now access the marketplace and manage your candidate requests.</p>`
+      );
+    }
+
+    return res.json({ success: true, message: 'Employer approved', data: employer });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/employers/:employerId/reject', requireAdminAuth, async (req, res) => {
+  try {
+    const { employerId } = req.params;
+    const { reason } = req.body;
+    const employer = await Employer.findOne({ employerId: sanitizeValue(employerId) });
+    if (!employer) {
+      return res.status(404).json({ success: false, error: 'Employer not found' });
+    }
+
+    employer.status = 'pending';
+    employer.verificationHistory = employer.verificationHistory || [];
+    employer.verificationHistory.push({
+      action: 'rejected',
+      by: 'admin',
+      reason: reason || 'Rejected by admin',
+      timestamp: new Date(),
+    });
+    await employer.save();
+
+    await EmployerNotification.create({
+      employerId: employer.employerId,
+      type: 'rejection',
+      category: 'info',
+      title: 'Employer Registration Rejected',
+      message: reason || 'Your employer registration was rejected. Please reopen the application for next steps.',
+      data: { employerId: employer.employerId },
+    });
+
+    if (employer.email) {
+      await sendEmail(
+        employer.email,
+        'Your Bliss Connect Employer Account Needs Attention',
+        `Hello ${employer.companyName || employer.fullName}, your employer registration was not approved. ${reason || ''}`,
+        `<p>Hello ${employer.companyName || employer.fullName},</p><p>Your employer registration was not approved. ${reason || ''}</p>`
+      );
+    }
+
+    return res.json({ success: true, message: 'Employer rejected', data: employer });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.patch('/employers/:employerId/status', requireAdminAuth, async (req, res) => {
+  try {
+    const { employerId } = req.params;
+    const { status, verificationStatus } = req.body;
+    if (!status && !verificationStatus) {
+      return res.status(400).json({ success: false, error: 'status or verificationStatus is required' });
+    }
+
+    const updates = {};
+    if (status) updates.status = status;
+    if (verificationStatus) updates.verificationStatus = verificationStatus;
+    updates.verificationHistory = (updates.verificationHistory || []).concat({
+      action: 'status_update',
+      by: 'admin',
+      status,
+      verificationStatus,
+      timestamp: new Date(),
+    });
+
+    const employer = await Employer.findOneAndUpdate(
+      { employerId: sanitizeValue(employerId) },
+      updates,
+      { new: true }
+    );
+
+    if (!employer) {
+      return res.status(404).json({ success: false, error: 'Employer not found' });
+    }
+
+    return res.json({ success: true, message: 'Employer status updated', data: employer });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // ======================
 // MARKETPLACE - SEARCH CANDIDATES
 // ======================

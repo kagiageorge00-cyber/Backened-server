@@ -180,10 +180,12 @@ router.post("/", async (req, res) => {
       candidate.appliedJobTitle = appliedJobTitle || candidate.appliedJobTitle;
       candidate.appliedEmployerId = appliedEmployerId || candidate.appliedEmployerId;
       candidate.appliedEmployerName = appliedEmployerName || candidate.appliedEmployerName;
-      candidate.isVerified = true;
-      candidate.paymentStatus = "completed";
-      candidate.status = "available";
       candidate.uniqueCode = candidate.uniqueCode || generateCandidateCode();
+      candidate.isVerified = candidate.isVerified || false;
+      candidate.paymentStatus = candidate.paymentStatus === 'completed' ? 'completed' : 'pending';
+      candidate.status = ['available', 'deployed'].includes(candidate.status)
+        ? candidate.status
+        : 'in_process';
 
       candidate.documents = {
         ...(candidate.documents || {}),
@@ -248,15 +250,17 @@ router.post("/", async (req, res) => {
           certificates: [],
           uploads: [],
         },
-        isVerified: true,
-        paymentStatus: "completed",
-        status: "available",
+        isVerified: false,
+        paymentStatus: "pending",
+        status: "in_process",
       });
     }
 
     const candidateCode = candidate.uniqueCode || uniqueCode;
     const candidatePortalLink = `${FRONTEND_URL}/candidate-portal`;
-    const marketplaceProfileLink = `${FRONTEND_URL}/marketplace?candidate=${encodeURIComponent(candidateCode)}`;
+    const marketplaceProfileLink = candidate.isVerified
+      ? `${FRONTEND_URL}/marketplace?candidate=${encodeURIComponent(candidateCode)}`
+      : null;
 
     // ======================
     // SEND EMAILS 📧 (BACKGROUND ONLY)
@@ -276,18 +280,20 @@ router.post("/", async (req, res) => {
       }
     });
 
-    setImmediate(async () => {
-      try {
-        await notifyMarketplaceListing({
-          email,
-          name: fullName,
-          uniqueCode: candidateCode,
-          marketplaceProfileLink,
-        });
-      } catch (notificationError) {
-        console.error('❌ notifyMarketplaceListing failed:', notificationError);
-      }
-    });
+    if (candidate.isVerified) {
+      setImmediate(async () => {
+        try {
+          await notifyMarketplaceListing({
+            email,
+            name: fullName,
+            uniqueCode: candidateCode,
+            marketplaceProfileLink,
+          });
+        } catch (notificationError) {
+          console.error('❌ notifyMarketplaceListing failed:', notificationError);
+        }
+      });
+    }
 
     setImmediate(async () => {
       try {
@@ -308,12 +314,15 @@ router.post("/", async (req, res) => {
     // ======================
     const resp = {
       success: true,
-      message: 'Candidate registered successfully',
+      message: 'Candidate registration submitted successfully. Complete payment to finish verification.',
       candidateId: candidateCode,
       data: candidate,
       candidatePortalLink,
-      marketplaceProfileLink,
     };
+
+    if (marketplaceProfileLink) {
+      resp.marketplaceProfileLink = marketplaceProfileLink;
+    }
 
     // include plain password so frontend can display it once (only on create)
     if (passwordPlain) {

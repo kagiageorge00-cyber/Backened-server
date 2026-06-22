@@ -1,20 +1,42 @@
 const express = require('express');
 const router = express.Router();
 const Interview = require('../models/Interview');
+const Candidate = require('../models/candidate');
+const employerAuth = require('../middleware/employerAuth');
 const crypto = require('crypto');
 
-router.post('/request', async (req, res) => {
+router.post('/request', employerAuth, async (req, res) => {
   try {
-    const { employerId, candidateId, interviewDate, interviewTime, meetingLink, notes } = req.body;
-    if (!employerId || !candidateId || !interviewDate) {
-      return res.status(400).json({ success: false, error: 'employerId, candidateId and interviewDate are required' });
+    const employer = req.employer;
+    if (!employer || employer.status !== 'active' || !['verified_employer', 'active_employer'].includes(employer.verificationStatus)) {
+      return res.status(403).json({ success: false, error: 'Employer account is not verified or active' });
+    }
+
+    const { candidateId, interviewDate, interviewTime, meetingLink, notes } = req.body;
+    if (!candidateId || !interviewDate) {
+      return res.status(400).json({ success: false, error: 'candidateId and interviewDate are required' });
+    }
+
+    const candidate = await Candidate.findOne({
+      $or: [
+        { candidateId },
+        { uniqueCode: candidateId },
+        { phone: candidateId },
+        { email: candidateId },
+      ],
+    });
+    if (!candidate) {
+      return res.status(404).json({ success: false, error: 'Candidate not found' });
+    }
+    if (!candidate.isVerified || candidate.status !== 'available') {
+      return res.status(400).json({ success: false, error: 'Candidate is not verified or currently unavailable for interview' });
     }
 
     const interviewId = `INT-${Date.now()}`;
     const interview = await Interview.create({
       interviewId,
-      employerId,
-      candidateId,
+      employerId: employer.employerId,
+      candidateId: candidate.candidateId || candidate.uniqueCode || candidate._id.toString(),
       interviewDate: new Date(interviewDate),
       interviewTime,
       meetingLink,
@@ -28,9 +50,13 @@ router.post('/request', async (req, res) => {
   }
 });
 
-router.get('/:employerId', async (req, res) => {
+router.get('/:employerId', employerAuth, async (req, res) => {
   try {
+    const employer = req.employer;
     const { employerId } = req.params;
+    if (employer.employerId !== employerId) {
+      return res.status(403).json({ success: false, error: 'Employer access denied' });
+    }
     const list = await Interview.find({ employerId }).sort({ createdAt: -1 });
     return res.json({ success: true, data: list });
   } catch (err) {

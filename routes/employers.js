@@ -4,9 +4,12 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const Employer = require('../models/Employer');
 const EmployerNotification = require('../models/EmployerNotification');
+const { sendEmail } = require('../email');
 const {
   notifyEmployerWelcome,
+  sendNotification,
 } = require(path.join(__dirname, '..', 'services', 'notificationservice'));
+const { sendWhatsAppMessage } = require('../whatsapp');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'employer_secret_key';
 const router = express.Router();
@@ -22,6 +25,19 @@ function generateTemporaryPassword(length = 10) {
     pass += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return pass;
+}
+
+function generateVerificationToken(length = 32) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let token = '';
+  for (let i = 0; i < length; i += 1) {
+    token += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return token;
+}
+
+function generateOtpCode() {
+  return String(Math.floor(100000 + Math.random() * 900000));
 }
 
 async function generateEmployerId() {
@@ -61,50 +77,188 @@ function createEmployerToken(employer) {
   };
 }
 
+function getFrontendUrl() {
+  return (
+    process.env.FRONTEND_URL ||
+    process.env.APP_URL ||
+    process.env.WEB_APP_URL ||
+    'https://app.blissconnect.com'
+  );
+}
+
+function getVerificationStatus(employer) {
+  if (employer.emailVerified && employer.phoneVerified && Array.isArray(employer.documents) && employer.documents.length > 0) {
+    return 'documents_submitted';
+  }
+  if (employer.emailVerified && employer.phoneVerified) {
+    return 'phone_verified';
+  }
+  if (employer.emailVerified) {
+    return 'email_verified';
+  }
+  return 'new_registration';
+}
+
+async function sendVerificationEmail(email, name, employerId, token) {
+  if (!email) return null;
+
+  const frontendUrl = getFrontendUrl();
+  const verificationLink = `${frontendUrl}/employer/verify-email?employerId=${encodeURIComponent(
+    employerId
+  )}&token=${encodeURIComponent(token)}`;
+  const subject = 'Verify your email for Bliss Connect Employer Portal';
+  const html = `
+    <div style="font-family: Arial, sans-serif; color: #333;">
+      <h2>Hi ${name || 'Employer'},</h2>
+      <p>Thank you for registering with Bliss Connect Employer Portal.</p>
+      <p>Please verify your email by clicking the button below:</p>
+      <p><a href="${verificationLink}" style="display: inline-block; padding: 12px 20px; background: #1d72b8; color: #fff; text-decoration: none; border-radius: 4px;">Verify Email</a></p>
+      <p>If the button does not work, copy and paste this link into your browser:</p>
+      <p>${verificationLink}</p>
+      <p>Thank you,<br/>Bliss Connect Team</p>
+    </div>
+  `;
+
+  return sendEmail(email, subject, `Verify your email: ${verificationLink}`, html);
+}
+
+async function sendPhoneOtp(phone, code) {
+  if (!phone || !code) return null;
+  const message = `Your Bliss Connect verification code is ${code}. Use this code to verify your phone number.`;
+  try {
+    await sendWhatsAppMessage(phone, message);
+    return { success: true, provider: 'whatsapp' };
+  } catch (err) {
+    console.warn('sendPhoneOtp: WhatsApp send failed:', err.message || err);
+    return { success: false, error: err.message || 'WhatsApp send failed' };
+  }
+}
+
+async function sendWhatsAppVerification(employer) {
+  if (!employer || !employer.whatsappNumber) return null;
+  const code = generateOtpCode();
+  const expires = new Date(Date.now() + 1000 * 60 * 15);
+  employer.whatsappVerificationCode = code;
+  employer.whatsappVerificationExpires = expires;
+  await employer.save();
+
+  const message = `Your Bliss Connect WhatsApp verification code is ${code}. It expires in 15 minutes.`;
+  return sendWhatsAppMessage(employer.whatsappNumber, message);
+}
+
 router.post('/register', async (req, res) => {
   try {
     const {
-      companyName,
-      contactPerson,
+      employerType,
+      fullName,
+      profilePhotoUrl,
+      dob,
+      nationality,
       email,
       phone,
+      whatsappNumber,
       country,
+      city,
+      physicalAddress,
+      companyName,
+      companyRegistrationNumber,
       industry,
       companyAddress,
       website,
+      contactPerson,
+      contactPersonPosition,
+      numberOfWorkers,
+      jobCategories,
+      jobDescriptions,
+      residenceType,
+      numberOfAdults,
+      numberOfChildren,
+      agesOfChildren,
+      elderlyCare,
+      pets,
+      expectedDuties,
+      workingHours,
+      daysOff,
+      accommodationProvided,
+      preferredCandidateLanguage,
+      preferredCandidateNationality,
+      termsAccepted,
       password,
       candidateId,
     } = req.body;
 
     const normalized = {
-      companyName: sanitizeValue(companyName),
-      contactPerson: sanitizeValue(contactPerson),
+      employerType: sanitizeValue(employerType) || 'company',
+      fullName: sanitizeValue(fullName),
+      profilePhotoUrl: sanitizeValue(profilePhotoUrl),
+      dob: sanitizeValue(dob),
+      nationality: sanitizeValue(nationality),
       email: sanitizeValue(email),
       phone: sanitizeValue(phone),
+      whatsappNumber: sanitizeValue(whatsappNumber),
       country: sanitizeValue(country),
+      city: sanitizeValue(city),
+      physicalAddress: sanitizeValue(physicalAddress),
+      companyName: sanitizeValue(companyName),
+      companyRegistrationNumber: sanitizeValue(companyRegistrationNumber),
       industry: sanitizeValue(industry),
       companyAddress: sanitizeValue(companyAddress),
       website: sanitizeValue(website),
+      contactPerson: sanitizeValue(contactPerson),
+      contactPersonPosition: sanitizeValue(contactPersonPosition),
+      numberOfWorkers: Number(numberOfWorkers) || 0,
+      jobCategories: Array.isArray(jobCategories)
+        ? jobCategories.map((item) => sanitizeValue(item)).filter(Boolean)
+        : typeof jobCategories === 'string'
+        ? jobCategories.split(',').map((item) => sanitizeValue(item)).filter(Boolean)
+        : [],
+      jobDescriptions: sanitizeValue(jobDescriptions),
+      residenceType: sanitizeValue(residenceType),
+      numberOfAdults: Number(numberOfAdults) || 0,
+      numberOfChildren: Number(numberOfChildren) || 0,
+      agesOfChildren: Array.isArray(agesOfChildren)
+        ? agesOfChildren.map((item) => sanitizeValue(item)).filter(Boolean)
+        : typeof agesOfChildren === 'string'
+        ? agesOfChildren.split(',').map((item) => sanitizeValue(item)).filter(Boolean)
+        : [],
+      elderlyCare: elderlyCare === 'true' || elderlyCare === true,
+      pets: pets === 'true' || pets === true,
+      expectedDuties: sanitizeValue(expectedDuties),
+      workingHours: sanitizeValue(workingHours),
+      daysOff: sanitizeValue(daysOff),
+      accommodationProvided:
+        accommodationProvided === 'true' || accommodationProvided === true,
+      preferredCandidateLanguage: sanitizeValue(preferredCandidateLanguage),
+      preferredCandidateNationality: sanitizeValue(preferredCandidateNationality),
+      termsAccepted: termsAccepted === 'true' || termsAccepted === true,
       password: sanitizeValue(password),
     };
 
     const requiredFields = [
-      { key: 'companyName', value: normalized.companyName },
-      { key: 'contactPerson', value: normalized.contactPerson },
       { key: 'email', value: normalized.email },
       { key: 'phone', value: normalized.phone },
       { key: 'country', value: normalized.country },
-      { key: 'industry', value: normalized.industry },
+      { key: 'termsAccepted', value: normalized.termsAccepted },
     ];
 
+    if (normalized.employerType === 'company') {
+      requiredFields.push({ key: 'companyName', value: normalized.companyName });
+      requiredFields.push({ key: 'contactPerson', value: normalized.contactPerson });
+      requiredFields.push({ key: 'industry', value: normalized.industry });
+    } else {
+      requiredFields.push({ key: 'fullName', value: normalized.fullName });
+      requiredFields.push({ key: 'nationality', value: normalized.nationality });
+    }
+
     const missingField = requiredFields.find(
-      (field) => !field.value || field.value.length === 0
+      (field) => !field.value || field.value.toString().length === 0
     );
 
     if (missingField) {
       return res.status(400).json({
         success: false,
         error: `${missingField.key} is required`,
+      });
       });
     }
 
@@ -131,49 +285,113 @@ router.post('/register', async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(passwordPlain, 10);
     const employerId = await generateEmployerId();
+    const emailVerificationToken = generateVerificationToken();
+    const phoneVerificationCode = generateOtpCode();
+    const phoneVerificationExpires = new Date(Date.now() + 1000 * 60 * 15);
+    const emailVerificationExpires = new Date(Date.now() + 1000 * 60 * 60 * 24);
 
     const employer = await Employer.create({
       employerId,
-      companyName: normalized.companyName,
-      contactPerson: normalized.contactPerson,
+      employerType: normalized.employerType,
+      fullName: normalized.fullName,
+      profilePhotoUrl: normalized.profilePhotoUrl,
+      dob: normalized.dob ? new Date(normalized.dob) : undefined,
+      nationality: normalized.nationality,
       email: normalized.email.toLowerCase(),
       phone: normalized.phone,
+      whatsappNumber: normalized.whatsappNumber,
       country: normalized.country,
+      city: normalized.city,
+      physicalAddress: normalized.physicalAddress,
+      companyName: normalized.companyName,
+      companyRegistrationNumber: normalized.companyRegistrationNumber,
       industry: normalized.industry,
       companyAddress: normalized.companyAddress,
       website: normalized.website,
+      contactPerson: normalized.contactPerson,
+      contactPersonPosition: normalized.contactPersonPosition,
+      numberOfWorkers: normalized.numberOfWorkers,
+      jobCategories: normalized.jobCategories,
+      jobDescriptions: normalized.jobDescriptions,
+      residenceType: normalized.residenceType,
+      numberOfAdults: normalized.numberOfAdults,
+      numberOfChildren: normalized.numberOfChildren,
+      agesOfChildren: normalized.agesOfChildren,
+      elderlyCare: normalized.elderlyCare,
+      pets: normalized.pets,
+      expectedDuties: normalized.expectedDuties,
+      workingHours: normalized.workingHours,
+      daysOff: normalized.daysOff,
+      accommodationProvided: normalized.accommodationProvided,
+      preferredCandidateLanguage: normalized.preferredCandidateLanguage,
+      preferredCandidateNationality: normalized.preferredCandidateNationality,
+      termsAccepted: normalized.termsAccepted,
+      emailVerificationToken,
+      emailVerificationExpires,
+      phoneVerificationCode,
+      phoneVerificationExpires,
+      whatsappVerificationCode: null,
+      whatsappVerificationExpires: null,
+      verificationStatus: 'new_registration',
+      status: 'pending',
       password: hashedPassword,
-      verificationStatus: 'pending',
+      profileCompletion: 0,
     });
 
     await EmployerNotification.create({
       employerId,
       type: 'welcome',
       category: 'welcome',
-      title: 'Welcome To Bliss Recruitment',
-      message: `Your employer account has been created successfully.\n\nEmployer ID: ${employerId}\n\nYou can now browse verified candidates and schedule interviews.`,
+      title: 'Welcome to Bliss Connect Employer Portal',
+      message: `Your employer registration has been submitted successfully. Employer ID: ${employerId}. Please verify your email and phone to continue.`,
       data: { employerId },
     });
 
     await notifyEmployerWelcome({
       email: employer.email,
-      companyName: employer.companyName,
+      companyName: employer.companyName || employer.fullName,
       employerId,
-      contactPerson: employer.contactPerson,
+      contactPerson: employer.contactPerson || employer.fullName,
     });
+
+    try {
+      await sendVerificationEmail(employer.email, employer.fullName || employer.companyName, employerId, emailVerificationToken);
+    } catch (emailErr) {
+      console.warn('Email verification send failed:', emailErr.message || emailErr);
+    }
+
+    try {
+      await sendPhoneOtp(employer.phone, phoneVerificationCode);
+    } catch (phoneErr) {
+      console.warn('Phone verification send failed:', phoneErr.message || phoneErr);
+    }
+
+    try {
+      if (employer.whatsappNumber) {
+        await sendWhatsAppVerification(employer);
+      }
+    } catch (waErr) {
+      console.warn('WhatsApp verification send failed:', waErr.message || waErr);
+    }
 
     const { token, expiry } = createEmployerToken(employer);
 
     return res.status(201).json({
       success: true,
-      message: 'Employer registration completed successfully',
+      message: 'Employer registration submitted successfully. Verify your email and phone to continue.',
       token,
       expiry,
       employer: {
         employerId,
         companyName: employer.companyName,
+        fullName: employer.fullName,
+        employerType: employer.employerType,
         contactPerson: employer.contactPerson,
+        status: employer.status,
         verificationStatus: employer.verificationStatus,
+        emailVerified: employer.emailVerified,
+        phoneVerified: employer.phoneVerified,
+        whatsappVerified: employer.whatsappVerified,
       },
       credentials: {
         employerId,
@@ -273,6 +491,136 @@ router.post('/login', async (req, res) => {
     });
   } catch (error) {
     console.error('Employer login error:', error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/verify-email', async (req, res) => {
+  try {
+    const { employerId, email, token } = req.body;
+    if ((!employerId && !email) || !token) {
+      return res.status(400).json({ success: false, error: 'employerId or email and token are required' });
+    }
+
+    const filter = {
+      emailVerificationToken: token,
+      emailVerificationExpires: { $gt: new Date() },
+    };
+    if (employerId) filter.employerId = sanitizeValue(employerId);
+    if (email) filter.email = sanitizeValue(email).toLowerCase();
+
+    const employer = await Employer.findOne(filter);
+    if (!employer) {
+      return res.status(400).json({ success: false, error: 'Invalid or expired email verification token' });
+    }
+
+    employer.emailVerified = true;
+    employer.emailVerificationToken = undefined;
+    employer.emailVerificationExpires = undefined;
+    employer.verificationStatus = getVerificationStatus(employer);
+    await employer.save();
+
+    return res.json({
+      success: true,
+      message: 'Email verified successfully',
+      verificationStatus: employer.verificationStatus,
+    });
+  } catch (error) {
+    console.error('Email verification error:', error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/verify-phone', async (req, res) => {
+  try {
+    const { employerId, phone, code } = req.body;
+    if ((!employerId && !phone) || !code) {
+      return res.status(400).json({ success: false, error: 'employerId or phone and code are required' });
+    }
+
+    const filter = {
+      phoneVerificationCode: code,
+      phoneVerificationExpires: { $gt: new Date() },
+    };
+    if (employerId) filter.employerId = sanitizeValue(employerId);
+    if (phone) filter.phone = sanitizeValue(phone);
+
+    const employer = await Employer.findOne(filter);
+    if (!employer) {
+      return res.status(400).json({ success: false, error: 'Invalid or expired phone verification code' });
+    }
+
+    employer.phoneVerified = true;
+    employer.phoneVerificationCode = undefined;
+    employer.phoneVerificationExpires = undefined;
+    employer.verificationStatus = getVerificationStatus(employer);
+    await employer.save();
+
+    return res.json({
+      success: true,
+      message: 'Phone verified successfully',
+      verificationStatus: employer.verificationStatus,
+    });
+  } catch (error) {
+    console.error('Phone verification error:', error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/whatsapp/send-code', async (req, res) => {
+  try {
+    const { employerId } = req.body;
+    if (!employerId) {
+      return res.status(400).json({ success: false, error: 'employerId is required' });
+    }
+
+    const employer = await Employer.findOne({ employerId: sanitizeValue(employerId) });
+    if (!employer || !employer.whatsappNumber) {
+      return res.status(404).json({ success: false, error: 'Employer or WhatsApp number not found' });
+    }
+
+    await sendWhatsAppVerification(employer);
+
+    return res.json({
+      success: true,
+      message: 'WhatsApp verification code sent',
+    });
+  } catch (error) {
+    console.error('WhatsApp send code error:', error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/whatsapp/verify', async (req, res) => {
+  try {
+    const { employerId, code } = req.body;
+    if (!employerId || !code) {
+      return res.status(400).json({ success: false, error: 'employerId and code are required' });
+    }
+
+    const employer = await Employer.findOne({
+      employerId: sanitizeValue(employerId),
+      whatsappVerificationCode: code,
+      whatsappVerificationExpires: { $gt: new Date() },
+    });
+
+    if (!employer) {
+      return res.status(400).json({ success: false, error: 'Invalid or expired WhatsApp verification code' });
+    }
+
+    employer.whatsappVerified = true;
+    employer.whatsappVerificationCode = undefined;
+    employer.whatsappVerificationExpires = undefined;
+    employer.verificationStatus = getVerificationStatus(employer);
+    await employer.save();
+
+    return res.json({
+      success: true,
+      message: 'WhatsApp verified successfully',
+      verificationStatus: employer.verificationStatus,
+    });
+  } catch (error) {
+    console.error('WhatsApp verification error:', error);
     return res.status(500).json({ success: false, error: error.message });
   }
 });

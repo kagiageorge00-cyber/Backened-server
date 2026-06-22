@@ -165,6 +165,7 @@ router.post("/verify", async (req, res) => {
       {
         isVerified: true,
         paymentStatus: "completed",
+        status: "available",
       },
       { new: true }
     );

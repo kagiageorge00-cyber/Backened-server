@@ -8,6 +8,12 @@ const Candidate = require("../models/candidate");
 // ✅ SINGLE CLEAN EMAIL FUNCTION
 const { sendEmail } = require("../email");
 
+function generateCandidateCode() {
+  const year = new Date().getFullYear();
+  const seq = Math.floor(1000 + Math.random() * 9000);
+  return `CAND-${year}-${seq}`;
+}
+
 // ==========================
 // SUBMIT PAYMENT HANDLER
 // ==========================
@@ -76,6 +82,54 @@ async function handleSubmitPayment(req, res) {
     });
 
     console.log("✅ Payment saved:", payment._id);
+
+    // ==========================
+    // CREATE OR UPDATE CANDIDATE RECORD
+    // ==========================
+    try {
+      const lookupCriteria = [];
+      if (userId) lookupCriteria.push({ phone: userId });
+      if (email) lookupCriteria.push({ email });
+      lookupCriteria.push({ uniqueCode: userId });
+
+      let candidate = await Candidate.findOne({ $or: lookupCriteria });
+      if (!candidate) {
+        candidate = await Candidate.create({
+          fullName: name || userId,
+          name: name || userId,
+          email: email || null,
+          phone: userId,
+          uniqueCode: generateCandidateCode(),
+          status: 'in_process',
+          paymentStatus: 'pending',
+          isVerified: false,
+          documents: {
+            passportPhoto: null,
+            nationalId: null,
+            cv: null,
+            certificates: [],
+            coverLetter: null,
+            uploads: [],
+          },
+          paymentId: payment._id,
+        });
+      } else {
+        candidate.fullName = candidate.fullName || name || userId;
+        candidate.name = candidate.name || name || userId;
+        candidate.email = candidate.email || email || candidate.email;
+        candidate.phone = candidate.phone || userId;
+        candidate.uniqueCode = candidate.uniqueCode || generateCandidateCode();
+        candidate.status = ['available', 'deployed'].includes(candidate.status)
+          ? candidate.status
+          : 'in_process';
+        candidate.paymentStatus = 'pending';
+        candidate.isVerified = candidate.isVerified || false;
+        candidate.paymentId = payment._id;
+        await candidate.save();
+      }
+    } catch (candidateError) {
+      console.warn('Could not create or update candidate during payment submission:', candidateError);
+    }
 
     // ==========================
     // RESPOND FAST (IMPORTANT)

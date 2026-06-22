@@ -24,6 +24,39 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 const downloadsDir = path.join(__dirname, 'downloads');
 app.use('/downloads', express.static(downloadsDir));
 
+// -----------------------------
+// IMAGE PROXY (adds CORS)
+// -----------------------------
+const https = require('https');
+app.get('/api/image-proxy', (req, res) => {
+  const { url } = req.query;
+  if (!url) return res.status(400).json({ success: false, error: 'url query param required' });
+
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch (err) {
+    return res.status(400).json({ success: false, error: 'invalid url' });
+  }
+
+  // Basic allowlist - extend if you trust other hosts
+  const allowedHosts = ['res.cloudinary.com', 'cloudinary.com', 'i.imgur.com', 'example.com'];
+  if (!allowedHosts.includes(parsed.hostname)) {
+    return res.status(403).json({ success: false, error: 'host not allowed' });
+  }
+
+  // Stream the remote resource
+  https.get(url, (proxyRes) => {
+    const contentType = proxyRes.headers['content-type'] || 'application/octet-stream';
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Content-Type', contentType);
+    proxyRes.pipe(res);
+  }).on('error', (err) => {
+    console.error('image-proxy error:', err.message);
+    res.status(502).json({ success: false, error: 'Failed to fetch image' });
+  });
+});
+
 app.get('/api/downloads/latest', (req, res) => {
   const fileName = 'BlissConnect.apk';
   const filePath = path.join(downloadsDir, fileName);
@@ -178,6 +211,20 @@ app.post('/flightSearch', async (req, res) => {
 // ======================
 // CANDIDATE FORM - GET DATA FOR FRONTEND
 // ======================
+function normalizePhone(rawPhone) {
+  if (!rawPhone) return rawPhone;
+  return rawPhone.toString().replace(/[^+0-9]/g, '').trim();
+}
+
+function cleanupCandidateId(rawCandidateId) {
+  if (!rawCandidateId) return rawCandidateId;
+  let value = rawCandidateId.toString();
+  // Remove any trailing paths or fragment-like segments
+  value = value.replace(/\/candidate-form.*$/i, '');
+  value = value.replace(/^#+/, '');
+  return normalizePhone(value) || value;
+}
+
 app.get('/api/candidate-form/data', async (req, res) => {
   try {
     const { candidateId, phone } = req.query;
@@ -185,18 +232,33 @@ app.get('/api/candidate-form/data', async (req, res) => {
       return res.status(400).json({ success: false, error: 'candidateId or phone query parameter required' });
     }
 
+    const normalizedPhone = normalizePhone(phone);
+    const cleanedCandidateId = cleanupCandidateId(candidateId);
+
     let candidate;
     if (phone) {
-      candidate = await CandidateModel.findOne({ phone: phone });
-    } else {
       candidate = await CandidateModel.findOne({
         $or: [
-          { _id: candidateId },
-          { uniqueCode: candidateId },
-          { phone: candidateId },
-          { email: candidateId }
+          { phone },
+          { phone: normalizedPhone },
+          { uniqueCode: phone },
+          { email: phone }
         ]
       });
+    } else {
+      const searchCriteria = [
+        { uniqueCode: candidateId },
+        { phone: candidateId },
+        { email: candidateId }
+      ];
+      if (mongoose.Types.ObjectId.isValid(candidateId)) {
+        searchCriteria.unshift({ _id: candidateId });
+      }
+      if (cleanedCandidateId && cleanedCandidateId !== candidateId) {
+        searchCriteria.push({ phone: cleanedCandidateId });
+        searchCriteria.push({ uniqueCode: cleanedCandidateId });
+      }
+      candidate = await CandidateModel.findOne({ $or: searchCriteria });
     }
 
     const lookupSource = phone ? 'phone' : 'candidateId';

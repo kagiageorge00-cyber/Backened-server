@@ -105,6 +105,10 @@ const candidateSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
+  contactReleased: {
+    type: Boolean,
+    default: false,
+  },
   currentStatus: {
     type: String,
     default: 'Registration',
