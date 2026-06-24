@@ -21,6 +21,58 @@ const { sendEmail } = require("../email");
 
 const { FRONTEND_URL } = require("../config");
 
+// Required fields for publishing
+const REQUIRED_FIELDS_FOR_PUBLISH = [
+  'fullName',
+  'phone',
+  'country',
+  'experience',
+  'skills',
+  'languages',
+  'photoUrl',
+  'videoUrl',
+  'passportUrl',
+  'medicalUrl',
+  'resumeUrl',
+];
+
+function canPublishCandidate(candidate) {
+  if (!candidate) return false;
+  return (
+    !!(candidate.fullName || candidate.name) &&
+    !!candidate.phone &&
+    !!candidate.country &&
+    (candidate.experience !== undefined && candidate.experience !== null && String(candidate.experience).toString().trim() !== '') &&
+    Array.isArray(candidate.skills) && candidate.skills.length > 0 &&
+    Array.isArray(candidate.languages) && candidate.languages.length > 0 &&
+    !!candidate.photoUrl &&
+    !!candidate.videoUrl &&
+    !!candidate.passportUrl &&
+    !!candidate.medicalUrl &&
+    !!candidate.resumeUrl
+  );
+}
+
+function computeProfileCompletion(candidate) {
+  if (!candidate) return 0;
+  let filled = 0;
+  // check each required field
+  if (candidate.fullName || candidate.name) filled++;
+  if (candidate.phone) filled++;
+  if (candidate.country) filled++;
+  if (candidate.experience !== undefined && candidate.experience !== null && String(candidate.experience).toString().trim() !== '') filled++;
+  if (Array.isArray(candidate.skills) && candidate.skills.length > 0) filled++;
+  if (Array.isArray(candidate.languages) && candidate.languages.length > 0) filled++;
+  if (candidate.photoUrl) filled++;
+  if (candidate.videoUrl) filled++;
+  if (candidate.passportUrl) filled++;
+  if (candidate.medicalUrl) filled++;
+  if (candidate.resumeUrl) filled++;
+
+  const total = REQUIRED_FIELDS_FOR_PUBLISH.length;
+  return Math.round((filled / total) * 100);
+}
+
 // ======================
 // ADMIN CREDENTIALS
 // ======================
