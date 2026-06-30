@@ -11,7 +11,7 @@ const GRAPH_API_VERSION = process.env.META_GRAPH_VERSION || 'v20.0';
 const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_API_VERSION}`;
 const CONFIG_ID = process.env.META_CONFIG_ID || '2653481901734578';
 const REDIRECT_URI = process.env.META_EMBEDDED_SIGNUP_REDIRECT_URI || `${process.env.BACKEND_URL || 'https://backened-server-1.onrender.com'}/api/whatsapp/callback`;
-const REQUESTED_SCOPES = ['business_management', 'whatsapp_business_management', 'public_profile'];
+const REQUESTED_SCOPES = ['whatsapp_business_management', 'whatsapp_business_messaging', 'whatsapp_business_manage_events', 'public_profile'];
 
 function logEvent(message, details) {
   console.log(`[whatsapp-embedded-signup] ${message}`, details || {});
@@ -20,12 +20,43 @@ function logEvent(message, details) {
 function getGraphApiEndpointPermissions(path) {
   if (path === '/me') return ['public_profile'];
   if (path === '/debug_token') return ['app-level'];
-  if (path === '/me/businesses') return ['business_management'];
   if (path === '/me/client_whatsapp_business_accounts') return ['whatsapp_business_management'];
-  if (path.includes('/owned_whatsapp_business_accounts')) return ['whatsapp_business_management'];
   if (path.includes('/phone_numbers')) return ['whatsapp_business_management'];
   if (path.includes('/subscribed_apps')) return ['whatsapp_business_management'];
   return ['unknown'];
+}
+
+function parseSignedRequest(signedRequest) {
+  if (!signedRequest) return null;
+
+  const encodedPayload = signedRequest.split('.')[1];
+  if (!encodedPayload) return null;
+
+  const normalizedPayload = encodedPayload.replace(/-/g, '+').replace(/_/g, '/');
+  const padding = normalizedPayload.length % 4 === 0 ? '' : '='.repeat(4 - (normalizedPayload.length % 4));
+
+  try {
+    const decodedPayload = Buffer.from(`${normalizedPayload}${padding}`, 'base64').toString('utf8');
+    return JSON.parse(decodedPayload);
+  } catch (error) {
+    logEvent('failed to parse signed request payload', { signedRequest, error: error.message });
+    return null;
+  }
+}
+
+function extractEmbeddedSignupAssets(payload, query = {}) {
+  const data = payload?.data || payload?.payload?.data || payload?.response?.data || null;
+  const whatsappBusinessAccount = data?.whatsapp_business_account || data?.whatsappBusinessAccount || null;
+  const business = data?.business || data?.business_info || data?.business_details || null;
+
+  return {
+    businessId: data?.business_id || business?.id || query?.business_id || null,
+    businessName: data?.business_name || business?.name || whatsappBusinessAccount?.display_name || whatsappBusinessAccount?.name || null,
+    wabaId: whatsappBusinessAccount?.id || data?.waba_id || data?.wabaId || null,
+    phoneNumberId: whatsappBusinessAccount?.phone_number_id || whatsappBusinessAccount?.phone_number?.id || data?.phone_number_id || data?.phoneNumberId || null,
+    phoneNumber: whatsappBusinessAccount?.phone_number?.display_phone_number || whatsappBusinessAccount?.phone_number?.number || data?.phone_number || null,
+    rawData: data,
+  };
 }
 
 async function callGraphApi({ method = 'get', path, params = {}, accessToken, label, data = null, grantedScopes = [] }) {
@@ -188,71 +219,74 @@ router.get('/callback', async (req, res) => {
       grantedScopes: grantedScopesFromDebugToken,
     });
 
-    const businessesResponse = await callGraphApi({
-      method: 'get',
-      path: '/me/businesses',
-      params: { access_token: accessToken },
-      label: '/me/businesses',
-      accessToken,
-      grantedScopes: grantedScopesFromDebugToken,
+    const parsedSignedRequest = parseSignedRequest(req.query.signed_request);
+    logEvent('embedded signup callback payload', {
+      query: req.query,
+      signedRequestPresent: Boolean(req.query.signed_request),
+      signedRequestPayload: parsedSignedRequest,
+      meResponseData: meResponse?.data || null,
     });
 
-    const businesses = businessesResponse.data.data || [];
-    logEvent('businesses discovered', { businesses });
+    const embeddedSignupAssets = extractEmbeddedSignupAssets(parsedSignedRequest, req.query);
+    logEvent('embedded signup assets extracted', embeddedSignupAssets);
 
-    const primaryBusiness = businesses[0] || null;
-    if (!primaryBusiness) {
-      return res.status(404).json({ success: false, error: 'No connected businesses found' });
+    let selectedWabaId = embeddedSignupAssets.wabaId || null;
+    let selectedBusinessId = embeddedSignupAssets.businessId || null;
+    let selectedDisplayName = embeddedSignupAssets.businessName || 'Bliss Travel and Tours 254';
+    let selectedPhoneId = embeddedSignupAssets.phoneNumberId || null;
+    let selectedPhoneNumber = embeddedSignupAssets.phoneNumber || null;
+
+    let selectedWaba = null;
+    if (!selectedWabaId) {
+      const clientWabasResponse = await callGraphApi({
+        method: 'get',
+        path: '/me/client_whatsapp_business_accounts',
+        params: { access_token: accessToken },
+        label: '/me/client_whatsapp_business_accounts',
+        accessToken,
+        grantedScopes: grantedScopesFromDebugToken,
+      });
+
+      const wabas = clientWabasResponse.data.data || [];
+      logEvent('client WhatsApp business accounts discovered', { wabas });
+      selectedWaba = wabas[0] || null;
+
+      if (!selectedWaba) {
+        return res.status(404).json({ success: false, error: 'No WhatsApp Business Accounts available for this token' });
+      }
+
+      selectedWabaId = selectedWaba.id;
+      selectedBusinessId = selectedBusinessId || selectedWaba.business_id || null;
+      selectedDisplayName = selectedDisplayName || selectedWaba.name || 'Bliss Travel and Tours 254';
     }
 
-    const clientWabasResponse = await callGraphApi({
-      method: 'get',
-      path: '/me/client_whatsapp_business_accounts',
-      params: { access_token: accessToken },
-      label: '/me/client_whatsapp_business_accounts',
-      accessToken,
-      grantedScopes: grantedScopesFromDebugToken,
-    });
+    let phoneNumbers = [];
+    if (!selectedPhoneId) {
+      const phoneNumbersResponse = await callGraphApi({
+        method: 'get',
+        path: `/${selectedWabaId}/phone_numbers`,
+        params: { access_token: accessToken },
+        label: '/phone_numbers',
+        accessToken,
+        grantedScopes: grantedScopesFromDebugToken,
+      });
 
-    const wabaResponse = await callGraphApi({
-      method: 'get',
-      path: `/${primaryBusiness.id}/owned_whatsapp_business_accounts`,
-      params: { access_token: accessToken },
-      label: '/owned_whatsapp_business_accounts',
-      accessToken,
-      grantedScopes: grantedScopesFromDebugToken,
-    });
-
-    const wabas = wabaResponse.data.data || [];
-    logEvent('wabas discovered', { wabas });
-
-    let selectedWaba = wabas[0] || null;
-    if (!selectedWaba) {
-      return res.status(404).json({ success: false, error: 'No WhatsApp Business Accounts available for this business' });
+      phoneNumbers = phoneNumbersResponse.data.data || [];
+      const primaryPhone = phoneNumbers[0] || null;
+      selectedPhoneId = primaryPhone?.id || null;
+      selectedPhoneNumber = primaryPhone?.display_phone_number || primaryPhone?.phone_number || null;
+      logEvent('phone numbers discovered', { phoneNumbers });
     }
-
-    const phoneNumbersResponse = await callGraphApi({
-      method: 'get',
-      path: `/${selectedWaba.id}/phone_numbers`,
-      params: { access_token: accessToken },
-      label: '/phone_numbers',
-      accessToken,
-      grantedScopes: grantedScopesFromDebugToken,
-    });
-
-    const phoneNumbers = phoneNumbersResponse.data.data || [];
-    const primaryPhone = phoneNumbers[0] || null;
-    logEvent('phone numbers discovered', { phoneNumbers });
 
     const encryptedToken = encrypt(accessToken, process.env.ENCRYPTION_KEY);
     const connection = await WhatsAppConnection.findOneAndUpdate(
-      { wabaId: selectedWaba.id },
+      { wabaId: selectedWabaId },
       {
-        businessId: primaryBusiness.id,
-        displayName: primaryBusiness.name || 'Bliss Travel and Tours 254',
-        wabaId: selectedWaba.id,
-        phoneNumberId: primaryPhone?.id || null,
-        phoneNumber: primaryPhone?.display_phone_number || null,
+        businessId: selectedBusinessId || selectedWabaId || 'embedded-signup',
+        displayName: selectedDisplayName,
+        wabaId: selectedWabaId,
+        phoneNumberId: selectedPhoneId || null,
+        phoneNumber: selectedPhoneNumber || null,
         accessToken: encryptedToken,
         status: 'connected',
         webhookSubscribed: true,
@@ -264,7 +298,7 @@ router.get('/callback', async (req, res) => {
     try {
       await callGraphApi({
         method: 'post',
-        path: `/${selectedWaba.id}/subscribed_apps`,
+        path: `/${selectedWabaId}/subscribed_apps`,
         params: {
           subscribed_fields: 'messages,message_status',
           access_token: accessToken,
@@ -274,7 +308,7 @@ router.get('/callback', async (req, res) => {
         grantedScopes: grantedScopesFromDebugToken,
         data: null,
       });
-      logEvent('webhook subscription created', { wabaId: selectedWaba.id });
+      logEvent('webhook subscription created', { wabaId: selectedWabaId });
     } catch (subscriptionError) {
       logEvent('webhook subscription failed', {
         message: subscriptionError.message,
@@ -338,5 +372,10 @@ router.get('/status', async (req, res) => {
     res.json({ connected: false, message: 'WhatsApp status unavailable right now.', error: error.message });
   }
 });
+
+router.__testHelpers = {
+  parseSignedRequest,
+  extractEmbeddedSignupAssets,
+};
 
 module.exports = router;
