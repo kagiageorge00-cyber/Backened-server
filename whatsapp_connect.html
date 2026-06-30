@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Connect WhatsApp</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2rem; line-height: 1.6; }
+    button { padding: 0.8rem 1.2rem; border: 0; border-radius: 6px; background: #25D366; color: white; cursor: pointer; }
+    .card { max-width: 720px; margin: auto; padding: 1.5rem; border: 1px solid #ddd; border-radius: 10px; }
+    pre { background: #f6f8fa; padding: 1rem; overflow: auto; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Connect WhatsApp</h1>
+    <p>This page launches the Meta Embedded Signup flow for your Bliss Connect workspace.</p>
+    <button id="connectBtn">Connect WhatsApp</button>
+    <div id="status" style="margin-top: 1rem;"></div>
+    <pre id="debug"></pre>
+  </div>
+
+  <script>
+    const backendUrl = 'https://backened-server-1.onrender.com';
+    const connectBtn = document.getElementById('connectBtn');
+    const status = document.getElementById('status');
+    const debug = document.getElementById('debug');
+
+    async function loadStatus() {
+      try {
+        const response = await fetch(`${backendUrl}/api/whatsapp/status`);
+        const data = await response.json();
+        status.innerHTML = data.connected ? `<strong>Connected</strong> · ${data.businessName || ''}` : '<strong>Not Connected</strong>';
+        debug.textContent = JSON.stringify(data, null, 2);
+      } catch (error) {
+        debug.textContent = error.message;
+      }
+    }
+
+    connectBtn.addEventListener('click', () => {
+      window.location.href = `${backendUrl}/api/whatsapp/connect`;
+    });
+
+    loadStatus();
+  </script>
+</body>
+</html>

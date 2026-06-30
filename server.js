@@ -155,6 +155,7 @@ const contractsRoutes = require('./routes/contracts');
 const adminStatsRoutes = require('./routes/adminStats');
 const candidateApiRoutes = require('./routes/candidate_api');
 const whatsappWebhookRoutes = require('./routes/whatsappWebhook');
+const whatsappEmbeddedSignupRoutes = require('./routes/whatsappEmbeddedSignup');
 
 // Gracefully handle flightSearch module (may not exist in all deployments)
 let flightSearch;
@@ -179,6 +180,7 @@ app.use('/api/payments', paymentRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/whatsapp', whatsappWebhookRoutes);
+app.use('/api/whatsapp', whatsappEmbeddedSignupRoutes);
 app.use('/api/marketplace', marketplaceRoutes);
 app.use('/api/interviews', interviewsRoutes);
 app.use('/api/shortlist', shortlistRoutes);
