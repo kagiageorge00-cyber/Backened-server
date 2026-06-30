@@ -20,7 +20,7 @@ function logEvent(message, details) {
 function getGraphApiEndpointPermissions(path) {
   if (path === '/me') return ['public_profile'];
   if (path === '/debug_token') return ['app-level'];
-  if (path === '/me/client_whatsapp_business_accounts') return ['whatsapp_business_management'];
+  if (path.includes('/owned_whatsapp_business_accounts')) return ['whatsapp_business_management'];
   if (path.includes('/phone_numbers')) return ['whatsapp_business_management'];
   if (path.includes('/subscribed_apps')) return ['whatsapp_business_management'];
   return ['unknown'];
@@ -59,7 +59,7 @@ function extractEmbeddedSignupAssets(payload, query = {}) {
   };
 }
 
-async function callGraphApi({ method = 'get', path, params = {}, accessToken, label, data = null, grantedScopes = [] }) {
+async function callGraphApi({ method = 'get', path, params = {}, accessToken, label, data = null, grantedScopes = [], debugLog = null }) {
   const url = `${GRAPH_BASE}${path}`;
   const requiredScopes = getGraphApiEndpointPermissions(path);
   logEvent(`Graph API call: ${label}`, {
@@ -84,6 +84,16 @@ async function callGraphApi({ method = 'get', path, params = {}, accessToken, la
       data: response.data,
     });
 
+    if (debugLog) {
+      debugLog.push({
+        label,
+        method: method.toUpperCase(),
+        url,
+        status: response.status,
+        responseBody: response.data,
+      });
+    }
+
     return response;
   } catch (error) {
     const metaErrorBody = error.response?.data || null;
@@ -95,6 +105,17 @@ async function callGraphApi({ method = 'get', path, params = {}, accessToken, la
       errorMessage: metaErrorBody?.error?.message || null,
       requiredScopes,
     });
+
+    if (debugLog) {
+      debugLog.push({
+        label,
+        method: method.toUpperCase(),
+        url,
+        status: error.response?.status || null,
+        responseBody: metaErrorBody,
+        errorMessage: error.message,
+      });
+    }
     throw error;
   }
 }
@@ -145,8 +166,21 @@ router.get('/connect', (req, res) => {
 router.get('/callback', async (req, res) => {
   try {
     const { code, state, error, error_description } = req.query;
-    logEvent('callback query params', {
+    const graphCallLog = [];
+    const signedRequestPayload = parseSignedRequest(req.query.signed_request || req.body?.signed_request);
+    const sessionInfo = signedRequestPayload?.data?.session || signedRequestPayload?.session || signedRequestPayload?.data?.session_info || null;
+
+    logEvent('callback payload', {
       query: req.query,
+      body: req.body || null,
+      headers: {
+        host: req.headers.host,
+        referer: req.headers.referer,
+        'user-agent': req.headers['user-agent'],
+      },
+      signedRequestPresent: Boolean(req.query.signed_request || req.body?.signed_request),
+      signedRequestPayload,
+      sessionInfo,
       code: code ? 'present' : 'missing',
       state,
       error,
@@ -183,6 +217,7 @@ router.get('/callback', async (req, res) => {
       },
       label: 'token exchange',
       accessToken: null,
+      debugLog: graphCallLog,
     });
 
     const grantedScopes = tokenResponse.data.scope ? tokenResponse.data.scope.split(',').map((scope) => scope.trim()).filter(Boolean) : [];
@@ -204,6 +239,7 @@ router.get('/callback', async (req, res) => {
       },
       label: 'debug_token',
       accessToken: `${APP_ID}|${APP_SECRET}`,
+      debugLog: graphCallLog,
     });
 
     const tokenInfo = debugTokenResponse.data.data || {};
@@ -217,50 +253,61 @@ router.get('/callback', async (req, res) => {
       label: '/me',
       accessToken,
       grantedScopes: grantedScopesFromDebugToken,
+      debugLog: graphCallLog,
     });
 
-    const parsedSignedRequest = parseSignedRequest(req.query.signed_request);
-    logEvent('embedded signup callback payload', {
-      query: req.query,
-      signedRequestPresent: Boolean(req.query.signed_request),
-      signedRequestPayload: parsedSignedRequest,
+    const embeddedSignupAssets = extractEmbeddedSignupAssets(signedRequestPayload, req.query);
+    logEvent('embedded signup assets extracted', {
+      ...embeddedSignupAssets,
       meResponseData: meResponse?.data || null,
+      sessionInfo,
     });
 
-    const embeddedSignupAssets = extractEmbeddedSignupAssets(parsedSignedRequest, req.query);
-    logEvent('embedded signup assets extracted', embeddedSignupAssets);
+    let selectedWabaId = embeddedSignupAssets.wabaId || req.query.waba_id || req.query.wabaId || null;
+    let selectedBusinessId = embeddedSignupAssets.businessId || req.query.business_id || req.query.businessId || null;
+    let selectedDisplayName = embeddedSignupAssets.businessName || req.query.business_name || req.query.businessName || 'Bliss Travel and Tours 254';
+    let selectedPhoneId = embeddedSignupAssets.phoneNumberId || req.query.phone_number_id || req.query.phoneNumberId || null;
+    let selectedPhoneNumber = embeddedSignupAssets.phoneNumber || req.query.phone_number || req.query.phoneNumber || null;
 
-    let selectedWabaId = embeddedSignupAssets.wabaId || null;
-    let selectedBusinessId = embeddedSignupAssets.businessId || null;
-    let selectedDisplayName = embeddedSignupAssets.businessName || 'Bliss Travel and Tours 254';
-    let selectedPhoneId = embeddedSignupAssets.phoneNumberId || null;
-    let selectedPhoneNumber = embeddedSignupAssets.phoneNumber || null;
-
-    let selectedWaba = null;
-    if (!selectedWabaId) {
-      const clientWabasResponse = await callGraphApi({
+    if (!selectedWabaId && selectedBusinessId) {
+      const wabaResponse = await callGraphApi({
         method: 'get',
-        path: '/me/client_whatsapp_business_accounts',
+        path: `/${selectedBusinessId}/owned_whatsapp_business_accounts`,
         params: { access_token: accessToken },
-        label: '/me/client_whatsapp_business_accounts',
+        label: '/owned_whatsapp_business_accounts',
         accessToken,
         grantedScopes: grantedScopesFromDebugToken,
+        debugLog: graphCallLog,
       });
 
-      const wabas = clientWabasResponse.data.data || [];
-      logEvent('client WhatsApp business accounts discovered', { wabas });
-      selectedWaba = wabas[0] || null;
-
-      if (!selectedWaba) {
-        return res.status(404).json({ success: false, error: 'No WhatsApp Business Accounts available for this token' });
+      const wabas = wabaResponse.data.data || [];
+      logEvent('WhatsApp Business Accounts discovered', { wabas });
+      const primaryWaba = wabas[0] || null;
+      if (!primaryWaba) {
+        return res.status(404).json({ success: false, error: 'No WhatsApp Business Accounts available for this business' });
       }
-
-      selectedWabaId = selectedWaba.id;
-      selectedBusinessId = selectedBusinessId || selectedWaba.business_id || null;
-      selectedDisplayName = selectedDisplayName || selectedWaba.name || 'Bliss Travel and Tours 254';
+      selectedWabaId = primaryWaba.id;
+      selectedDisplayName = selectedDisplayName || primaryWaba.name || 'Bliss Travel and Tours 254';
     }
 
-    let phoneNumbers = [];
+    if (!selectedWabaId) {
+      logEvent('no WABA ID available after Embedded Signup', {
+        embeddedSignupAssets,
+        query: req.query,
+        sessionInfo,
+        graphCalls: graphCallLog,
+      });
+      return res.status(404).json({ success: false, error: 'No WhatsApp Business Account ID was returned by Embedded Signup', embeddedSignupAssets, graphCalls: graphCallLog });
+    }
+
+    logEvent('resolved WhatsApp asset IDs', {
+      businessId: selectedBusinessId,
+      businessName: selectedDisplayName,
+      wabaId: selectedWabaId,
+      phoneNumberId: selectedPhoneId,
+      phoneNumber: selectedPhoneNumber,
+    });
+
     if (!selectedPhoneId) {
       const phoneNumbersResponse = await callGraphApi({
         method: 'get',
@@ -269,9 +316,10 @@ router.get('/callback', async (req, res) => {
         label: '/phone_numbers',
         accessToken,
         grantedScopes: grantedScopesFromDebugToken,
+        debugLog: graphCallLog,
       });
 
-      phoneNumbers = phoneNumbersResponse.data.data || [];
+      const phoneNumbers = phoneNumbersResponse.data.data || [];
       const primaryPhone = phoneNumbers[0] || null;
       selectedPhoneId = primaryPhone?.id || null;
       selectedPhoneNumber = primaryPhone?.display_phone_number || primaryPhone?.phone_number || null;
@@ -307,6 +355,7 @@ router.get('/callback', async (req, res) => {
         accessToken,
         grantedScopes: grantedScopesFromDebugToken,
         data: null,
+        debugLog: graphCallLog,
       });
       logEvent('webhook subscription created', { wabaId: selectedWabaId });
     } catch (subscriptionError) {
@@ -329,6 +378,15 @@ router.get('/callback', async (req, res) => {
         status: connection.status,
         webhookSubscribed: connection.webhookSubscribed,
       },
+      callback: {
+        businessId: selectedBusinessId,
+        businessName: selectedDisplayName,
+        wabaId: selectedWabaId,
+        phoneNumberId: selectedPhoneId,
+        phoneNumber: selectedPhoneNumber,
+      },
+      graphCalls: graphCallLog,
+      sessionInfo,
     });
   } catch (error) {
     const metaErrorBody = error.response?.data || null;
@@ -347,6 +405,11 @@ router.get('/callback', async (req, res) => {
       meta: metaErrorBody,
       metaErrorCode,
       metaErrorMessage,
+      callbackPayload: {
+        query: req.query,
+        body: req.body || null,
+      },
+      graphCalls: error.graphCallLog || [],
     });
   }
 });
