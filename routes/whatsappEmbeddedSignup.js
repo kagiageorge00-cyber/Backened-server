@@ -9,7 +9,7 @@ const APP_ID = process.env.META_APP_ID || '1992090441518045';
 const APP_SECRET = process.env.META_APP_SECRET || '';
 const GRAPH_API_VERSION = process.env.META_GRAPH_VERSION || 'v20.0';
 const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_API_VERSION}`;
-const CONFIG_ID = process.env.META_CONFIG_ID || '2653481901734578';
+const CONFIG_ID = process.env.META_CONFIG_ID || '2592666751170171';
 const REDIRECT_URI = process.env.META_EMBEDDED_SIGNUP_REDIRECT_URI || `${process.env.BACKEND_URL || 'https://backened-server-1.onrender.com'}/api/whatsapp/callback`;
 const REQUESTED_SCOPES = ['whatsapp_business_management', 'whatsapp_business_messaging', 'whatsapp_business_manage_events', 'public_profile'];
 
