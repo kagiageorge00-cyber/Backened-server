@@ -133,6 +133,9 @@ async function discoverWhatsAppAssets({ accessToken, businessId, wabaId, granted
     phoneNumberId: null,
     phoneNumber: null,
     discoveryAttempts: [],
+    businesses: [],
+    wabas: [],
+    phoneNumbers: [],
   };
 
   const attemptEndpoint = async ({ label, path }) => {
@@ -159,6 +162,15 @@ async function discoverWhatsAppAssets({ accessToken, businessId, wabaId, granted
           discoveredAssets.phoneNumberId = discoveredAssets.phoneNumberId || firstItem.phone_number_id || null;
           discoveredAssets.phoneNumber = discoveredAssets.phoneNumber || firstItem.display_phone_number || firstItem.phone_number || null;
         }
+        if (label === '/me/businesses') {
+          discoveredAssets.businesses = payload;
+        }
+        if (label.includes('/owned_whatsapp_business_accounts')) {
+          discoveredAssets.wabas = payload;
+        }
+        if (label.includes('/phone_numbers')) {
+          discoveredAssets.phoneNumbers = payload;
+        }
       } else if (payload && typeof payload === 'object') {
         discoveredAssets.businessId = discoveredAssets.businessId || payload.business_id || payload.id || null;
         discoveredAssets.businessName = discoveredAssets.businessName || payload.name || null;
@@ -175,15 +187,21 @@ async function discoverWhatsAppAssets({ accessToken, businessId, wabaId, granted
   };
 
   if (businessId) {
-    await attemptEndpoint({ label: '/owned_whatsapp_business_accounts', path: `/${businessId}/owned_whatsapp_business_accounts` });
-  }
-
-  if (!discoveredAssets.wabaId) {
-    await attemptEndpoint({ label: '/me/owned_whatsapp_business_accounts', path: '/me/owned_whatsapp_business_accounts' });
-  }
-
-  if (!discoveredAssets.wabaId && businessId) {
-    await attemptEndpoint({ label: '/business_whatsapp_accounts', path: `/${businessId}/whatsapp_business_accounts` });
+    await attemptEndpoint({ label: '/business/owned_whatsapp_business_accounts', path: `/${businessId}/owned_whatsapp_business_accounts` });
+  } else {
+    await attemptEndpoint({ label: '/me/businesses', path: '/me/businesses' });
+    const businesses = discoveredAssets.businesses || [];
+    for (const business of businesses) {
+      const businessIdCandidate = business.id || business.business_id || null;
+      if (!businessIdCandidate) continue;
+      await attemptEndpoint({ label: '/business/owned_whatsapp_business_accounts', path: `/${businessIdCandidate}/owned_whatsapp_business_accounts` });
+      const wabas = discoveredAssets.wabas || [];
+      for (const waba of wabas) {
+        const wabaIdCandidate = waba.id || waba.waba_id || null;
+        if (!wabaIdCandidate) continue;
+        await attemptEndpoint({ label: '/waba/phone_numbers', path: `/${wabaIdCandidate}/phone_numbers` });
+      }
+    }
   }
 
   return discoveredAssets;
@@ -239,9 +257,15 @@ router.all('/callback', async (req, res) => {
     const signedRequestPayload = parseSignedRequest(req.query.signed_request || req.body?.signed_request);
     const sessionInfo = signedRequestPayload?.data?.session || signedRequestPayload?.session || signedRequestPayload?.data?.session_info || null;
 
+    const callbackQueryFields = req.query && typeof req.query === 'object' ? Object.keys(req.query) : [];
+    const callbackBodyFields = req.body && typeof req.body === 'object' ? Object.keys(req.body) : [];
+    const sessionLoggingEnabled = Boolean(sessionInfo || signedRequestPayload?.data?.session_info_version || signedRequestPayload?.session_info_version || signedRequestPayload?.data?.setup || signedRequestPayload?.setup || req.query?.setup || req.body?.setup);
+
     logEvent('callback payload', {
       query: req.query,
+      queryFields: callbackQueryFields,
       body: req.body || null,
+      bodyFields: callbackBodyFields,
       headers: {
         host: req.headers.host,
         referer: req.headers.referer,
@@ -252,6 +276,7 @@ router.all('/callback', async (req, res) => {
       sessionInfo,
       sessionInfoVersion: signedRequestPayload?.data?.session_info_version || signedRequestPayload?.session_info_version || null,
       setupData: signedRequestPayload?.data?.setup || signedRequestPayload?.setup || null,
+      sessionLoggingEnabled,
       code: code ? 'present' : 'missing',
       state,
       error,
@@ -292,7 +317,12 @@ router.all('/callback', async (req, res) => {
     });
 
     const grantedScopes = tokenResponse.data.scope ? tokenResponse.data.scope.split(',').map((scope) => scope.trim()).filter(Boolean) : [];
-    logEvent('token exchange response', { ...tokenResponse.data, grantedScopes });
+    logEvent('token exchange response', {
+      status: tokenResponse.status,
+      response: tokenResponse.data,
+      grantedScopes,
+      rawResponse: tokenResponse.data,
+    });
     const accessToken = tokenResponse.data.access_token;
     if (!accessToken) {
       logEvent('token exchange missing access token', tokenResponse.data);
@@ -354,12 +384,16 @@ router.all('/callback', async (req, res) => {
     selectedPhoneId = discoveredAssets.phoneNumberId || selectedPhoneId;
     selectedPhoneNumber = discoveredAssets.phoneNumber || selectedPhoneNumber;
 
+    const targetPhoneMatch = [selectedPhoneNumber, selectedPhoneId, discoveredAssets.phoneNumber, ...(discoveredAssets.phoneNumbers || []).map((item) => item.display_phone_number || item.phone_number || null)].find((value) => value === '0102084855') || null;
+
     logEvent('WhatsApp Business Accounts discovered', {
       discoveredAssets,
       businessId: selectedBusinessId,
       wabaId: selectedWabaId,
       phoneNumberId: selectedPhoneId,
       phoneNumber: selectedPhoneNumber,
+      targetPhoneMatch,
+      targetPhoneNumber: '0102084855',
     });
 
     if (!selectedWabaId) {
@@ -460,6 +494,7 @@ router.all('/callback', async (req, res) => {
       discoveredAssets,
       graphCalls: graphCallLog,
       sessionInfo,
+      targetPhoneMatch,
     });
   } catch (error) {
     const metaErrorBody = error.response?.data || null;
