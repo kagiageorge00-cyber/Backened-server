@@ -11,9 +11,61 @@ const GRAPH_API_VERSION = process.env.META_GRAPH_VERSION || 'v20.0';
 const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_API_VERSION}`;
 const CONFIG_ID = process.env.META_CONFIG_ID || '2653481901734578';
 const REDIRECT_URI = process.env.META_EMBEDDED_SIGNUP_REDIRECT_URI || `${process.env.BACKEND_URL || 'https://backened-server-1.onrender.com'}/api/whatsapp/callback`;
+const REQUESTED_SCOPES = ['business_management', 'whatsapp_business_management', 'public_profile'];
 
 function logEvent(message, details) {
   console.log(`[whatsapp-embedded-signup] ${message}`, details || {});
+}
+
+function getGraphApiEndpointPermissions(path) {
+  if (path === '/me') return ['public_profile'];
+  if (path === '/debug_token') return ['app-level'];
+  if (path === '/me/businesses') return ['business_management'];
+  if (path === '/me/client_whatsapp_business_accounts') return ['whatsapp_business_management'];
+  if (path.includes('/owned_whatsapp_business_accounts')) return ['whatsapp_business_management'];
+  if (path.includes('/phone_numbers')) return ['whatsapp_business_management'];
+  if (path.includes('/subscribed_apps')) return ['whatsapp_business_management'];
+  return ['unknown'];
+}
+
+async function callGraphApi({ method = 'get', path, params = {}, accessToken, label, data = null, grantedScopes = [] }) {
+  const url = `${GRAPH_BASE}${path}`;
+  const requiredScopes = getGraphApiEndpointPermissions(path);
+  logEvent(`Graph API call: ${label}`, {
+    method: method.toUpperCase(),
+    url,
+    requiredScopes,
+    accessTokenPresent: Boolean(accessToken),
+    grantedScopes,
+    params,
+  });
+
+  try {
+    const response = await axios({
+      method,
+      url,
+      params,
+      data,
+    });
+
+    logEvent(`Graph API response: ${label}`, {
+      status: response.status,
+      data: response.data,
+    });
+
+    return response;
+  } catch (error) {
+    const metaErrorBody = error.response?.data || null;
+    logEvent(`Graph API error: ${label}`, {
+      status: error.response?.status || null,
+      message: error.message,
+      data: metaErrorBody,
+      code: metaErrorBody?.error?.code || null,
+      errorMessage: metaErrorBody?.error?.message || null,
+      requiredScopes,
+    });
+    throw error;
+  }
 }
 
 function getMissingEnvVars() {
@@ -50,12 +102,12 @@ router.get('/connect', (req, res) => {
   authUrl.searchParams.set('app_id', APP_ID);
   authUrl.searchParams.set('redirect_uri', REDIRECT_URI);
   authUrl.searchParams.set('response_type', 'code');
-  authUrl.searchParams.set('scope', 'business_management,whatsapp_business_management,public_profile');
+  authUrl.searchParams.set('scope', REQUESTED_SCOPES.join(','));
   authUrl.searchParams.set('config_id', CONFIG_ID);
   authUrl.searchParams.set('extras', JSON.stringify({ setup: { business: { name: 'Bliss Travel and Tours 254' } } }));
   authUrl.searchParams.set('state', crypto.randomBytes(16).toString('hex'));
 
-  logEvent('launching embedded signup', { authUrl: authUrl.toString() });
+  logEvent('launching embedded signup', { authUrl: authUrl.toString(), requestedScopes: REQUESTED_SCOPES });
   res.redirect(authUrl.toString());
 });
 
@@ -85,19 +137,25 @@ router.get('/callback', async (req, res) => {
       appId: APP_ID,
       configId: CONFIG_ID,
       redirectUri: REDIRECT_URI,
+      requestedScopes: REQUESTED_SCOPES,
       code,
     });
 
-    const tokenResponse = await axios.get(`${GRAPH_BASE}/oauth/access_token`, {
+    const tokenResponse = await callGraphApi({
+      method: 'get',
+      path: '/oauth/access_token',
       params: {
         client_id: APP_ID,
         client_secret: APP_SECRET,
         redirect_uri: REDIRECT_URI,
         code,
       },
+      label: 'token exchange',
+      accessToken: null,
     });
 
-    logEvent('token exchange response', tokenResponse.data);
+    const grantedScopes = tokenResponse.data.scope ? tokenResponse.data.scope.split(',').map((scope) => scope.trim()).filter(Boolean) : [];
+    logEvent('token exchange response', { ...tokenResponse.data, grantedScopes });
     const accessToken = tokenResponse.data.access_token;
     if (!accessToken) {
       logEvent('token exchange missing access token', tokenResponse.data);
@@ -106,18 +164,37 @@ router.get('/callback', async (req, res) => {
 
     logEvent('access token exchanged', { tokenLength: accessToken?.length });
 
-    const debugTokenResponse = await axios.get(`${GRAPH_BASE}/debug_token`, {
+    const debugTokenResponse = await callGraphApi({
+      method: 'get',
+      path: '/debug_token',
       params: {
         input_token: accessToken,
         access_token: `${APP_ID}|${APP_SECRET}`,
       },
+      label: 'debug_token',
+      accessToken: `${APP_ID}|${APP_SECRET}`,
     });
 
     const tokenInfo = debugTokenResponse.data.data || {};
-    logEvent('token debug info', tokenInfo);
+    const grantedScopesFromDebugToken = Array.isArray(tokenInfo.scopes) ? tokenInfo.scopes : (tokenInfo.scopes ? String(tokenInfo.scopes).split(',').map((scope) => scope.trim()).filter(Boolean) : []);
+    logEvent('token debug info', { ...tokenInfo, grantedScopes: grantedScopesFromDebugToken });
 
-    const businessesResponse = await axios.get(`${GRAPH_BASE}/me/businesses`, {
+    const meResponse = await callGraphApi({
+      method: 'get',
+      path: '/me',
       params: { access_token: accessToken },
+      label: '/me',
+      accessToken,
+      grantedScopes: grantedScopesFromDebugToken,
+    });
+
+    const businessesResponse = await callGraphApi({
+      method: 'get',
+      path: '/me/businesses',
+      params: { access_token: accessToken },
+      label: '/me/businesses',
+      accessToken,
+      grantedScopes: grantedScopesFromDebugToken,
     });
 
     const businesses = businessesResponse.data.data || [];
@@ -128,8 +205,22 @@ router.get('/callback', async (req, res) => {
       return res.status(404).json({ success: false, error: 'No connected businesses found' });
     }
 
-    const wabaResponse = await axios.get(`${GRAPH_BASE}/${primaryBusiness.id}/owned_whatsapp_business_accounts`, {
+    const clientWabasResponse = await callGraphApi({
+      method: 'get',
+      path: '/me/client_whatsapp_business_accounts',
       params: { access_token: accessToken },
+      label: '/me/client_whatsapp_business_accounts',
+      accessToken,
+      grantedScopes: grantedScopesFromDebugToken,
+    });
+
+    const wabaResponse = await callGraphApi({
+      method: 'get',
+      path: `/${primaryBusiness.id}/owned_whatsapp_business_accounts`,
+      params: { access_token: accessToken },
+      label: '/owned_whatsapp_business_accounts',
+      accessToken,
+      grantedScopes: grantedScopesFromDebugToken,
     });
 
     const wabas = wabaResponse.data.data || [];
@@ -140,8 +231,13 @@ router.get('/callback', async (req, res) => {
       return res.status(404).json({ success: false, error: 'No WhatsApp Business Accounts available for this business' });
     }
 
-    const phoneNumbersResponse = await axios.get(`${GRAPH_BASE}/${selectedWaba.id}/phone_numbers`, {
+    const phoneNumbersResponse = await callGraphApi({
+      method: 'get',
+      path: `/${selectedWaba.id}/phone_numbers`,
       params: { access_token: accessToken },
+      label: '/phone_numbers',
+      accessToken,
+      grantedScopes: grantedScopesFromDebugToken,
     });
 
     const phoneNumbers = phoneNumbersResponse.data.data || [];
@@ -166,11 +262,17 @@ router.get('/callback', async (req, res) => {
     );
 
     try {
-      await axios.post(`${GRAPH_BASE}/${selectedWaba.id}/subscribed_apps`, null, {
+      await callGraphApi({
+        method: 'post',
+        path: `/${selectedWaba.id}/subscribed_apps`,
         params: {
           subscribed_fields: 'messages,message_status',
           access_token: accessToken,
         },
+        label: '/subscribed_apps',
+        accessToken,
+        grantedScopes: grantedScopesFromDebugToken,
+        data: null,
       });
       logEvent('webhook subscription created', { wabaId: selectedWaba.id });
     } catch (subscriptionError) {
