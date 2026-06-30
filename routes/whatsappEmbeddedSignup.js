@@ -44,23 +44,25 @@ function parseSignedRequest(signedRequest) {
   }
 }
 
-function extractEmbeddedSignupAssets(payload, query = {}) {
+function extractEmbeddedSignupAssets(payload, query = {}, body = {}) {
   const data = payload?.data || payload?.payload?.data || payload?.response?.data || null;
-  const whatsappBusinessAccount = data?.whatsapp_business_account || data?.whatsappBusinessAccount || data?.whatsapp_business_account_info || null;
-  const business = data?.business || data?.business_info || data?.business_details || null;
-  const sessionInfo = payload?.session || payload?.session_info || data?.session || data?.session_info || null;
-  const setupData = payload?.setup || data?.setup || null;
+  const bodyData = body?.data || body?.payload?.data || body?.response?.data || null;
+  const sourceData = data || bodyData || null;
+  const whatsappBusinessAccount = sourceData?.whatsapp_business_account || sourceData?.whatsappBusinessAccount || sourceData?.whatsapp_business_account_info || null;
+  const business = sourceData?.business || sourceData?.business_info || sourceData?.business_details || null;
+  const sessionInfo = payload?.session || payload?.session_info || sourceData?.session || sourceData?.session_info || null;
+  const setupData = payload?.setup || sourceData?.setup || null;
 
   return {
-    businessId: data?.business_id || business?.id || query?.business_id || query?.businessId || null,
-    businessName: data?.business_name || business?.name || whatsappBusinessAccount?.display_name || whatsappBusinessAccount?.name || null,
-    wabaId: whatsappBusinessAccount?.id || data?.waba_id || data?.wabaId || null,
-    phoneNumberId: whatsappBusinessAccount?.phone_number_id || whatsappBusinessAccount?.phone_number?.id || data?.phone_number_id || data?.phoneNumberId || null,
-    phoneNumber: whatsappBusinessAccount?.phone_number?.display_phone_number || whatsappBusinessAccount?.phone_number?.number || data?.phone_number || null,
+    businessId: sourceData?.business_id || business?.id || query?.business_id || query?.businessId || body?.business_id || body?.businessId || null,
+    businessName: sourceData?.business_name || business?.name || whatsappBusinessAccount?.display_name || whatsappBusinessAccount?.name || null,
+    wabaId: whatsappBusinessAccount?.id || sourceData?.waba_id || sourceData?.wabaId || query?.waba_id || query?.wabaId || body?.waba_id || body?.wabaId || null,
+    phoneNumberId: whatsappBusinessAccount?.phone_number_id || whatsappBusinessAccount?.phone_number?.id || sourceData?.phone_number_id || sourceData?.phoneNumberId || query?.phone_number_id || query?.phoneNumberId || body?.phone_number_id || body?.phoneNumberId || null,
+    phoneNumber: whatsappBusinessAccount?.phone_number?.display_phone_number || whatsappBusinessAccount?.phone_number?.number || sourceData?.phone_number || query?.phone_number || query?.phoneNumber || body?.phone_number || body?.phoneNumber || null,
     sessionInfo,
-    sessionInfoVersion: data?.session_info_version || payload?.session_info_version || query?.session_info_version || null,
+    sessionInfoVersion: sourceData?.session_info_version || payload?.session_info_version || query?.session_info_version || body?.session_info_version || null,
     setupData,
-    rawData: data,
+    rawData: sourceData,
   };
 }
 
@@ -133,8 +135,6 @@ async function discoverWhatsAppAssets({ accessToken, businessId, wabaId, granted
     phoneNumberId: null,
     phoneNumber: null,
     discoveryAttempts: [],
-    businesses: [],
-    wabas: [],
     phoneNumbers: [],
   };
 
@@ -154,22 +154,11 @@ async function discoverWhatsAppAssets({ accessToken, businessId, wabaId, granted
       discoveredAssets.discoveryAttempts.push({ label, path, status: 'success', payload });
 
       if (Array.isArray(payload)) {
+        discoveredAssets.phoneNumbers = payload;
         const firstItem = payload[0] || null;
         if (firstItem) {
-          discoveredAssets.businessId = discoveredAssets.businessId || firstItem.business_id || firstItem.id || null;
-          discoveredAssets.businessName = discoveredAssets.businessName || firstItem.name || null;
-          discoveredAssets.wabaId = discoveredAssets.wabaId || firstItem.id || firstItem.waba_id || null;
-          discoveredAssets.phoneNumberId = discoveredAssets.phoneNumberId || firstItem.phone_number_id || null;
+          discoveredAssets.phoneNumberId = discoveredAssets.phoneNumberId || firstItem.id || firstItem.phone_number_id || null;
           discoveredAssets.phoneNumber = discoveredAssets.phoneNumber || firstItem.display_phone_number || firstItem.phone_number || null;
-        }
-        if (label === '/me/businesses') {
-          discoveredAssets.businesses = payload;
-        }
-        if (label.includes('/owned_whatsapp_business_accounts')) {
-          discoveredAssets.wabas = payload;
-        }
-        if (label.includes('/phone_numbers')) {
-          discoveredAssets.phoneNumbers = payload;
         }
       } else if (payload && typeof payload === 'object') {
         discoveredAssets.businessId = discoveredAssets.businessId || payload.business_id || payload.id || null;
@@ -188,20 +177,10 @@ async function discoverWhatsAppAssets({ accessToken, businessId, wabaId, granted
 
   if (businessId) {
     await attemptEndpoint({ label: '/business/owned_whatsapp_business_accounts', path: `/${businessId}/owned_whatsapp_business_accounts` });
-  } else {
-    await attemptEndpoint({ label: '/me/businesses', path: '/me/businesses' });
-    const businesses = discoveredAssets.businesses || [];
-    for (const business of businesses) {
-      const businessIdCandidate = business.id || business.business_id || null;
-      if (!businessIdCandidate) continue;
-      await attemptEndpoint({ label: '/business/owned_whatsapp_business_accounts', path: `/${businessIdCandidate}/owned_whatsapp_business_accounts` });
-      const wabas = discoveredAssets.wabas || [];
-      for (const waba of wabas) {
-        const wabaIdCandidate = waba.id || waba.waba_id || null;
-        if (!wabaIdCandidate) continue;
-        await attemptEndpoint({ label: '/waba/phone_numbers', path: `/${wabaIdCandidate}/phone_numbers` });
-      }
-    }
+  }
+
+  if (wabaId) {
+    await attemptEndpoint({ label: '/waba/phone_numbers', path: `/${wabaId}/phone_numbers` });
   }
 
   return discoveredAssets;
@@ -357,7 +336,7 @@ router.all('/callback', async (req, res) => {
       debugLog: graphCallLog,
     });
 
-    const embeddedSignupAssets = extractEmbeddedSignupAssets(signedRequestPayload, req.query);
+    const embeddedSignupAssets = extractEmbeddedSignupAssets(signedRequestPayload, req.query, req.body);
     logEvent('embedded signup assets extracted', {
       ...embeddedSignupAssets,
       meResponseData: meResponse?.data || null,
