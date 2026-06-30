@@ -5,7 +5,7 @@ const router = express.Router();
 const WhatsAppConnection = require('../models/WhatsAppConnection');
 const { encrypt } = require('../utils/encryption');
 
-const APP_ID = process.env.META_APP_ID || '1466441738033139';
+const APP_ID = process.env.META_APP_ID || '1992090441518045';
 const APP_SECRET = process.env.META_APP_SECRET || '';
 const GRAPH_API_VERSION = process.env.META_GRAPH_VERSION || 'v20.0';
 const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_API_VERSION}`;
@@ -62,7 +62,13 @@ router.get('/connect', (req, res) => {
 router.get('/callback', async (req, res) => {
   try {
     const { code, state, error, error_description } = req.query;
-    logEvent('callback received', { code: code ? 'present' : 'missing', state, error, error_description });
+    logEvent('callback query params', {
+      query: req.query,
+      code: code ? 'present' : 'missing',
+      state,
+      error,
+      error_description,
+    });
 
     if (error) {
       logEvent('oauth error', { error, error_description });
@@ -70,9 +76,17 @@ router.get('/callback', async (req, res) => {
     }
 
     if (!code) {
-      logEvent('missing authorization code');
+      logEvent('missing authorization code', { query: req.query });
       return res.status(400).json({ success: false, error: 'Missing authorization code' });
     }
+
+    logEvent('authorization code received', { code });
+    logEvent('token exchange request', {
+      appId: APP_ID,
+      configId: CONFIG_ID,
+      redirectUri: REDIRECT_URI,
+      code,
+    });
 
     const tokenResponse = await axios.get(`${GRAPH_BASE}/oauth/access_token`, {
       params: {
@@ -83,7 +97,13 @@ router.get('/callback', async (req, res) => {
       },
     });
 
+    logEvent('token exchange response', tokenResponse.data);
     const accessToken = tokenResponse.data.access_token;
+    if (!accessToken) {
+      logEvent('token exchange missing access token', tokenResponse.data);
+      return res.status(400).json({ success: false, error: 'Meta did not return an access token', meta: tokenResponse.data });
+    }
+
     logEvent('access token exchanged', { tokenLength: accessToken?.length });
 
     const debugTokenResponse = await axios.get(`${GRAPH_BASE}/debug_token`, {
@@ -154,7 +174,11 @@ router.get('/callback', async (req, res) => {
       });
       logEvent('webhook subscription created', { wabaId: selectedWaba.id });
     } catch (subscriptionError) {
-      logEvent('webhook subscription failed', { error: subscriptionError.message, details: subscriptionError.response?.data });
+      logEvent('webhook subscription failed', {
+        message: subscriptionError.message,
+        responseData: subscriptionError.response?.data,
+        status: subscriptionError.response?.status,
+      });
     }
 
     res.json({
@@ -171,8 +195,23 @@ router.get('/callback', async (req, res) => {
       },
     });
   } catch (error) {
-    logEvent('callback processing failed', { message: error.message, data: error.response?.data });
-    res.status(500).json({ success: false, error: error.message });
+    const metaErrorBody = error.response?.data || null;
+    const metaErrorCode = metaErrorBody?.error?.code || error.code || null;
+    const metaErrorMessage = metaErrorBody?.error?.message || error.message || null;
+    logEvent('callback processing failed', {
+      message: error.message,
+      status: error.response?.status,
+      data: metaErrorBody,
+      errorCode: metaErrorCode,
+      errorMessage: metaErrorMessage,
+    });
+    res.status(error.response?.status || 500).json({
+      success: false,
+      error: error.message,
+      meta: metaErrorBody,
+      metaErrorCode,
+      metaErrorMessage,
+    });
   }
 });
 
