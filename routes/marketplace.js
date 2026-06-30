@@ -25,11 +25,34 @@ function normalizeMarketplaceCandidate(candidate) {
 
   const languages = Array.isArray(candidateObj.languages) ? candidateObj.languages : [];
   const skills = Array.isArray(candidateObj.skills) ? candidateObj.skills : [];
+  const experience = candidateObj.experience;
+  const experienceLabel = experience !== undefined && experience !== null
+    ? (typeof experience === 'string'
+        ? experience.trim().length > 0
+          ? (/^\d+$/.test(experience.trim()) ? `${experience.trim()} Years` : experience.trim())
+          : null
+        : `${experience} Years`)
+    : null;
+  const destinationPreference = Array.isArray(candidateObj.destinationPreference)
+    ? candidateObj.destinationPreference.join(', ')
+    : (candidateObj.destinationPreference || candidateObj.preferredDestination || candidateObj.preferredDestinations || null);
+  const mappedJobPosition = candidateObj.jobPosition || candidateObj.jobAppliedFor || candidateObj.appliedJobTitle || null;
+  const profilePhoto = candidateObj.photoUrl || candidateObj.profilePhoto || candidateObj.imageUrl || null;
+  const avatarUrl = profilePhoto || candidateObj.profilePhotoUrl || null;
+  const availabilityLabel = candidateObj.status === 'available' || candidateObj.availability === 'Available'
+    ? 'Immediately Available'
+    : (candidateObj.availability || candidateObj.status || 'Unavailable');
+  const hasVideo = !!candidateObj.videoUrl;
+  const hasPassport = !!candidateObj.passportUrl;
+  const hasMedical = !!candidateObj.medicalUrl;
+  const hasResume = !!candidateObj.resumeUrl;
+  const hasDocuments = !!(candidateObj.documents && (candidateObj.documents.certificates?.length || candidateObj.documents.uploads?.length));
 
   return {
     // IDENTIFICATION
     candidateId: candidateObj.candidateId,
     fullName: candidateObj.fullName || candidateObj.name,
+    name: candidateObj.fullName || candidateObj.name,
 
     // PERSONAL
     nationality: candidateObj.nationality,
@@ -39,8 +62,8 @@ function normalizeMarketplaceCandidate(candidate) {
     numberOfChildren: candidateObj.numberOfChildren,
 
     // PROFESSIONAL
-    jobPosition: candidateObj.jobPosition,
-    experience: candidateObj.experience,
+    jobPosition: mappedJobPosition,
+    experience: experienceLabel,
     education: candidateObj.education || candidateObj.educationalLevel,
     skills: skills,
     languages: languages,
@@ -48,21 +71,34 @@ function normalizeMarketplaceCandidate(candidate) {
 
     // LOCATION
     destinationCountry: candidateObj.destinationCountry,
-    destinationPreference: Array.isArray(candidateObj.destinationPreference)
-      ? candidateObj.destinationPreference.join(', ')
-      : candidateObj.destinationPreference || null,
+    destinationPreference,
 
-    // MEDIA (only flags, not actual URLs)
-    photoUrl: candidateObj.photoUrl,
-    videoAvailable: !!candidateObj.videoUrl,
-    passportAvailable: !!candidateObj.passportUrl,
-    medicalAvailable: !!candidateObj.medicalUrl,
+    // MEDIA
+    photoUrl: profilePhoto,
+    profilePhoto: profilePhoto,
+    profilePhotoUrl: avatarUrl,
+    imageUrl: profilePhoto,
+    avatarUrl: avatarUrl,
+    videoAvailable: hasVideo,
+    passportAvailable: hasPassport,
+    medicalAvailable: hasMedical,
+    resumeAvailable: hasResume,
+    documentsAvailable: hasDocuments,
+    introductionVideoAvailable: hasVideo,
+    certificateOfGoodConductAvailable: hasDocuments,
+    cvAvailable: hasResume,
+
+    // LABELS
+    languagesLabel: languages.length ? languages.join(', ') : null,
+    skillsLabel: skills.length ? skills.join(', ') : null,
 
     // STATUS
     profileCompletion: candidateObj.profileCompletion || 0,
     currentStatus: candidateObj.currentStatus,
     status: candidateObj.status,
-    availability: candidateObj.status === 'available' ? 'Available ✔' : candidateObj.status || 'Unavailable',
+    availability: availabilityLabel,
+    availabilityBadge: candidateObj.status === 'available' ? 'Verified' : 'Pending',
+    verified: candidateObj.isVerified === true,
   };
 }
 

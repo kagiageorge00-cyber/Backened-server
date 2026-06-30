@@ -9,6 +9,7 @@ const router = express.Router();
 const Candidate = require('../models/candidate');
 const { sendEmail } = require('../email');
 const { FRONTEND_URL } = require('../config');
+const { getCandidateDisplayName } = require('../utils/candidateDisplayName');
 
 const documentStorage = multer.diskStorage({
   destination(req, file, cb) {
@@ -119,6 +120,11 @@ function normalizeCandidate(candidate) {
   const age = birthDate && !Number.isNaN(birthDate.getTime())
     ? new Date().getFullYear() - birthDate.getFullYear()
     : null;
+  const destinationPreference = Array.isArray(candidateObj.destinationPreference)
+    ? candidateObj.destinationPreference
+    : (candidateObj.destinationPreference || candidateObj.preferredDestination || candidateObj.preferredDestinations || null);
+  const mappedJobPosition = candidateObj.jobPosition || candidateObj.jobAppliedFor || candidateObj.appliedJobTitle || null;
+
   return {
     _id: candidateObj._id,
     uniqueCode: candidateObj.uniqueCode || candidateObj.candidateId || (candidateObj._id ? candidateObj._id.toString() : null),
@@ -140,10 +146,10 @@ function normalizeCandidate(candidate) {
     dateOfBirth: candidateObj.dateOfBirth,
     maritalStatus: candidateObj.maritalStatus,
     numberOfChildren: candidateObj.numberOfChildren,
-    jobPosition: candidateObj.jobPosition,
+    jobPosition: mappedJobPosition,
     jobType: candidateObj.jobType,
     destinationCountry: candidateObj.destinationCountry,
-    destinationPreference: candidateObj.destinationPreference || candidateObj.preferredDestination || candidateObj.preferredDestinations || null,
+    destinationPreference,
     expectedSalary: candidateObj.expectedSalary,
     status: candidateObj.status,
     availability: candidateObj.status === 'available' ? 'Available' : candidateObj.status,
@@ -177,6 +183,16 @@ function buildMarketplaceCandidate(candidate) {
   const destination = Array.isArray(candidateObj.destinationPreference)
     ? candidateObj.destinationPreference.join(', ')
     : candidateObj.destinationPreference || null;
+  const profilePhoto = candidateObj.photoUrl || candidateObj.profilePhoto || candidateObj.imageUrl || null;
+  const avatarUrl = profilePhoto || candidateObj.profilePhotoUrl || null;
+  const availabilityLabel = candidateObj.status === 'available' || candidateObj.availability === 'Available'
+    ? 'Immediately Available'
+    : (candidateObj.availability || candidateObj.status || 'Unavailable');
+  const hasVideo = !!candidateObj.videoUrl;
+  const hasPassport = !!candidateObj.passportUrl;
+  const hasMedical = !!candidateObj.medicalUrl;
+  const hasResume = !!candidateObj.resumeUrl;
+  const hasDocuments = !!(candidateObj.documents && (candidateObj.documents.certificates?.length || candidateObj.documents.uploads?.length));
 
   return {
     // IDENTIFICATION
@@ -203,11 +219,20 @@ function buildMarketplaceCandidate(candidate) {
     destinationCountry: candidateObj.destinationCountry,
     destinationPreference: destination,
 
-    // MEDIA (only flags, not actual URLs)
-    photoUrl: candidateObj.photoUrl,
-    videoAvailable: !!candidateObj.videoUrl,
-    passportAvailable: !!candidateObj.passportUrl,
-    medicalAvailable: !!candidateObj.medicalUrl,
+    // MEDIA
+    photoUrl: profilePhoto,
+    profilePhoto: profilePhoto,
+    profilePhotoUrl: avatarUrl,
+    imageUrl: profilePhoto,
+    avatarUrl: avatarUrl,
+    videoAvailable: hasVideo,
+    passportAvailable: hasPassport,
+    medicalAvailable: hasMedical,
+    resumeAvailable: hasResume,
+    documentsAvailable: hasDocuments,
+    introductionVideoAvailable: hasVideo,
+    certificateOfGoodConductAvailable: hasDocuments,
+    cvAvailable: hasResume,
 
     // LABELS
     languagesLabel: languages.length ? languages.join(', ') : null,
@@ -217,7 +242,9 @@ function buildMarketplaceCandidate(candidate) {
     profileCompletion: candidateObj.profileCompletion,
     currentStatus: candidateObj.currentStatus,
     status: candidateObj.status,
-    availability: candidateObj.status === 'available' ? 'Available ✔' : candidateObj.status || 'Unavailable',
+    availability: availabilityLabel,
+    availabilityBadge: candidateObj.status === 'available' ? 'Verified' : 'Pending',
+    verified: candidateObj.isVerified === true,
   };
 }
 
@@ -395,6 +422,7 @@ router.post('/form/submit', async (req, res) => {
       maritalStatus,
       numberOfChildren,
       jobPosition,
+      jobAppliedFor,
       jobType,
       destinationCountry,
       destinationPreference,
@@ -437,6 +465,16 @@ router.post('/form/submit', async (req, res) => {
       });
     }
 
+    const resolvedJobPosition = jobPosition || jobAppliedFor || null;
+    const resolvedDestinationPreference = Array.isArray(destinationPreference || preferredDestination || preferredDestinations)
+      ? (destinationPreference || preferredDestination || preferredDestinations)
+      : ((destinationPreference || preferredDestination || preferredDestinations)
+        ? String(destinationPreference || preferredDestination || preferredDestinations)
+          .split(',')
+          .map((item) => item.trim())
+          .filter(Boolean)
+        : []);
+
     const lookupValue = candidateId || phone;
     if (!lookupValue) {
       return res.status(400).json({ success: false, error: 'candidateId or phone is required' });
@@ -477,10 +515,10 @@ router.post('/form/submit', async (req, res) => {
         dateOfBirth,
         maritalStatus,
         numberOfChildren,
-        jobPosition,
+        jobPosition: resolvedJobPosition,
         jobType,
         destinationCountry,
-        destinationPreference: destinationPreference || preferredDestination || preferredDestinations || [],
+        destinationPreference: resolvedDestinationPreference,
         expectedSalary,
         currentStatus,
         photoUrl,
@@ -534,10 +572,12 @@ router.post('/form/submit', async (req, res) => {
       candidate.dateOfBirth = dateOfBirth || candidate.dateOfBirth;
       candidate.maritalStatus = maritalStatus || candidate.maritalStatus;
       candidate.numberOfChildren = numberOfChildren !== undefined ? numberOfChildren : candidate.numberOfChildren;
-      candidate.jobPosition = jobPosition || candidate.jobPosition;
+      candidate.jobPosition = resolvedJobPosition || candidate.jobPosition || candidate.jobAppliedFor || candidate.appliedJobTitle;
       candidate.jobType = jobType || candidate.jobType;
       candidate.destinationCountry = destinationCountry || candidate.destinationCountry;
-      candidate.destinationPreference = destinationPreference || preferredDestination || preferredDestinations || candidate.destinationPreference;
+      candidate.destinationPreference = resolvedDestinationPreference.length > 0
+        ? resolvedDestinationPreference
+        : (candidate.destinationPreference || candidate.preferredDestination || candidate.preferredDestinations || []);
       candidate.expectedSalary = expectedSalary || candidate.expectedSalary;
       candidate.currentStatus = currentStatus || candidate.currentStatus;
       candidate.photoUrl = photoUrl || candidate.photoUrl;
@@ -586,7 +626,7 @@ router.post('/form/submit', async (req, res) => {
       const htmlBody = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #fff; padding: 20px; border-radius: 8px;">
           <h2 style="color: #4CAF50;">Registration Completed ✅</h2>
-          <p>Hello ${candidate.fullName || 'Candidate'},</p>
+          <p>Hello ${getCandidateDisplayName(candidate)},</p>
           <p>Your candidate registration is now complete.</p>
           <p><strong>Candidate ID:</strong> ${candidate.uniqueCode || 'N/A'}</p>
           ${passwordPlain ? `<p><strong>Password:</strong> ${passwordPlain}</p>` : ''}
@@ -601,7 +641,7 @@ router.post('/form/submit', async (req, res) => {
       await sendEmail(
         candidate.email,
         'Candidate Registration Completed ✅',
-        `Hello ${candidate.fullName || 'Candidate'},\n\nYour candidate registration is complete. Your Candidate ID is ${candidate.uniqueCode}.` +
+        `Hello ${getCandidateDisplayName(candidate)},\n\nYour candidate registration is complete. Your Candidate ID is ${candidate.uniqueCode}.` +
           (passwordPlain ? ` Your password is ${passwordPlain}.` : ''),
         htmlBody
       );

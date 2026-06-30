@@ -101,7 +101,8 @@ describe('Candidate portal routes', () => {
       languagesLabel: 'English, Arabic',
       skillsLabel: 'Cleaning, Child Care',
       destinationPreference: null,
-      availability: 'Available ✔',
+      availability: 'Immediately Available',
+      availabilityBadge: 'Verified',
     }));
     expect(Candidate.find).toHaveBeenCalledWith({ isVerified: true, status: 'available' });
   });
@@ -126,8 +127,9 @@ describe('Candidate portal routes', () => {
       experience: '4 Years',
       languagesLabel: 'English, Arabic',
       skillsLabel: 'Cleaning, Child Care',
-      availability: 'Available ✔',
+      availability: 'Immediately Available',
       photoUrl: 'https://example.com/photo.jpg',
+      profilePhoto: 'https://example.com/photo.jpg',
     }));
     expect(Candidate.findOne).toHaveBeenCalledWith({
       $or: [
@@ -139,6 +141,24 @@ describe('Candidate portal routes', () => {
       isVerified: true,
       status: 'available',
     });
+  });
+
+  test('GET /api/candidates/marketplace maps legacy Mongo fields into marketplace values', async () => {
+    Candidate.find.mockReturnValue(mockSortResult([{ _id: 'cand_legacy', fullName: 'Legacy User', uniqueCode: 'CAND-2026-0999', status: 'available', jobAppliedFor: 'Housekeeper', preferredDestination: ['Dubai'], experience: '6', nationality: 'Kenyan', religion: 'Christian', education: 'High School' }]));
+
+    const app = express();
+    app.use('/api/candidates', candidateRoutes);
+
+    const res = await request(app).get('/api/candidates/marketplace');
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data[0]).toEqual(expect.objectContaining({
+      candidateId: 'CAND-2026-0999',
+      jobPosition: 'Housekeeper',
+      destinationPreference: 'Dubai',
+      experience: '6 Years',
+    }));
   });
 
   test('GET /api/candidates/:id returns a candidate by ID', async () => {
