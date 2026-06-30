@@ -46,15 +46,20 @@ function parseSignedRequest(signedRequest) {
 
 function extractEmbeddedSignupAssets(payload, query = {}) {
   const data = payload?.data || payload?.payload?.data || payload?.response?.data || null;
-  const whatsappBusinessAccount = data?.whatsapp_business_account || data?.whatsappBusinessAccount || null;
+  const whatsappBusinessAccount = data?.whatsapp_business_account || data?.whatsappBusinessAccount || data?.whatsapp_business_account_info || null;
   const business = data?.business || data?.business_info || data?.business_details || null;
+  const sessionInfo = payload?.session || payload?.session_info || data?.session || data?.session_info || null;
+  const setupData = payload?.setup || data?.setup || null;
 
   return {
-    businessId: data?.business_id || business?.id || query?.business_id || null,
+    businessId: data?.business_id || business?.id || query?.business_id || query?.businessId || null,
     businessName: data?.business_name || business?.name || whatsappBusinessAccount?.display_name || whatsappBusinessAccount?.name || null,
     wabaId: whatsappBusinessAccount?.id || data?.waba_id || data?.wabaId || null,
     phoneNumberId: whatsappBusinessAccount?.phone_number_id || whatsappBusinessAccount?.phone_number?.id || data?.phone_number_id || data?.phoneNumberId || null,
     phoneNumber: whatsappBusinessAccount?.phone_number?.display_phone_number || whatsappBusinessAccount?.phone_number?.number || data?.phone_number || null,
+    sessionInfo,
+    sessionInfoVersion: data?.session_info_version || payload?.session_info_version || query?.session_info_version || null,
+    setupData,
     rawData: data,
   };
 }
@@ -120,6 +125,70 @@ async function callGraphApi({ method = 'get', path, params = {}, accessToken, la
   }
 }
 
+async function discoverWhatsAppAssets({ accessToken, businessId, wabaId, grantedScopes, debugLog }) {
+  const discoveredAssets = {
+    businessId: businessId || null,
+    businessName: null,
+    wabaId: wabaId || null,
+    phoneNumberId: null,
+    phoneNumber: null,
+    discoveryAttempts: [],
+  };
+
+  const attemptEndpoint = async ({ label, path }) => {
+    try {
+      const response = await callGraphApi({
+        method: 'get',
+        path,
+        params: { access_token: accessToken },
+        label,
+        accessToken,
+        grantedScopes,
+        debugLog,
+      });
+
+      const payload = response?.data?.data || response?.data || [];
+      discoveredAssets.discoveryAttempts.push({ label, path, status: 'success', payload });
+
+      if (Array.isArray(payload)) {
+        const firstItem = payload[0] || null;
+        if (firstItem) {
+          discoveredAssets.businessId = discoveredAssets.businessId || firstItem.business_id || firstItem.id || null;
+          discoveredAssets.businessName = discoveredAssets.businessName || firstItem.name || null;
+          discoveredAssets.wabaId = discoveredAssets.wabaId || firstItem.id || firstItem.waba_id || null;
+          discoveredAssets.phoneNumberId = discoveredAssets.phoneNumberId || firstItem.phone_number_id || null;
+          discoveredAssets.phoneNumber = discoveredAssets.phoneNumber || firstItem.display_phone_number || firstItem.phone_number || null;
+        }
+      } else if (payload && typeof payload === 'object') {
+        discoveredAssets.businessId = discoveredAssets.businessId || payload.business_id || payload.id || null;
+        discoveredAssets.businessName = discoveredAssets.businessName || payload.name || null;
+        discoveredAssets.wabaId = discoveredAssets.wabaId || payload.id || payload.waba_id || null;
+        discoveredAssets.phoneNumberId = discoveredAssets.phoneNumberId || payload.phone_number_id || null;
+        discoveredAssets.phoneNumber = discoveredAssets.phoneNumber || payload.display_phone_number || payload.phone_number || null;
+      }
+
+      return response;
+    } catch (error) {
+      discoveredAssets.discoveryAttempts.push({ label, path, status: 'error', error: error.response?.data || error.message });
+      return null;
+    }
+  };
+
+  if (businessId) {
+    await attemptEndpoint({ label: '/owned_whatsapp_business_accounts', path: `/${businessId}/owned_whatsapp_business_accounts` });
+  }
+
+  if (!discoveredAssets.wabaId) {
+    await attemptEndpoint({ label: '/me/owned_whatsapp_business_accounts', path: '/me/owned_whatsapp_business_accounts' });
+  }
+
+  if (!discoveredAssets.wabaId && businessId) {
+    await attemptEndpoint({ label: '/business_whatsapp_accounts', path: `/${businessId}/whatsapp_business_accounts` });
+  }
+
+  return discoveredAssets;
+}
+
 function getMissingEnvVars() {
   const missing = [];
   if (!process.env.META_APP_ID) missing.push('META_APP_ID');
@@ -163,7 +232,7 @@ router.get('/connect', (req, res) => {
   res.redirect(authUrl.toString());
 });
 
-router.get('/callback', async (req, res) => {
+router.all('/callback', async (req, res) => {
   try {
     const { code, state, error, error_description } = req.query;
     const graphCallLog = [];
@@ -181,6 +250,8 @@ router.get('/callback', async (req, res) => {
       signedRequestPresent: Boolean(req.query.signed_request || req.body?.signed_request),
       signedRequestPayload,
       sessionInfo,
+      sessionInfoVersion: signedRequestPayload?.data?.session_info_version || signedRequestPayload?.session_info_version || null,
+      setupData: signedRequestPayload?.data?.setup || signedRequestPayload?.setup || null,
       code: code ? 'present' : 'missing',
       state,
       error,
@@ -269,26 +340,27 @@ router.get('/callback', async (req, res) => {
     let selectedPhoneId = embeddedSignupAssets.phoneNumberId || req.query.phone_number_id || req.query.phoneNumberId || null;
     let selectedPhoneNumber = embeddedSignupAssets.phoneNumber || req.query.phone_number || req.query.phoneNumber || null;
 
-    if (!selectedWabaId && selectedBusinessId) {
-      const wabaResponse = await callGraphApi({
-        method: 'get',
-        path: `/${selectedBusinessId}/owned_whatsapp_business_accounts`,
-        params: { access_token: accessToken },
-        label: '/owned_whatsapp_business_accounts',
-        accessToken,
-        grantedScopes: grantedScopesFromDebugToken,
-        debugLog: graphCallLog,
-      });
+    const discoveredAssets = await discoverWhatsAppAssets({
+      accessToken,
+      businessId: selectedBusinessId,
+      wabaId: selectedWabaId,
+      grantedScopes: grantedScopesFromDebugToken,
+      debugLog: graphCallLog,
+    });
 
-      const wabas = wabaResponse.data.data || [];
-      logEvent('WhatsApp Business Accounts discovered', { wabas });
-      const primaryWaba = wabas[0] || null;
-      if (!primaryWaba) {
-        return res.status(404).json({ success: false, error: 'No WhatsApp Business Accounts available for this business' });
-      }
-      selectedWabaId = primaryWaba.id;
-      selectedDisplayName = selectedDisplayName || primaryWaba.name || 'Bliss Travel and Tours 254';
-    }
+    selectedBusinessId = discoveredAssets.businessId || selectedBusinessId;
+    selectedDisplayName = selectedDisplayName || discoveredAssets.businessName || 'Bliss Travel and Tours 254';
+    selectedWabaId = discoveredAssets.wabaId || selectedWabaId;
+    selectedPhoneId = discoveredAssets.phoneNumberId || selectedPhoneId;
+    selectedPhoneNumber = discoveredAssets.phoneNumber || selectedPhoneNumber;
+
+    logEvent('WhatsApp Business Accounts discovered', {
+      discoveredAssets,
+      businessId: selectedBusinessId,
+      wabaId: selectedWabaId,
+      phoneNumberId: selectedPhoneId,
+      phoneNumber: selectedPhoneNumber,
+    });
 
     if (!selectedWabaId) {
       logEvent('no WABA ID available after Embedded Signup', {
@@ -385,6 +457,7 @@ router.get('/callback', async (req, res) => {
         phoneNumberId: selectedPhoneId,
         phoneNumber: selectedPhoneNumber,
       },
+      discoveredAssets,
       graphCalls: graphCallLog,
       sessionInfo,
     });
