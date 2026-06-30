@@ -137,6 +137,14 @@ function normalizeCandidate(candidate) {
     languages: candidateObj.languages || [],
     age,
     gender: candidateObj.gender,
+    dateOfBirth: candidateObj.dateOfBirth,
+    maritalStatus: candidateObj.maritalStatus,
+    numberOfChildren: candidateObj.numberOfChildren,
+    jobPosition: candidateObj.jobPosition,
+    jobType: candidateObj.jobType,
+    destinationCountry: candidateObj.destinationCountry,
+    destinationPreference: candidateObj.destinationPreference || candidateObj.preferredDestination || candidateObj.preferredDestinations || null,
+    expectedSalary: candidateObj.expectedSalary,
     status: candidateObj.status,
     availability: candidateObj.status === 'available' ? 'Available' : candidateObj.status,
     currentStatus: candidateObj.currentStatus,
@@ -149,8 +157,6 @@ function normalizeCandidate(candidate) {
     medicalUrl: candidateObj.medicalUrl,
     resumeUrl: candidateObj.resumeUrl,
     additionalUrl: candidateObj.additionalUrl,
-    jobType: candidateObj.jobType,
-    destinationPreference: candidateObj.destinationPreference || candidateObj.preferredDestination || candidateObj.preferredDestinations || null,
     documents: candidateObj.documents || { certificates: [], uploads: [] },
     createdAt: candidateObj.createdAt,
   };
@@ -173,25 +179,45 @@ function buildMarketplaceCandidate(candidate) {
     : candidateObj.destinationPreference || null;
 
   return {
+    // IDENTIFICATION
     candidateId: candidateObj.candidateId,
-    name: candidateObj.name,
     fullName: candidateObj.fullName,
-    age: candidateObj.age,
-    ageLabel: candidateObj.age !== null ? `${candidateObj.age} Years` : null,
+    name: candidateObj.fullName,
+
+    // PERSONAL
     nationality: candidateObj.nationality,
     religion: candidateObj.religion,
+    age: candidateObj.age,
+    maritalStatus: candidateObj.maritalStatus,
+    numberOfChildren: candidateObj.numberOfChildren,
+
+    // PROFESSIONAL
+    jobPosition: candidateObj.jobPosition,
     experience: experienceLabel,
-    languages: languages,
-    languagesLabel: languages.length > 0 ? languages.join(', ') : null,
-    skills: skills,
-    skillsLabel: skills.length > 0 ? skills.join(', ') : null,
     education: candidateObj.education || candidateObj.educationalLevel,
+    skills: skills,
+    languages: languages,
+    expectedSalary: candidateObj.expectedSalary,
+
+    // LOCATION
+    destinationCountry: candidateObj.destinationCountry,
     destinationPreference: destination,
-    availability: candidateObj.status === 'available' ? 'Available ✔' : candidateObj.status || 'Unavailable',
+
+    // MEDIA (only flags, not actual URLs)
     photoUrl: candidateObj.photoUrl,
+    videoAvailable: !!candidateObj.videoUrl,
+    passportAvailable: !!candidateObj.passportUrl,
+    medicalAvailable: !!candidateObj.medicalUrl,
+
+    // LABELS
+    languagesLabel: languages.length ? languages.join(', ') : null,
+    skillsLabel: skills.length ? skills.join(', ') : null,
+
+    // STATUS
     profileCompletion: candidateObj.profileCompletion,
     currentStatus: candidateObj.currentStatus,
     status: candidateObj.status,
+    availability: candidateObj.status === 'available' ? 'Available ✔' : candidateObj.status || 'Unavailable',
   };
 }
 
@@ -321,6 +347,33 @@ router.get('/form/data', async (req, res) => {
   }
 });
 
+// Helper: calculate profile completion based on saved fields
+function calculateProfileCompletion(candidate) {
+  // Required fields for marketplace
+  const requiredForMarketplace = [
+    'photoUrl',
+    'nationality',
+    'religion',
+    'education',
+    'experience',
+    'skills',
+    'languages',
+    'dateOfBirth',
+    'jobPosition',
+    'expectedSalary',
+    'destinationCountry',
+  ];
+
+  const completedFields = requiredForMarketplace.filter((field) => {
+    const value = candidate[field];
+    if (Array.isArray(value)) return value.length > 0;
+    if (typeof value === 'string') return value.trim().length > 0;
+    return value != null && value !== '';
+  });
+
+  return Math.round((completedFields.length / requiredForMarketplace.length) * 100);
+}
+
 // POST /form/submit
 router.post('/form/submit', async (req, res) => {
   try {
@@ -333,16 +386,21 @@ router.post('/form/submit', async (req, res) => {
       nationality,
       religion,
       education,
+      educationalLevel,
       skills,
       languages,
       experience,
       gender,
       dateOfBirth,
       maritalStatus,
+      numberOfChildren,
+      jobPosition,
       jobType,
+      destinationCountry,
       destinationPreference,
       preferredDestination,
       preferredDestinations,
+      expectedSalary,
       currentStatus,
       photoUrl,
       videoUrl,
@@ -411,14 +469,19 @@ router.post('/form/submit', async (req, res) => {
         nationality,
         religion,
         education,
-        skills,
-        languages,
+        educationalLevel,
+        skills: Array.isArray(skills) ? skills : (skills ? [skills] : []),
+        languages: Array.isArray(languages) ? languages : (languages ? [languages] : []),
         experience,
         gender,
         dateOfBirth,
         maritalStatus,
+        numberOfChildren,
+        jobPosition,
         jobType,
+        destinationCountry,
         destinationPreference: destinationPreference || preferredDestination || preferredDestinations || [],
+        expectedSalary,
         currentStatus,
         photoUrl,
         videoUrl,
@@ -444,6 +507,9 @@ router.post('/form/submit', async (req, res) => {
       if (paymentId) createObj.paymentId = paymentId;
 
       candidate = await Candidate.create(createObj);
+      // Calculate profile completion after creation
+      candidate.profileCompletion = calculateProfileCompletion(candidate);
+      await candidate.save();
     } else {
       candidate.uniqueCode = candidate.uniqueCode || generateCandidateCode();
 
@@ -460,14 +526,19 @@ router.post('/form/submit', async (req, res) => {
       candidate.nationality = nationality || candidate.nationality;
       candidate.religion = religion || candidate.religion;
       candidate.education = education || candidate.education;
-      candidate.skills = skills || candidate.skills;
-      candidate.languages = languages || candidate.languages;
+      candidate.educationalLevel = educationalLevel || candidate.educationalLevel;
+      candidate.skills = (Array.isArray(skills) ? skills : (skills ? [skills] : [])) || candidate.skills;
+      candidate.languages = (Array.isArray(languages) ? languages : (languages ? [languages] : [])) || candidate.languages;
       candidate.experience = experience || candidate.experience;
       candidate.gender = gender || candidate.gender;
       candidate.dateOfBirth = dateOfBirth || candidate.dateOfBirth;
       candidate.maritalStatus = maritalStatus || candidate.maritalStatus;
+      candidate.numberOfChildren = numberOfChildren !== undefined ? numberOfChildren : candidate.numberOfChildren;
+      candidate.jobPosition = jobPosition || candidate.jobPosition;
       candidate.jobType = jobType || candidate.jobType;
+      candidate.destinationCountry = destinationCountry || candidate.destinationCountry;
       candidate.destinationPreference = destinationPreference || preferredDestination || preferredDestinations || candidate.destinationPreference;
+      candidate.expectedSalary = expectedSalary || candidate.expectedSalary;
       candidate.currentStatus = currentStatus || candidate.currentStatus;
       candidate.photoUrl = photoUrl || candidate.photoUrl;
       candidate.videoUrl = videoUrl || candidate.videoUrl;
@@ -489,6 +560,10 @@ router.post('/form/submit', async (req, res) => {
         ? candidate.status
         : 'in_process';
       candidate.paymentStatus = candidate.paymentStatus === 'completed' ? 'completed' : 'pending';
+      
+      // Calculate profile completion
+      candidate.profileCompletion = calculateProfileCompletion(candidate);
+      
       if (paymentId) {
         candidate.paymentId = paymentId;
         try {

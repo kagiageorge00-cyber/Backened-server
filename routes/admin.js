@@ -2,7 +2,6 @@ console.log("🔥🔥🔥 ADMIN ROUTES FILE LOADED 🔥🔥🔥");
 
 const express = require("express");
 const router = express.Router();
-const bcrypt = require("bcryptjs");
 
 const User = require("../models/User");
 const Candidate = require("../models/candidate");
@@ -15,11 +14,33 @@ const {
   notifyPaymentApproved,
   notifyPaymentRejected,
 } = require("../utils/adminNotificationHelper");
+const {
+  compareAdminCredentials,
+  signAdminToken,
+  requireAdminAuth,
+  revokeAdminToken,
+} = require("../middleware/adminAuth");
 
 // ✅ FIX: correct import
 const { sendEmail } = require("../email");
 
 const { FRONTEND_URL } = require("../config");
+
+// WhatsApp Cloud API Service
+const {
+  sendTextMessage,
+  sendTestMessage,
+  sendTemplateMessage,
+  sendMediaMessage,
+  sendInteractiveMessage,
+  sendBulkMessages,
+  getConfig: getWhatsAppConfig,
+  validateConfig: validateWhatsAppConfig,
+  getWhatsAppDebugReport,
+  getWhatsAppAssetsReport,
+  validateWhatsAppCredentials,
+  verifyWhatsAppAccess,
+} = require("../services/whatsappCloudService");
 
 // Required fields for publishing
 const REQUIRED_FIELDS_FOR_PUBLISH = [
@@ -73,47 +94,6 @@ function computeProfileCompletion(candidate) {
   return Math.round((filled / total) * 100);
 }
 
-// ======================
-// ADMIN CREDENTIALS
-// ======================
-const ADMIN_USERNAME = process.env.ADMIN_USERNAME || "boss";
-const ADMIN_PASSWORD_HASH = bcrypt.hashSync(
-  process.env.ADMIN_PASSWORD || "boss123",
-  10
-);
-
-// ======================
-// SESSION STORE
-// ======================
-const adminSessions = new Map();
-
-// ======================
-// AUTH MIDDLEWARE
-// ======================
-function requireAdminAuth(req, res, next) {
-  const token =
-    req.headers.authorization?.replace("Bearer ", "") ||
-    req.query.token ||
-    req.body.token;
-
-  if (!token || !adminSessions.has(token)) {
-    return res
-      .status(401)
-      .json({ success: false, error: "Unauthorized" });
-  }
-
-  const session = adminSessions.get(token);
-
-  if (Date.now() - session.createdAt > 3600000) {
-    adminSessions.delete(token);
-    return res
-      .status(401)
-      .json({ success: false, error: "Session expired" });
-  }
-
-  next();
-}
-
 function sanitizeValue(value) {
   return typeof value === 'string' ? value.trim() : value;
 }
@@ -125,42 +105,24 @@ router.post("/login", async (req, res) => {
   try {
     const { username, password } = req.body;
 
-    if (!username || !password) {
+      if (!username || !password) {
       return res
         .status(400)
         .json({ success: false, error: "Missing fields" });
     }
 
-    if (username !== ADMIN_USERNAME) {
+    if (!compareAdminCredentials(username, password)) {
       return res
         .status(401)
         .json({ success: false, error: "Invalid credentials" });
     }
 
-    const match = bcrypt.compareSync(
-      password,
-      ADMIN_PASSWORD_HASH
-    );
-
-    if (!match) {
-      return res
-        .status(401)
-        .json({ success: false, error: "Invalid credentials" });
-    }
-
-    const token = require("crypto")
-      .randomBytes(32)
-      .toString("hex");
-
-    adminSessions.set(token, {
-      createdAt: Date.now(),
-      username,
-    });
+    const token = signAdminToken({ username, role: 'admin' });
 
     res.json({
       success: true,
       token,
-      expiresIn: 3600,
+      expiresIn: process.env.ADMIN_JWT_EXPIRY || '1h',
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -491,7 +453,7 @@ router.post('/logout', requireAdminAuth, (req, res) => {
   try {
     const token = req.headers.authorization?.replace('Bearer ', '') || req.body.token;
     if (token) {
-      adminSessions.delete(token);
+      revokeAdminToken(token);
     }
     return res.json({ success: true, message: 'Logged out' });
   } catch (err) {
@@ -986,6 +948,336 @@ router.patch("/marketplace/candidates/:id/status", requireAdminAuth, async (req,
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ======================
+// WHATSAPP CLOUD API
+// ======================
+
+/**
+ * Get WhatsApp configuration status
+ */
+router.get('/whatsapp/config', requireAdminAuth, (req, res) => {
+  try {
+    const config = getWhatsAppConfig();
+    return res.json({
+      success: true,
+      configured: config.isConfigured,
+      config: {
+        phoneNumberId: config.phoneNumberId ? '****' + config.phoneNumberId.slice(-4) : 'Not set',
+        wabaId: config.wabaId ? '****' + config.wabaId.slice(-4) : 'Not set',
+        apiVersion: config.apiVersion,
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * WhatsApp Cloud API diagnostics
+ * GET /api/admin/whatsapp/debug
+ */
+router.get('/whatsapp/validate-credentials', requireAdminAuth, async (req, res) => {
+  try {
+    const validationResult = await validateWhatsAppCredentials();
+    return res.json(validationResult);
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.get('/whatsapp/verify-access', requireAdminAuth, async (req, res) => {
+  try {
+    const accessReport = await verifyWhatsAppAccess();
+
+    console.log('🔎 WhatsApp verify-access', {
+      tokenPrefix: process.env.WHATSAPP_ACCESS_TOKEN?.slice(0, 10),
+      wabaId: process.env.WHATSAPP_WABA_ID,
+      phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID,
+    });
+
+    return res.json({
+      env: accessReport.env,
+      me: accessReport.results.me ?? null,
+      waba: accessReport.results.waba ?? null,
+      phoneNumber: accessReport.results.phoneNumber ?? null,
+      phoneNumbers: accessReport.results.phoneNumbers ?? null,
+      meta: accessReport.requests,
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/whatsapp/send-test', requireAdminAuth, async (req, res) => {
+  try {
+    const { to, message } = req.body;
+
+    if (!to) {
+      return res.status(400).json({ success: false, error: 'to is required' });
+    }
+
+    const result = await sendTestMessage(to, message);
+
+    if (result.success) {
+      return res.status(result.httpStatus || 200).json(result.rawMetaResponse);
+    }
+
+    return res.status(result.httpStatus || 500).json(result.rawMetaResponse || { success: false, error: result.error });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.get('/whatsapp/assets', requireAdminAuth, async (req, res) => {
+  try {
+    const assetsReport = await getWhatsAppAssetsReport();
+    return res.json(assetsReport);
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.get('/whatsapp/debug', requireAdminAuth, async (req, res) => {
+  try {
+    const debugReport = await getWhatsAppDebugReport();
+    return res.json({ success: true, ...debugReport });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * Send single WhatsApp message
+ * POST /api/admin/whatsapp/send
+ * Body: { phoneNumber, message, type: 'text' | 'template' | 'media', ... }
+ */
+router.post('/whatsapp/send', requireAdminAuth, async (req, res) => {
+  try {
+    const { phoneNumber, message, type = 'text', templateName, parameters, mediaType, mediaUrl, caption } = req.body;
+
+    if (!phoneNumber || !message) {
+      return res.status(400).json({
+        success: false,
+        error: 'phoneNumber and message are required',
+      });
+    }
+
+    if (!validateWhatsAppConfig()) {
+      return res.status(503).json({
+        success: false,
+        error: 'WhatsApp Cloud API not configured. Set WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_WABA_ID, and WHATSAPP_ACCESS_TOKEN.',
+      });
+    }
+
+    let result;
+
+    if (type === 'template') {
+      result = await sendTemplateMessage(phoneNumber, templateName || 'hello_world', parameters);
+    } else if (type === 'media') {
+      result = await sendMediaMessage(phoneNumber, mediaType, mediaUrl, caption);
+    } else {
+      result = await sendTextMessage(phoneNumber, message);
+    }
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.error,
+      });
+    }
+
+    return res.json({
+      success: true,
+      messageId: result.messageId,
+      message: 'WhatsApp message sent successfully',
+      data: result,
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * Send bulk WhatsApp messages
+ * POST /api/admin/whatsapp/bulk
+ * Body: { recipients: ['+1234567890', ...], message, delay: 1000, ... }
+ */
+router.post('/whatsapp/bulk', requireAdminAuth, async (req, res) => {
+  try {
+    const { recipients, message, delay = 1000, type = 'text', templateName, parameters } = req.body;
+
+    if (!Array.isArray(recipients) || recipients.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'recipients array is required and must not be empty',
+      });
+    }
+
+    if (!message && type === 'text') {
+      return res.status(400).json({
+        success: false,
+        error: 'message is required for text type',
+      });
+    }
+
+    if (!validateWhatsAppConfig()) {
+      return res.status(503).json({
+        success: false,
+        error: 'WhatsApp Cloud API not configured',
+      });
+    }
+
+    // Run bulk send in background
+    const result = await sendBulkMessages(recipients, message, {
+      delay,
+      templateName: type === 'template' ? templateName : null,
+      parameters: type === 'template' ? parameters : null,
+    });
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.error,
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: 'Bulk messages queued',
+      results: result.results,
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * Send interactive message with buttons
+ * POST /api/admin/whatsapp/interactive
+ * Body: { phoneNumber, bodyText, buttons: [{id, title}, ...], footerText }
+ */
+router.post('/whatsapp/interactive', requireAdminAuth, async (req, res) => {
+  try {
+    const { phoneNumber, bodyText, buttons = [], footerText } = req.body;
+
+    if (!phoneNumber || !bodyText || buttons.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'phoneNumber, bodyText, and buttons array are required',
+      });
+    }
+
+    if (!validateWhatsAppConfig()) {
+      return res.status(503).json({
+        success: false,
+        error: 'WhatsApp Cloud API not configured',
+      });
+    }
+
+    const result = await sendInteractiveMessage(phoneNumber, bodyText, buttons, footerText);
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.error,
+      });
+    }
+
+    return res.json({
+      success: true,
+      messageId: result.messageId,
+      message: 'Interactive message sent successfully',
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * Send WhatsApp media message
+ * POST /api/admin/whatsapp/media
+ * Body: { phoneNumber, mediaType: 'image|video|document|audio', mediaUrl, caption }
+ */
+router.post('/whatsapp/media', requireAdminAuth, async (req, res) => {
+  try {
+    const { phoneNumber, mediaType, mediaUrl, caption } = req.body;
+
+    if (!phoneNumber || !mediaType || !mediaUrl) {
+      return res.status(400).json({
+        success: false,
+        error: 'phoneNumber, mediaType, and mediaUrl are required',
+      });
+    }
+
+    if (!validateWhatsAppConfig()) {
+      return res.status(503).json({
+        success: false,
+        error: 'WhatsApp Cloud API not configured',
+      });
+    }
+
+    const result = await sendMediaMessage(phoneNumber, mediaType, mediaUrl, caption);
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.error,
+      });
+    }
+
+    return res.json({
+      success: true,
+      messageId: result.messageId,
+      message: 'Media message sent successfully',
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * Test WhatsApp configuration
+ * POST /api/admin/whatsapp/test
+ * Body: { testPhoneNumber }
+ */
+router.post('/whatsapp/test', requireAdminAuth, async (req, res) => {
+  try {
+    const { testPhoneNumber } = req.body;
+
+    if (!testPhoneNumber) {
+      return res.status(400).json({
+        success: false,
+        error: 'testPhoneNumber is required',
+      });
+    }
+
+    if (!validateWhatsAppConfig()) {
+      return res.status(503).json({
+        success: false,
+        error: 'WhatsApp Cloud API not configured',
+      });
+    }
+
+    const result = await sendTextMessage(testPhoneNumber, '✅ Bliss Connect WhatsApp API Test - Configuration successful!');
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.error,
+        hint: 'Check that WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_WABA_ID, and WHATSAPP_ACCESS_TOKEN are correct in .env',
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: 'Test message sent successfully. Check your WhatsApp inbox.',
+      messageId: result.messageId,
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
   }
 });
 

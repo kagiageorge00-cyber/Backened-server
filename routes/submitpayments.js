@@ -8,6 +8,40 @@ const Candidate = require("../models/candidate");
 // ✅ SINGLE CLEAN EMAIL FUNCTION
 const { sendEmail } = require("../email");
 
+function toArrayField(value) {
+  if (Array.isArray(value)) return value;
+  if (value === undefined || value === null) return [];
+  return String(value)
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function calculateProfileCompletion(candidate) {
+  const requiredFields = [
+    'photoUrl',
+    'nationality',
+    'religion',
+    'education',
+    'experience',
+    'skills',
+    'languages',
+    'dateOfBirth',
+    'jobPosition',
+    'expectedSalary',
+    'destinationCountry',
+  ];
+
+  const completedFields = requiredFields.filter((field) => {
+    const value = candidate[field];
+    if (Array.isArray(value)) return value.length > 0;
+    if (typeof value === 'string') return value.trim().length > 0;
+    return value != null && value !== '';
+  });
+
+  return Math.round((completedFields.length / requiredFields.length) * 100);
+}
+
 function generateCandidateCode() {
   const year = new Date().getFullYear();
   const seq = Math.floor(1000 + Math.random() * 9000);
@@ -32,6 +66,28 @@ async function handleSubmitPayment(req, res) {
       transaction_id,
       paymentMethod,
       phone,
+        nationality,
+        religion,
+        education,
+        educationalLevel,
+        experience,
+        skills,
+        languages,
+        gender,
+        dateOfBirth,
+        maritalStatus,
+        numberOfChildren,
+        jobPosition,
+        jobType,
+        destinationCountry,
+        destinationPreference,
+        expectedSalary,
+        photoUrl,
+        videoUrl,
+        passportUrl,
+        medicalUrl,
+        resumeUrl,
+        additionalUrl,
     } = req.body;
 
     const userId = userIdFromBody || user_id || phone || candidateId || candidate_id || email;
@@ -97,12 +153,36 @@ async function handleSubmitPayment(req, res) {
         candidate = await Candidate.create({
           fullName: name || userId,
           name: name || userId,
+            nationality,
+            religion,
+            education,
+            educationalLevel,
+            experience,
+            skills: Array.isArray(skills) ? skills : toArrayField(skills),
+            languages: Array.isArray(languages) ? languages : toArrayField(languages),
+            gender,
+            dateOfBirth,
+            maritalStatus,
+            numberOfChildren,
+            jobPosition,
+            jobType,
+            destinationCountry,
+            destinationPreference: Array.isArray(destinationPreference)
+              ? destinationPreference
+              : toArrayField(destinationPreference),
+            expectedSalary,
           email: email || null,
           phone: userId,
           uniqueCode: generateCandidateCode(),
           status: 'in_process',
           paymentStatus: 'pending',
           isVerified: false,
+            photoUrl,
+            videoUrl,
+            passportUrl,
+            medicalUrl,
+            resumeUrl,
+            additionalUrl,
           documents: {
             passportPhoto: null,
             nationalId: null,
@@ -113,9 +193,45 @@ async function handleSubmitPayment(req, res) {
           },
           paymentId: payment._id,
         });
+          candidate.profileCompletion = calculateProfileCompletion(candidate);
+          await candidate.save();
       } else {
         candidate.fullName = candidate.fullName || name || userId;
         candidate.name = candidate.name || name || userId;
+          candidate.nationality = nationality || candidate.nationality;
+          candidate.religion = religion || candidate.religion;
+          candidate.education = education || candidate.education;
+          candidate.educationalLevel = educationalLevel || candidate.educationalLevel;
+          candidate.experience = experience || candidate.experience;
+          candidate.skills = Array.isArray(skills)
+            ? skills
+            : skills
+              ? toArrayField(skills)
+              : candidate.skills;
+          candidate.languages = Array.isArray(languages)
+            ? languages
+            : languages
+              ? toArrayField(languages)
+              : candidate.languages;
+          candidate.gender = gender || candidate.gender;
+          candidate.dateOfBirth = dateOfBirth || candidate.dateOfBirth;
+          candidate.maritalStatus = maritalStatus || candidate.maritalStatus;
+          candidate.numberOfChildren = numberOfChildren !== undefined ? numberOfChildren : candidate.numberOfChildren;
+          candidate.jobPosition = jobPosition || candidate.jobPosition;
+          candidate.jobType = jobType || candidate.jobType;
+          candidate.destinationCountry = destinationCountry || candidate.destinationCountry;
+          candidate.destinationPreference = Array.isArray(destinationPreference)
+            ? destinationPreference
+            : destinationPreference
+              ? toArrayField(destinationPreference)
+              : candidate.destinationPreference;
+          candidate.expectedSalary = expectedSalary || candidate.expectedSalary;
+          candidate.photoUrl = photoUrl || candidate.photoUrl;
+          candidate.videoUrl = videoUrl || candidate.videoUrl;
+          candidate.passportUrl = passportUrl || candidate.passportUrl;
+          candidate.medicalUrl = medicalUrl || candidate.medicalUrl;
+          candidate.resumeUrl = resumeUrl || candidate.resumeUrl;
+          candidate.additionalUrl = additionalUrl || candidate.additionalUrl;
         candidate.email = candidate.email || email || candidate.email;
         candidate.phone = candidate.phone || userId;
         candidate.uniqueCode = candidate.uniqueCode || generateCandidateCode();
@@ -125,6 +241,7 @@ async function handleSubmitPayment(req, res) {
         candidate.paymentStatus = 'pending';
         candidate.isVerified = candidate.isVerified || false;
         candidate.paymentId = payment._id;
+          candidate.profileCompletion = calculateProfileCompletion(candidate);
         await candidate.save();
       }
     } catch (candidateError) {

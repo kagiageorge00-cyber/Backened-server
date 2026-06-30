@@ -7,8 +7,43 @@ const Candidate = require("./models/candidate");
 
 // ✅ FIX: use notification module (not raw email.js in large apps)
 const { sendEmail } = require("./email");
+const { notifyPaymentSuccess } = require("./services/notificationservice");
 
 const { FRONTEND_URL } = require("./config");
+
+function toArrayField(value) {
+  if (Array.isArray(value)) return value;
+  if (value === undefined || value === null) return [];
+  return String(value)
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function calculateProfileCompletion(candidate) {
+  const requiredFields = [
+    'photoUrl',
+    'nationality',
+    'religion',
+    'education',
+    'experience',
+    'skills',
+    'languages',
+    'dateOfBirth',
+    'jobPosition',
+    'expectedSalary',
+    'destinationCountry',
+  ];
+
+  const completedFields = requiredFields.filter((field) => {
+    const value = candidate[field];
+    if (Array.isArray(value)) return value.length > 0;
+    if (typeof value === 'string') return value.trim().length > 0;
+    return value != null && value !== '';
+  });
+
+  return Math.round((completedFields.length / requiredFields.length) * 100);
+}
 
 // ======================
 // PAYMENT HANDLER
@@ -28,6 +63,28 @@ async function handleSubmitPayment(req, res) {
       transactionId,
       transaction_id,
       paymentMethod,
+      nationality,
+      religion,
+      education,
+      educationalLevel,
+      experience,
+      skills,
+      languages,
+      gender,
+      dateOfBirth,
+      maritalStatus,
+      numberOfChildren,
+      jobPosition,
+      jobType,
+      destinationCountry,
+      destinationPreference,
+      expectedSalary,
+      photoUrl,
+      videoUrl,
+      passportUrl,
+      medicalUrl,
+      resumeUrl,
+      additionalUrl,
     } = req.body;
 
     const userId = userIdFromBody || user_id || candidateId || candidate_id || phone || email;
@@ -129,6 +186,13 @@ async function handleSubmitPayment(req, res) {
         }
 
         console.log("📧 Sending payment email to:", notifyEmail);
+
+        // call unified notification (WhatsApp + email) when available
+        try {
+          notifyPaymentSuccess({ email: notifyEmail, name: notifyName });
+        } catch (nerr) {
+          console.warn('notifyPaymentSuccess failed:', nerr && nerr.message);
+        }
 
         const emailSent = await sendEmail(
           notifyEmail,

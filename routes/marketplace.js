@@ -14,10 +14,56 @@ function requireVerifiedEmployer(req, res) {
 
 function normalizeMarketplaceCandidate(candidate) {
   const candidateObj = candidate.toObject ? candidate.toObject() : { ...candidate };
+  const birthDate = candidateObj.dateOfBirth ? new Date(candidateObj.dateOfBirth) : null;
+  const age = birthDate && !Number.isNaN(birthDate.getTime())
+    ? new Date().getFullYear() - birthDate.getFullYear()
+    : null;
+
   if (!candidateObj.candidateId) {
     candidateObj.candidateId = candidateObj.uniqueCode || (candidateObj._id ? candidateObj._id.toString() : null);
   }
-  return candidateObj;
+
+  const languages = Array.isArray(candidateObj.languages) ? candidateObj.languages : [];
+  const skills = Array.isArray(candidateObj.skills) ? candidateObj.skills : [];
+
+  return {
+    // IDENTIFICATION
+    candidateId: candidateObj.candidateId,
+    fullName: candidateObj.fullName || candidateObj.name,
+
+    // PERSONAL
+    nationality: candidateObj.nationality,
+    religion: candidateObj.religion,
+    age,
+    maritalStatus: candidateObj.maritalStatus,
+    numberOfChildren: candidateObj.numberOfChildren,
+
+    // PROFESSIONAL
+    jobPosition: candidateObj.jobPosition,
+    experience: candidateObj.experience,
+    education: candidateObj.education || candidateObj.educationalLevel,
+    skills: skills,
+    languages: languages,
+    expectedSalary: candidateObj.expectedSalary,
+
+    // LOCATION
+    destinationCountry: candidateObj.destinationCountry,
+    destinationPreference: Array.isArray(candidateObj.destinationPreference)
+      ? candidateObj.destinationPreference.join(', ')
+      : candidateObj.destinationPreference || null,
+
+    // MEDIA (only flags, not actual URLs)
+    photoUrl: candidateObj.photoUrl,
+    videoAvailable: !!candidateObj.videoUrl,
+    passportAvailable: !!candidateObj.passportUrl,
+    medicalAvailable: !!candidateObj.medicalUrl,
+
+    // STATUS
+    profileCompletion: candidateObj.profileCompletion || 0,
+    currentStatus: candidateObj.currentStatus,
+    status: candidateObj.status,
+    availability: candidateObj.status === 'available' ? 'Available ✔' : candidateObj.status || 'Unavailable',
+  };
 }
 
 router.use(employerAuth);

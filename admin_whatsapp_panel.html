@@ -1,0 +1,1046 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bliss Admin - WhatsApp Integration</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            min-height: 100vh;
+        }
+
+        /* LAYOUT */
+        .admin-container {
+            display: flex;
+            height: 100vh;
+        }
+
+        /* SIDEBAR */
+        .sidebar {
+            width: 250px;
+            background: #1a1a2e;
+            color: white;
+            padding: 2rem 1rem;
+            border-right: 3px solid #667eea;
+            overflow-y: auto;
+        }
+
+        .sidebar-logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 2rem;
+            color: #667eea;
+        }
+
+        .sidebar-menu {
+            list-style: none;
+        }
+
+        .sidebar-menu li {
+            margin-bottom: 0.5rem;
+        }
+
+        .sidebar-menu a {
+            display: block;
+            padding: 0.75rem 1rem;
+            color: #aaa;
+            text-decoration: none;
+            border-radius: 6px;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+
+        .sidebar-menu a:hover,
+        .sidebar-menu a.active {
+            background: #667eea;
+            color: white;
+        }
+
+        /* MAIN CONTENT */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* TOP BAR */
+        .top-bar {
+            background: white;
+            padding: 1rem 2rem;
+            border-bottom: 1px solid #ddd;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .top-bar-left h1 {
+            font-size: 1.5rem;
+            color: #333;
+        }
+
+        .top-bar-right {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .logout-btn {
+            padding: 0.5rem 1rem;
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+
+        .logout-btn:hover {
+            background: #c82333;
+        }
+
+        /* CONTENT AREA */
+        .content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 2rem;
+        }
+
+        /* PANELS */
+        .panel {
+            background: white;
+            border-radius: 8px;
+            padding: 2rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 2rem;
+            display: none;
+        }
+
+        .panel.active {
+            display: block;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .panel-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+            color: #1a1a2e;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 0.4rem 0.8rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .status-badge.connected {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-badge.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        /* FORM STYLES */
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            color: #1a1a2e;
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 1rem;
+            font-family: inherit;
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        /* BUTTONS */
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 6px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        .btn-sm {
+            padding: 0.5rem 1rem;
+            font-size: 0.85rem;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+
+        /* MESSAGE BOX */
+        .alert {
+            padding: 1rem;
+            border-radius: 6px;
+            margin-bottom: 1rem;
+            display: none;
+        }
+
+        .alert.show {
+            display: block;
+            animation: slideIn 0.3s ease;
+        }
+
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .alert-info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        /* CONFIG SECTION */
+        .config-info {
+            background: #f8f9fa;
+            padding: 1rem;
+            border-radius: 6px;
+            margin-bottom: 1.5rem;
+            border-left: 4px solid #667eea;
+        }
+
+        .config-info p {
+            margin: 0.5rem 0;
+            font-size: 0.95rem;
+        }
+
+        /* TWO COLUMN LAYOUT */
+        .two-column {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+        }
+
+        @media (max-width: 1024px) {
+            .two-column {
+                grid-template-columns: 1fr;
+            }
+            
+            .sidebar {
+                width: 200px;
+            }
+        }
+
+        /* RECIPIENTS LIST */
+        .recipients-input {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .recipients-input input {
+            flex: 1;
+        }
+
+        .recipients-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .recipient-tag {
+            background: #667eea;
+            color: white;
+            padding: 0.4rem 0.8rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .recipient-tag button {
+            background: none;
+            border: none;
+            color: white;
+            cursor: pointer;
+            font-size: 1rem;
+            padding: 0;
+        }
+
+        /* LOADING */
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* LOGIN PAGE */
+        .login-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .login-box {
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .login-box h1 {
+            text-align: center;
+            margin-bottom: 1.5rem;
+            color: #1a1a2e;
+        }
+
+        /* STATS */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .stat-card h3 {
+            font-size: 0.9rem;
+            opacity: 0.9;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-card .value {
+            font-size: 2rem;
+            font-weight: 700;
+        }
+
+        /* TABLE */
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+
+        .table th {
+            background: #f8f9fa;
+            padding: 1rem;
+            text-align: left;
+            font-weight: 600;
+            border-bottom: 2px solid #ddd;
+        }
+
+        .table td {
+            padding: 1rem;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .table tr:hover {
+            background: #f8f9fa;
+        }
+
+        /* WHATSAPP LOGO */
+        .whatsapp-logo {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 1.2rem;
+            color: #25D366;
+        }
+
+        .whatsapp-logo::before {
+            content: '💬';
+        }
+    </style>
+</head>
+<body>
+    <!-- LOGIN PAGE -->
+    <div id="loginPage" class="login-container">
+        <div class="login-box">
+            <h1>🔐 Bliss Admin</h1>
+            <div id="loginError" class="alert alert-error"></div>
+            
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" id="username" placeholder="Enter username" value="boss">
+            </div>
+
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" id="password" placeholder="Enter password" value="boss123">
+            </div>
+
+            <button class="btn btn-primary" style="width: 100%;" onclick="login()">
+                Login
+            </button>
+        </div>
+    </div>
+
+    <!-- ADMIN DASHBOARD -->
+    <div id="adminPage" class="admin-container" style="display: none;">
+        <!-- SIDEBAR -->
+        <div class="sidebar">
+            <div class="sidebar-logo">Bliss Admin</div>
+            <ul class="sidebar-menu">
+                <li><a onclick="showPanel('dashboard')" class="active">📊 Dashboard</a></li>
+                <li><a onclick="showPanel('whatsapp')">💬 WhatsApp Messages</a></li>
+                <li><a onclick="showPanel('bulk')">📤 Bulk Campaign</a></li>
+                <li><a onclick="showPanel('config')">⚙️ Configuration</a></li>
+                <li><a onclick="logout()">🚪 Logout</a></li>
+            </ul>
+        </div>
+
+        <!-- MAIN CONTENT -->
+        <div class="main-content">
+            <!-- TOP BAR -->
+            <div class="top-bar">
+                <div class="top-bar-left">
+                    <h1>Bliss Connect Admin Panel</h1>
+                </div>
+                <div class="top-bar-right">
+                    <span id="statusIndicator" class="status-badge disconnected">Checking...</span>
+                    <button class="logout-btn" onclick="logout()">Logout</button>
+                </div>
+            </div>
+
+            <!-- CONTENT -->
+            <div class="content">
+                <!-- DASHBOARD -->
+                <div id="dashboard" class="panel active">
+                    <div class="panel-title">
+                        <span class="whatsapp-logo"></span>
+                        WhatsApp Cloud API Dashboard
+                    </div>
+
+                    <div id="dashboardAlert" class="alert"></div>
+
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <h3>Configuration Status</h3>
+                            <div class="value" id="configStatus">—</div>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Phone Number ID</h3>
+                            <div style="font-size: 0.9rem; font-family: monospace;" id="phoneNumberDisplay">—</div>
+                        </div>
+                        <div class="stat-card">
+                            <h3>API Version</h3>
+                            <div class="value" style="font-size: 1.2rem;" id="apiVersionDisplay">—</div>
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary" onclick="checkWhatsAppConfig()">
+                        🔄 Refresh Configuration
+                    </button>
+                </div>
+
+                <!-- SEND MESSAGE -->
+                <div id="whatsapp" class="panel">
+                    <div class="panel-title">
+                        <span class="whatsapp-logo"></span>
+                        Send WhatsApp Message
+                    </div>
+
+                    <div id="whatsappAlert" class="alert"></div>
+
+                    <div class="form-group">
+                        <label>Recipient Phone Number (with country code)</label>
+                        <input type="text" id="phoneNumber" placeholder="e.g., 254712345678">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Message Type</label>
+                        <select id="messageType" onchange="updateMessageForm()">
+                            <option value="text">Text Message</option>
+                            <option value="template">Template Message</option>
+                            <option value="interactive">Interactive (Buttons)</option>
+                            <option value="media">Media (Image/Video/Document)</option>
+                        </select>
+                    </div>
+
+                    <!-- TEXT MESSAGE -->
+                    <div id="textMessageForm">
+                        <div class="form-group">
+                            <label>Message</label>
+                            <textarea id="textMessage" placeholder="Enter your message here"></textarea>
+                        </div>
+                    </div>
+
+                    <!-- TEMPLATE MESSAGE -->
+                    <div id="templateMessageForm" style="display: none;">
+                        <div class="form-group">
+                            <label>Template Name</label>
+                            <input type="text" id="templateName" placeholder="e.g., hello_world" value="hello_world">
+                        </div>
+                        <div class="form-group">
+                            <label>Template Parameters (comma separated)</label>
+                            <input type="text" id="templateParams" placeholder="e.g., John, Hello">
+                        </div>
+                    </div>
+
+                    <!-- INTERACTIVE MESSAGE -->
+                    <div id="interactiveForm" style="display: none;">
+                        <div class="form-group">
+                            <label>Message Body</label>
+                            <textarea id="interactiveBody" placeholder="Enter the main message text"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Button 1 Title</label>
+                            <input type="text" id="button1" placeholder="e.g., Accept">
+                        </div>
+                        <div class="form-group">
+                            <label>Button 2 Title</label>
+                            <input type="text" id="button2" placeholder="e.g., Decline">
+                        </div>
+                        <div class="form-group">
+                            <label>Button 3 Title (Optional)</label>
+                            <input type="text" id="button3" placeholder="e.g., More Info">
+                        </div>
+                        <div class="form-group">
+                            <label>Footer Text (Optional)</label>
+                            <input type="text" id="footerText" placeholder="Optional footer">
+                        </div>
+                    </div>
+
+                    <!-- MEDIA MESSAGE -->
+                    <div id="mediaForm" style="display: none;">
+                        <div class="form-group">
+                            <label>Media Type</label>
+                            <select id="mediaType">
+                                <option value="image">Image</option>
+                                <option value="video">Video</option>
+                                <option value="document">Document</option>
+                                <option value="audio">Audio</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Media URL</label>
+                            <input type="text" id="mediaUrl" placeholder="e.g., https://example.com/image.jpg">
+                        </div>
+                        <div class="form-group">
+                            <label>Caption (Optional)</label>
+                            <textarea id="mediaCaption" placeholder="Optional caption"></textarea>
+                        </div>
+                    </div>
+
+                    <div class="btn-group">
+                        <button class="btn btn-primary" onclick="sendMessage()">
+                            📤 Send Message
+                        </button>
+                        <button class="btn btn-secondary" onclick="testConnection()">
+                            🧪 Test Connection
+                        </button>
+                    </div>
+                </div>
+
+                <!-- BULK CAMPAIGN -->
+                <div id="bulk" class="panel">
+                    <div class="panel-title">
+                        📤 Bulk WhatsApp Campaign
+                    </div>
+
+                    <div id="bulkAlert" class="alert"></div>
+
+                    <div class="form-group">
+                        <label>Recipients (Paste phone numbers, one per line or comma-separated)</label>
+                        <textarea id="bulkRecipients" placeholder="254712345678&#10;254787654321&#10;254712345679" style="min-height: 150px;"></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Recipient Count</label>
+                        <input type="text" id="recipientCount" readonly value="0">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Message Type</label>
+                        <select id="bulkMessageType" onchange="updateBulkForm()">
+                            <option value="text">Text Message</option>
+                            <option value="template">Template Message</option>
+                        </select>
+                    </div>
+
+                    <div id="bulkTextForm">
+                        <div class="form-group">
+                            <label>Message</label>
+                            <textarea id="bulkMessage" placeholder="Enter your bulk message here"></textarea>
+                        </div>
+                    </div>
+
+                    <div id="bulkTemplateForm" style="display: none;">
+                        <div class="form-group">
+                            <label>Template Name</label>
+                            <input type="text" id="bulkTemplateName" placeholder="e.g., hello_world" value="hello_world">
+                        </div>
+                        <div class="form-group">
+                            <label>Template Parameters (comma separated)</label>
+                            <input type="text" id="bulkTemplateParams" placeholder="e.g., John, Hello">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Delay Between Messages (milliseconds)</label>
+                        <input type="number" id="bulkDelay" value="1000" min="500">
+                    </div>
+
+                    <button class="btn btn-success" onclick="sendBulkCampaign()" style="width: 100%;">
+                        🚀 Send Campaign
+                    </button>
+                </div>
+
+                <!-- CONFIGURATION -->
+                <div id="config" class="panel">
+                    <div class="panel-title">
+                        ⚙️ WhatsApp Configuration
+                    </div>
+
+                    <div id="configAlert" class="alert"></div>
+
+                    <div class="config-info">
+                        <p><strong>📝 Setup Instructions:</strong></p>
+                        <p>1. Create a WhatsApp Business Account on Meta</p>
+                        <p>2. Create an App on developers.facebook.com</p>
+                        <p>3. Configure WhatsApp Cloud API</p>
+                        <p>4. Add the following to your .env file:</p>
+                    </div>
+
+                    <div style="background: #1a1a2e; color: #00ff00; padding: 1rem; border-radius: 6px; font-family: monospace; margin-bottom: 1rem; overflow-x: auto;">
+WHATSAPP_PHONE_NUMBER_ID=682624514934414
+WHATSAPP_WABA_ID=1055066726091115
+WHATSAPP_ACCESS_TOKEN=EAAcTy7Mgi90BR12vSdQxMzACZAQOTSHZA5qVQqQqqDCYO2mAvmrCDGlmDHiDWKb27ERNf92q73LseMEQ6Ei8QgjlaYZBYxo3YFWXHUERZCiZBGP8KHisedoClKHNE4IpgRbRphaCueWyfRMmdHRdIJDkiQlOYefbI4Q7mXRo6ekN5jYyVPSYJ9Jo7vTzAo7QBGvyZAOhxCTN5oxWcvB7Vu4ALyxKuLfQiPCAgu
+                    </div>
+
+                    <div class="config-info">
+                        <p><strong>🔐 Current Configuration Status:</strong></p>
+                        <p id="configStatus2">Loading...</p>
+                    </div>
+
+                    <button class="btn btn-primary" onclick="checkWhatsAppConfig()">
+                        🔄 Refresh Status
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE_URL = 'https://backened-server-1.onrender.com/api';
+        // For local development:
+        // const API_BASE_URL = 'http://localhost:5000/api';
+        
+        let adminToken = localStorage.getItem('adminToken');
+
+        // Show/Hide Panels
+        function showPanel(panelId) {
+            document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.sidebar-menu a').forEach(a => a.classList.remove('active'));
+            document.getElementById(panelId).classList.add('active');
+            event.target.classList.add('active');
+            
+            if (panelId === 'dashboard') {
+                checkWhatsAppConfig();
+            }
+        }
+
+        // LOGIN
+        async function login() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            if (!username || !password) {
+                showError('loginError', 'Enter username and password');
+                return;
+            }
+
+            try {
+                const res = await fetch(`${API_BASE_URL}/admin/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password }),
+                });
+
+                const data = await res.json();
+
+                if (!data.success) {
+                    showError('loginError', data.error);
+                    return;
+                }
+
+                adminToken = data.token;
+                localStorage.setItem('adminToken', adminToken);
+                
+                document.getElementById('loginPage').style.display = 'none';
+                document.getElementById('adminPage').style.display = 'flex';
+                checkWhatsAppConfig();
+            } catch (err) {
+                showError('loginError', err.message);
+            }
+        }
+
+        // LOGOUT
+        function logout() {
+            localStorage.removeItem('adminToken');
+            adminToken = null;
+            document.getElementById('loginPage').style.display = 'flex';
+            document.getElementById('adminPage').style.display = 'none';
+        }
+
+        // CHECK WHATSAPP CONFIG
+        async function checkWhatsAppConfig() {
+            try {
+                const res = await fetch(`${API_BASE_URL}/admin/whatsapp/config`, {
+                    headers: { 'Authorization': `Bearer ${adminToken}` },
+                });
+
+                const data = await res.json();
+
+                if (data.success && data.configured) {
+                    document.getElementById('statusIndicator').textContent = '✅ Connected';
+                    document.getElementById('statusIndicator').className = 'status-badge connected';
+                    document.getElementById('configStatus').textContent = '✅ Configured';
+                    document.getElementById('phoneNumberDisplay').textContent = data.config.phoneNumberId;
+                    document.getElementById('apiVersionDisplay').textContent = data.config.apiVersion;
+                    document.getElementById('configStatus2').textContent = '✅ All required credentials are set';
+                    showSuccess('configAlert', 'WhatsApp Cloud API is properly configured');
+                } else {
+                    document.getElementById('statusIndicator').textContent = '❌ Not Configured';
+                    document.getElementById('statusIndicator').className = 'status-badge disconnected';
+                    document.getElementById('configStatus').textContent = '❌ Missing Config';
+                    document.getElementById('configStatus2').textContent = '❌ Missing one or more environment variables';
+                    showError('configAlert', 'WhatsApp API not configured. Check .env file.');
+                }
+            } catch (err) {
+                showError('dashboardAlert', err.message);
+            }
+        }
+
+        // UPDATE MESSAGE FORM
+        function updateMessageForm() {
+            const type = document.getElementById('messageType').value;
+            document.getElementById('textMessageForm').style.display = type === 'text' ? 'block' : 'none';
+            document.getElementById('templateMessageForm').style.display = type === 'template' ? 'block' : 'none';
+            document.getElementById('interactiveForm').style.display = type === 'interactive' ? 'block' : 'none';
+            document.getElementById('mediaForm').style.display = type === 'media' ? 'block' : 'none';
+        }
+
+        // SEND MESSAGE
+        async function sendMessage() {
+            const phoneNumber = document.getElementById('phoneNumber').value;
+            const type = document.getElementById('messageType').value;
+
+            if (!phoneNumber) {
+                showError('whatsappAlert', 'Enter a phone number');
+                return;
+            }
+
+            let payload = { phoneNumber, type };
+
+            if (type === 'text') {
+                payload.message = document.getElementById('textMessage').value;
+                if (!payload.message) {
+                    showError('whatsappAlert', 'Enter a message');
+                    return;
+                }
+            } else if (type === 'template') {
+                payload.templateName = document.getElementById('templateName').value;
+                const params = document.getElementById('templateParams').value;
+                payload.parameters = params ? params.split(',').map(p => p.trim()) : [];
+            } else if (type === 'interactive') {
+                payload.bodyText = document.getElementById('interactiveBody').value;
+                const buttons = [];
+                const b1 = document.getElementById('button1').value;
+                const b2 = document.getElementById('button2').value;
+                const b3 = document.getElementById('button3').value;
+                
+                if (b1) buttons.push({ id: 'btn1', title: b1 });
+                if (b2) buttons.push({ id: 'btn2', title: b2 });
+                if (b3) buttons.push({ id: 'btn3', title: b3 });
+                
+                if (buttons.length === 0) {
+                    showError('whatsappAlert', 'Add at least one button');
+                    return;
+                }
+                
+                payload.buttons = buttons;
+                payload.footerText = document.getElementById('footerText').value;
+                payload.message = payload.bodyText;
+            } else if (type === 'media') {
+                payload.mediaType = document.getElementById('mediaType').value;
+                payload.mediaUrl = document.getElementById('mediaUrl').value;
+                payload.caption = document.getElementById('mediaCaption').value;
+                payload.message = payload.caption;
+                if (!payload.mediaUrl) {
+                    showError('whatsappAlert', 'Enter media URL');
+                    return;
+                }
+            }
+
+            try {
+                const endpoint = type === 'interactive' ? 'interactive' : 'send';
+                const res = await fetch(`${API_BASE_URL}/admin/whatsapp/${endpoint}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${adminToken}`,
+                    },
+                    body: JSON.stringify(payload),
+                });
+
+                const data = await res.json();
+
+                if (!data.success) {
+                    showError('whatsappAlert', data.error);
+                    return;
+                }
+
+                showSuccess('whatsappAlert', `✅ Message sent! ID: ${data.messageId}`);
+                document.getElementById('phoneNumber').value = '';
+                document.getElementById('textMessage').value = '';
+            } catch (err) {
+                showError('whatsappAlert', err.message);
+            }
+        }
+
+        // TEST CONNECTION
+        async function testConnection() {
+            const phoneNumber = document.getElementById('phoneNumber').value;
+
+            if (!phoneNumber) {
+                showError('whatsappAlert', 'Enter your phone number to test');
+                return;
+            }
+
+            try {
+                const res = await fetch(`${API_BASE_URL}/admin/whatsapp/test`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${adminToken}`,
+                    },
+                    body: JSON.stringify({ testPhoneNumber: phoneNumber }),
+                });
+
+                const data = await res.json();
+
+                if (!data.success) {
+                    showError('whatsappAlert', data.error);
+                    return;
+                }
+
+                showSuccess('whatsappAlert', data.message);
+            } catch (err) {
+                showError('whatsappAlert', err.message);
+            }
+        }
+
+        // UPDATE BULK FORM
+        function updateBulkForm() {
+            const type = document.getElementById('bulkMessageType').value;
+            document.getElementById('bulkTextForm').style.display = type === 'text' ? 'block' : 'none';
+            document.getElementById('bulkTemplateForm').style.display = type === 'template' ? 'block' : 'none';
+        }
+
+        // UPDATE RECIPIENT COUNT
+        document.addEventListener('DOMContentLoaded', () => {
+            const recipientsTextarea = document.getElementById('bulkRecipients');
+            if (recipientsTextarea) {
+                recipientsTextarea.addEventListener('input', () => {
+                    const recipients = recipientsTextarea.value
+                        .split(/[\n,]/)
+                        .map(r => r.trim())
+                        .filter(r => r && r.match(/^\d+$/));
+                    document.getElementById('recipientCount').value = recipients.length;
+                });
+            }
+
+            if (adminToken) {
+                document.getElementById('loginPage').style.display = 'none';
+                document.getElementById('adminPage').style.display = 'flex';
+                checkWhatsAppConfig();
+            }
+        });
+
+        // SEND BULK CAMPAIGN
+        async function sendBulkCampaign() {
+            const recipientsText = document.getElementById('bulkRecipients').value;
+            const recipients = recipientsText
+                .split(/[\n,]/)
+                .map(r => r.trim())
+                .filter(r => r && r.match(/^\d+$/));
+
+            if (recipients.length === 0) {
+                showError('bulkAlert', 'Enter at least one phone number');
+                return;
+            }
+
+            const type = document.getElementById('bulkMessageType').value;
+            let payload = { recipients, type };
+
+            if (type === 'text') {
+                payload.message = document.getElementById('bulkMessage').value;
+                if (!payload.message) {
+                    showError('bulkAlert', 'Enter a message');
+                    return;
+                }
+            } else if (type === 'template') {
+                payload.templateName = document.getElementById('bulkTemplateName').value;
+                const params = document.getElementById('bulkTemplateParams').value;
+                payload.parameters = params ? params.split(',').map(p => p.trim()) : [];
+                payload.message = 'Template message';
+            }
+
+            payload.delay = parseInt(document.getElementById('bulkDelay').value) || 1000;
+
+            try {
+                const res = await fetch(`${API_BASE_URL}/admin/whatsapp/bulk`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${adminToken}`,
+                    },
+                    body: JSON.stringify(payload),
+                });
+
+                const data = await res.json();
+
+                if (!data.success) {
+                    showError('bulkAlert', data.error);
+                    return;
+                }
+
+                const { successful, failed, total } = data.results;
+                showSuccess('bulkAlert', 
+                    `✅ Campaign sent! Success: ${successful.length}/${total}, Failed: ${failed.length}`
+                );
+                
+                document.getElementById('bulkRecipients').value = '';
+                document.getElementById('bulkMessage').value = '';
+                document.getElementById('recipientCount').value = '0';
+            } catch (err) {
+                showError('bulkAlert', err.message);
+            }
+        }
+
+        // ALERT HELPERS
+        function showSuccess(elementId, message) {
+            const element = document.getElementById(elementId);
+            element.textContent = message;
+            element.className = 'alert alert-success show';
+            setTimeout(() => element.classList.remove('show'), 5000);
+        }
+
+        function showError(elementId, message) {
+            const element = document.getElementById(elementId);
+            element.textContent = message;
+            element.className = 'alert alert-error show';
+            setTimeout(() => element.classList.remove('show'), 5000);
+        }
+    </script>
+</body>
+</html>

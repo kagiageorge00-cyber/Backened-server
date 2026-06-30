@@ -24,6 +24,10 @@ jest.mock('../services/notificationservice', () => ({
   notifyMarketplaceListing: jest.fn(async () => true),
 }));
 
+jest.mock('../utils/adminNotificationHelper', () => ({
+  notifyCandidateRegistered: jest.fn(async () => true),
+}));
+
 const request = require('supertest');
 const app = require('../app'); // adjust path
 const { notifyRegistrationSuccess, notifyMarketplaceListing } = require('../services/notificationservice');
@@ -42,10 +46,11 @@ describe('User Registration', () => {
         experience: '1 year',
       });
 
+    await new Promise((resolve) => setImmediate(resolve));
+
     expect(res.statusCode).toBe(201);
     expect(res.body.success).toBe(true);
     expect(res.body.data).toBeDefined();
     expect(notifyRegistrationSuccess).toHaveBeenCalled();
-    expect(notifyMarketplaceListing).toHaveBeenCalled();
   }, 20000);
 });

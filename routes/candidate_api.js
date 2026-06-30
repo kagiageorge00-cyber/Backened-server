@@ -22,6 +22,10 @@ const JWT_SECRET = process.env.CANDIDATE_JWT_SECRET || 'candidate_secret_key';
 function normalizeCandidate(candidate) {
   if (!candidate) return null;
   const candidateObj = candidate.toObject ? candidate.toObject() : { ...candidate };
+  const birthDate = candidateObj.dateOfBirth ? new Date(candidateObj.dateOfBirth) : null;
+  const age = birthDate && !Number.isNaN(birthDate.getTime())
+    ? new Date().getFullYear() - birthDate.getFullYear()
+    : null;
   return {
     uniqueCode: candidateObj.uniqueCode || candidateObj.candidateId || (candidateObj._id ? candidateObj._id.toString() : null),
     candidateId: candidateObj.candidateId || candidateObj.uniqueCode || (candidateObj._id ? candidateObj._id.toString() : null),
@@ -31,15 +35,30 @@ function normalizeCandidate(candidate) {
     phone: candidateObj.phone,
     country: candidateObj.country,
     nationality: candidateObj.nationality,
-    skills: candidateObj.skills || [],
-    experience: candidateObj.experience,
+    religion: candidateObj.religion,
     gender: candidateObj.gender,
     dateOfBirth: candidateObj.dateOfBirth,
+    age,
     idNumber: candidateObj.idNumber,
     education: candidateObj.education,
+    educationalLevel: candidateObj.educationalLevel,
+    experience: candidateObj.experience,
+    skills: candidateObj.skills || [],
+    languages: candidateObj.languages || [],
+    maritalStatus: candidateObj.maritalStatus,
+    numberOfChildren: candidateObj.numberOfChildren,
+    jobPosition: candidateObj.jobPosition,
+    jobType: candidateObj.jobType,
+    destinationCountry: candidateObj.destinationCountry,
+    destinationPreference: candidateObj.destinationPreference,
+    expectedSalary: candidateObj.expectedSalary,
     profilePhoto: candidateObj.profilePhoto || candidateObj.photoUrl,
     photoUrl: candidateObj.photoUrl,
     videoUrl: candidateObj.videoUrl,
+    passportUrl: candidateObj.passportUrl,
+    medicalUrl: candidateObj.medicalUrl,
+    resumeUrl: candidateObj.resumeUrl,
+    additionalUrl: candidateObj.additionalUrl,
     isVerified: candidateObj.isVerified,
     status: candidateObj.status,
     currentStatus: candidateObj.currentStatus,
@@ -126,14 +145,27 @@ async function enrichInterview(interview) {
 }
 
 function computeProfileCompletion(candidate) {
-  const fields = ['fullName', 'email', 'phone', 'country', 'nationality', 'skills', 'experience', 'gender', 'dateOfBirth', 'idNumber', 'education'];
+  // Uses same marketplace fields as calculateProfileCompletion in candidateRoutes.js
+  const fields = [
+    'photoUrl',
+    'nationality',
+    'religion',
+    'education',
+    'experience',
+    'skills',
+    'languages',
+    'dateOfBirth',
+    'jobPosition',
+    'expectedSalary',
+    'destinationCountry',
+  ];
   const candidateObj = candidate.toObject ? candidate.toObject() : { ...candidate };
   const present = fields.reduce((count, key) => {
     const value = candidateObj[key];
     if (Array.isArray(value)) return value.length > 0 ? count + 1 : count;
     return value ? count + 1 : count;
   }, 0);
-  return Math.min(100, Math.round((present / fields.length) * 100));
+  return Math.round((present / fields.length) * 100);
 }
 
 // multer setup
@@ -207,7 +239,30 @@ router.get('/auth/me', jwtAuth, async (req, res) => {
 router.put('/auth/profile', jwtAuth, async (req, res) => {
   try {
     const candidate = req.candidate;
-    const allowed = ['fullName', 'email', 'phone', 'country', 'nationality', 'skills', 'experience', 'gender', 'dateOfBirth', 'idNumber', 'county', 'education', 'maritalStatus', 'numberOfChildren', 'religion', 'educationalLevel'];
+    const allowed = [
+      'fullName',
+      'email',
+      'phone',
+      'country',
+      'nationality',
+      'skills',
+      'experience',
+      'gender',
+      'dateOfBirth',
+      'idNumber',
+      'county',
+      'education',
+      'educationalLevel',
+      'maritalStatus',
+      'numberOfChildren',
+      'religion',
+      'jobPosition',
+      'jobType',
+      'destinationCountry',
+      'destinationPreference',
+      'expectedSalary',
+      'languages',
+    ];
     const updates = {};
     for (const key of allowed) {
       if (req.body[key] !== undefined) {

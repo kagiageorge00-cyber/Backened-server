@@ -4,18 +4,52 @@ const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
+const rateLimit = require('express-rate-limit');
+const logger = require('./utils/logger');
 require('dotenv').config();
+
+let helmet;
+try {
+  helmet = require('helmet');
+} catch (error) {
+  helmet = null;
+}
 
 const app = express();
 
 const { FRONTEND_URL } = require('./config');
 
 // ======================
-// MIDDLEWARE
+// SECURITY MIDDLEWARE
 // ======================
-app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+if (helmet) {
+  app.use(helmet());
+}
+app.use(
+  cors({
+    origin: process.env.FRONTEND_URL || FRONTEND_URL || '*',
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  })
+);
+
+const defaultLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: 'Too many requests, please try again later.',
+});
+app.use(defaultLimiter);
+
+const rawBodySaver = (req, res, buf) => {
+  if (buf && buf.length) {
+    req.rawBody = buf;
+  }
+};
+
+app.use(express.json({ verify: rawBodySaver }));
+app.use(express.urlencoded({ extended: true, verify: rawBodySaver }));
 
 // ======================
 // STATIC FILES
@@ -120,6 +154,7 @@ const notificationsRoutes = require('./routes/notifications');
 const contractsRoutes = require('./routes/contracts');
 const adminStatsRoutes = require('./routes/adminStats');
 const candidateApiRoutes = require('./routes/candidate_api');
+const whatsappWebhookRoutes = require('./routes/whatsappWebhook');
 
 // Gracefully handle flightSearch module (may not exist in all deployments)
 let flightSearch;
@@ -135,16 +170,15 @@ try {
 // ======================
 // API ROUTES
 // ======================
-app.use('/api', submitPaymentsLegacy);
 app.use('/api/candidates', candidateRoutes);
 app.use('/api/candidate', candidateRoutes);
 app.use('/api/apply', applyRoutes);
-app.use('/api/register', registerRoutes);
+app.use(['/api/register', '/api/candidate/register'], registerRoutes);
 app.use('/api/employers', employerRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/admin', adminRoutes);
-app.use('/api', submitPaymentsRoutes);
+app.use('/api/whatsapp', whatsappWebhookRoutes);
 app.use('/api/marketplace', marketplaceRoutes);
 app.use('/api/interviews', interviewsRoutes);
 app.use('/api/shortlist', shortlistRoutes);
@@ -153,6 +187,9 @@ app.use('/api/deployments', deploymentsRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/contracts', contractsRoutes);
 app.use('/api/admin/stats', adminStatsRoutes);
+app.use('/api', submitPaymentsRoutes);
+// Mount updated submit-payments routes before legacy submitpayments fallback.
+app.use('/api', submitPaymentsLegacy);
 app.use('/api/candidate_portal', candidateApiRoutes);
 app.use('/api/candidate/v2', candidateApiRoutes);
 // debug routes removed
@@ -163,6 +200,7 @@ app.use('/api/candidate/v2', candidateApiRoutes);
 app.get('/api/admin/health', (req, res) => {
   res.json({ success: true, message: 'Admin routes working ✅' });
 });
+// legacy submitpayments fallback remains last to avoid overriding active /api/submitPayment routes
 
 app.post('/register', async (req, res) => {
   const { name, email, phone, userType } = req.body;
@@ -422,8 +460,24 @@ app.post('/api/interviews/request', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     success: true,
-    status: 'ok'
+    status: 'ok',
+    timestamp: new Date().toISOString(),
   });
+});
+
+app.get('/api/health/ready', async (req, res) => {
+  try {
+    const mongoState = mongoose.connection.readyState;
+    res.json({
+      success: true,
+      status: mongoState === 1 ? 'ready' : 'connecting',
+      mongoReadyState: mongoState,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    logger.error('Health check failed', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
 });
 
 // ======================
@@ -567,25 +621,24 @@ app.use((req, res) => {
 // DATABASE + SERVER
 // ======================
 async function startServer() {
+  const PORT = process.env.PORT || 3000;
+
   try {
     if (!process.env.MONGO_URI) {
-      throw new Error('MONGO_URI missing');
+      console.warn('⚠️ MONGO_URI missing; continuing without MongoDB');
+    } else {
+      await mongoose.connect(process.env.MONGO_URI, {
+        serverSelectionTimeoutMS: 5000,
+      });
+      logger.info('MongoDB Connected');
     }
-
-    await mongoose.connect(process.env.MONGO_URI);
-
-    console.log('✅ MongoDB Connected');
-
-    const PORT = process.env.PORT || 3000;
-
-    app.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
-    });
-
   } catch (error) {
-    console.error('❌ Startup Error:', error.message);
-    process.exit(1);
+    console.warn('⚠️ MongoDB connection failed; continuing without database:', error.message);
   }
+
+  app.listen(PORT, () => {
+    logger.info(`Server running on port ${PORT}`);
+  });
 }
 
 module.exports = app;
