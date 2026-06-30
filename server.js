@@ -458,9 +458,12 @@ app.post('/api/interviews/request', async (req, res) => {
 });
 
 app.get('/api/health', (req, res) => {
+  const verifyTokenConfigured = Boolean(process.env.WHATSAPP_VERIFY_TOKEN || process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN);
   res.json({
     success: true,
     status: 'ok',
+    webhook: 'active',
+    verifyTokenConfigured,
     timestamp: new Date().toISOString(),
   });
 });
