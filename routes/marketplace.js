@@ -1,6 +1,7 @@
 const express = require('express');
 const Candidate = require('../models/candidate');
 const employerAuth = require('../middleware/employerAuth');
+const { getCandidateNameValue } = require('../utils/candidateDisplayName');
 const router = express.Router();
 
 function requireVerifiedEmployer(req, res) {
@@ -51,8 +52,8 @@ function normalizeMarketplaceCandidate(candidate) {
   return {
     // IDENTIFICATION
     candidateId: candidateObj.candidateId,
-    fullName: candidateObj.fullName || candidateObj.name,
-    name: candidateObj.fullName || candidateObj.name,
+    fullName: getCandidateNameValue(candidateObj),
+    name: getCandidateNameValue(candidateObj),
 
     // PERSONAL
     nationality: candidateObj.nationality,

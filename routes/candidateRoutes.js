@@ -9,7 +9,7 @@ const router = express.Router();
 const Candidate = require('../models/candidate');
 const { sendEmail } = require('../email');
 const { FRONTEND_URL } = require('../config');
-const { getCandidateDisplayName } = require('../utils/candidateDisplayName');
+const { getCandidateDisplayName, getCandidateNameValue } = require('../utils/candidateDisplayName');
 
 const documentStorage = multer.diskStorage({
   destination(req, file, cb) {
@@ -129,8 +129,8 @@ function normalizeCandidate(candidate) {
     _id: candidateObj._id,
     uniqueCode: candidateObj.uniqueCode || candidateObj.candidateId || (candidateObj._id ? candidateObj._id.toString() : null),
     candidateId: candidateObj.candidateId || candidateObj.uniqueCode || (candidateObj._id ? candidateObj._id.toString() : null),
-    name: candidateObj.fullName || candidateObj.name,
-    fullName: candidateObj.fullName || candidateObj.name,
+    name: getCandidateNameValue(candidateObj),
+    fullName: getCandidateNameValue(candidateObj),
     email: candidateObj.email,
     phone: candidateObj.phone,
     country: candidateObj.country,
@@ -197,8 +197,8 @@ function buildMarketplaceCandidate(candidate) {
   return {
     // IDENTIFICATION
     candidateId: candidateObj.candidateId,
-    fullName: candidateObj.fullName,
-    name: candidateObj.fullName,
+    fullName: getCandidateNameValue(candidateObj),
+    name: getCandidateNameValue(candidateObj),
 
     // PERSONAL
     nationality: candidateObj.nationality,
