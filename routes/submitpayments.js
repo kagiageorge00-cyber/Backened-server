@@ -7,6 +7,7 @@ const Candidate = require("../models/candidate");
 
 // ✅ SINGLE CLEAN EMAIL FUNCTION
 const { sendEmail } = require("../email");
+const { notifyPaymentSuccess } = require("../services/notificationservice");
 
 function toArrayField(value) {
   if (Array.isArray(value)) return value;
@@ -46,6 +47,16 @@ function generateCandidateCode() {
   const year = new Date().getFullYear();
   const seq = Math.floor(1000 + Math.random() * 9000);
   return `CAND-${year}-${seq}`;
+}
+
+function isPhoneLike(value) {
+  if (!value || typeof value !== 'string') return false;
+  const digits = value.replace(/[^0-9]/g, '');
+  return digits.length >= 7 && digits.length <= 15;
+}
+
+function isEmailLike(value) {
+  return typeof value === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
 
 // ==========================
@@ -93,6 +104,9 @@ async function handleSubmitPayment(req, res) {
     const userId = userIdFromBody || user_id || phone || candidateId || candidate_id || email;
     const transactionKey = transactionCode || transactionId || transaction_id;
     const parsedAmount = typeof amount === 'string' ? amount.trim() : amount;
+
+    const detectedPhone = phone || (userId && isPhoneLike(userId) ? userId : null);
+    const detectedEmail = email || (userId && isEmailLike(userId) ? userId : null);
 
     if (!userId || parsedAmount == null || !transactionKey) {
       return res.status(400).json({
@@ -151,8 +165,8 @@ async function handleSubmitPayment(req, res) {
       let candidate = await Candidate.findOne({ $or: lookupCriteria });
       if (!candidate) {
         candidate = await Candidate.create({
-          fullName: name || userId,
-          name: name || userId,
+          fullName: name || null,
+          name: name || null,
             nationality,
             religion,
             education,
@@ -171,8 +185,8 @@ async function handleSubmitPayment(req, res) {
               ? destinationPreference
               : toArrayField(destinationPreference),
             expectedSalary,
-          email: email || null,
-          phone: userId,
+          email: detectedEmail,
+          phone: detectedPhone,
           uniqueCode: generateCandidateCode(),
           status: 'in_process',
           paymentStatus: 'pending',
@@ -196,8 +210,12 @@ async function handleSubmitPayment(req, res) {
           candidate.profileCompletion = calculateProfileCompletion(candidate);
           await candidate.save();
       } else {
-        candidate.fullName = candidate.fullName || name || userId;
-        candidate.name = candidate.name || name || userId;
+        if (!name) {
+          if (candidate.fullName && isPhoneLike(candidate.fullName)) candidate.fullName = null;
+          if (candidate.name && isPhoneLike(candidate.name)) candidate.name = null;
+        }
+        candidate.fullName = candidate.fullName || name || null;
+        candidate.name = candidate.name || name || null;
           candidate.nationality = nationality || candidate.nationality;
           candidate.religion = religion || candidate.religion;
           candidate.education = education || candidate.education;
@@ -232,8 +250,8 @@ async function handleSubmitPayment(req, res) {
           candidate.medicalUrl = medicalUrl || candidate.medicalUrl;
           candidate.resumeUrl = resumeUrl || candidate.resumeUrl;
           candidate.additionalUrl = additionalUrl || candidate.additionalUrl;
-        candidate.email = candidate.email || email || candidate.email;
-        candidate.phone = candidate.phone || userId;
+        candidate.email = candidate.email || detectedEmail;
+        candidate.phone = candidate.phone || detectedPhone;
         candidate.uniqueCode = candidate.uniqueCode || generateCandidateCode();
         candidate.status = ['available', 'deployed'].includes(candidate.status)
           ? candidate.status
@@ -296,6 +314,12 @@ async function handleSubmitPayment(req, res) {
         }
 
         console.log("📧 Sending payment email to:", notifyEmail);
+
+        try {
+          await notifyPaymentSuccess({ email: notifyEmail, name: notifyName });
+        } catch (notifyErr) {
+          console.warn('notifyPaymentSuccess failed:', notifyErr && notifyErr.message);
+        }
 
         const emailSent = await sendEmail(
           notifyEmail,

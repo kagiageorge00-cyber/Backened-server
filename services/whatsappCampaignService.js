@@ -153,7 +153,10 @@ async function updateCampaign(campaignId, updateData) {
  * @param {string} campaignId - Campaign ID
  * @returns {Promise<Object>} Queue results
  */
-async function queueCampaign(campaignId) {
+const DEFAULT_BATCH_SIZE = parseInt(process.env.CAMPAIGN_BATCH_SIZE || '50', 10);
+const MAX_QUEUE_PER_CAMPAIGN = parseInt(process.env.MAX_QUEUE_PER_CAMPAIGN || '5000', 10);
+
+async function queueCampaign(campaignId, options = {}) {
   try {
     const campaign = await WhatsAppCampaign.findById(campaignId);
     if (!campaign) {
@@ -164,8 +167,8 @@ async function queueCampaign(campaignId) {
       throw new Error('Campaign must be in draft status to queue');
     }
 
-    // Get audience based on tags
-    let query = { optedOut: false };
+    // Get audience based on tags (ensure opted-in and not opted-out)
+    let query = { optedOut: false, optedIn: true };
     if (campaign.audienceTags.length > 0) {
       query.tags = { $in: campaign.audienceTags };
     }
@@ -176,8 +179,14 @@ async function queueCampaign(campaignId) {
       throw new Error('No matching contacts found for this campaign');
     }
 
+    // Respect maximum queue limits to avoid spammy floods
+    let toQueue = contacts;
+    if (contacts.length > MAX_QUEUE_PER_CAMPAIGN) {
+      toQueue = contacts.slice(0, MAX_QUEUE_PER_CAMPAIGN);
+    }
+
     // Create queue entries
-    const queueEntries = contacts.map(contact => ({
+    const queueEntries = toQueue.map(contact => ({
       campaignId,
       contactId: contact._id,
       phoneNumber: contact.phoneNumber,
@@ -192,12 +201,14 @@ async function queueCampaign(campaignId) {
 
     // Update campaign status
     campaign.status = 'queued';
-    campaign.stats.queued = contacts.length;
+    campaign.stats.queued = queueEntries.length;
     await campaign.save();
 
     return {
       campaignId,
-      contactsQueued: contacts.length,
+      contactsMatched: contacts.length,
+      contactsQueued: queueEntries.length,
+      maxQueueLimit: MAX_QUEUE_PER_CAMPAIGN,
       status: 'queued',
     };
   } catch (error) {

@@ -7,6 +7,22 @@ jest.mock('../models/Payment', () => ({
   }),
 }));
 
+jest.mock('../models/candidate', () => ({
+  findOne: jest.fn().mockResolvedValue(null),
+  create: jest.fn().mockResolvedValue({
+    _id: 'CAND_123',
+    fullName: null,
+    name: null,
+    phone: '+254700000000',
+    email: 'test@applicant.com',
+    save: jest.fn().mockResolvedValue(true),
+  }),
+}));
+
+jest.mock('../email', () => ({
+  sendEmail: jest.fn(async () => true),
+}));
+
 jest.mock('../services/notificationservice', () => ({
   notifyPaymentSuccess: jest.fn(async () => true),
 }));
@@ -14,7 +30,8 @@ jest.mock('../services/notificationservice', () => ({
 const express = require('express');
 const request = require('supertest');
 
-const submitPayments = require('../submitpayments');
+const submitPayments = require('../routes/submitpayments');
+const Candidate = require('../models/candidate');
 const { notifyPaymentSuccess } = require('../services/notificationservice');
 
 describe('Apply-flow payment submission route', () => {
@@ -42,9 +59,40 @@ describe('Apply-flow payment submission route', () => {
     expect(res.body.success).toBe(true);
     expect(res.body.paymentId).toBeDefined();
     expect(res.body.message).toContain('Payment submitted successfully');
+
+    await new Promise((resolve) => setImmediate(resolve));
+
     expect(notifyPaymentSuccess).toHaveBeenCalledWith({
       email: 'test@applicant.com',
       name: 'Test Applicant',
     });
+  });
+
+  test('does not use phone as fullName when name is missing', async () => {
+    const app = express();
+    app.use(express.json());
+    app.use('/api', submitPayments);
+
+    const res = await request(app)
+      .post('/api/submitPayment')
+      .send({
+        phone: '+254700000000',
+        email: 'test@applicant.com',
+        transactionCode: 'RK7WXYZ9AB',
+        paymentMethod: 'mpesa',
+        amount: 1300,
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(Candidate.create).toHaveBeenCalledWith(expect.objectContaining({
+      fullName: null,
+      name: null,
+      phone: '+254700000000',
+      email: 'test@applicant.com',
+    }));
   });
 });

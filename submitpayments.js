@@ -87,9 +87,11 @@ async function handleSubmitPayment(req, res) {
       additionalUrl,
     } = req.body;
 
-    const userId = userIdFromBody || user_id || candidateId || candidate_id || phone || email;
+    const userId = userIdFromBody || user_id || phone || candidateId || candidate_id || email;
     const transactionKey = transactionCode || transactionId || transaction_id;
     const parsedAmount = typeof amount === 'string' ? amount.trim() : amount;
+    const detectedPhone = phone || (userId && isPhoneLike(userId) ? userId : null);
+    const detectedEmail = email || (userId && isEmailLike(userId) ? userId : null);
 
     // ======================
     // VALIDATION

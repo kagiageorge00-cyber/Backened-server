@@ -111,6 +111,7 @@ router.post("/", async (req, res) => {
       maritalStatus,
       numberOfChildren,
       jobPosition,
+      jobAppliedFor,
       jobType,
       destinationCountry,
       destinationPreference,
@@ -124,7 +125,6 @@ router.post("/", async (req, res) => {
       conductUrl,
       resumeUrl,
       additionalUrl,
-      jobAppliedFor,
       appliedJobId,
       appliedJobTitle,
       appliedEmployerId,
@@ -236,10 +236,14 @@ router.post("/", async (req, res) => {
       candidate.dateOfBirth = dateOfBirth || candidate.dateOfBirth;
       candidate.maritalStatus = maritalStatus || candidate.maritalStatus;
       candidate.numberOfChildren = numberOfChildren !== undefined ? numberOfChildren : candidate.numberOfChildren;
-      candidate.jobPosition = jobPosition || candidate.jobPosition;
+      candidate.jobPosition = jobPosition || jobAppliedFor || candidate.jobPosition || candidate.jobAppliedFor;
       candidate.jobType = jobType || candidate.jobType;
       candidate.destinationCountry = destinationCountry || candidate.destinationCountry;
-      candidate.destinationPreference = destinationPreference || preferredDestination || preferredDestinations || candidate.destinationPreference;
+      candidate.destinationPreference = Array.isArray(destinationPreference || preferredDestination || preferredDestinations)
+        ? (destinationPreference || preferredDestination || preferredDestinations)
+        : ((destinationPreference || preferredDestination || preferredDestinations)
+          ? String(destinationPreference || preferredDestination || preferredDestinations).split(',').map((item) => item.trim()).filter(Boolean)
+          : candidate.destinationPreference);
       candidate.expectedSalary = expectedSalary || candidate.expectedSalary;
       candidate.photoUrl = photoUrl || candidate.photoUrl;
       candidate.videoUrl = videoUrl || candidate.videoUrl;
@@ -312,11 +316,11 @@ router.post("/", async (req, res) => {
         dateOfBirth,
         maritalStatus,
         numberOfChildren,
-        jobPosition,
+        jobPosition: jobPosition || jobAppliedFor || null,
         jobType,
         destinationCountry,
-        destinationPreference: Array.isArray(destinationPreference)
-          ? destinationPreference
+        destinationPreference: Array.isArray(destinationPreference || preferredDestination || preferredDestinations)
+          ? (destinationPreference || preferredDestination || preferredDestinations)
           : toArrayField(destinationPreference || preferredDestination || preferredDestinations),
         expectedSalary,
         photoUrl,
@@ -353,11 +357,11 @@ router.post("/", async (req, res) => {
         dateOfBirth,
         maritalStatus,
         numberOfChildren,
-        jobPosition,
+        jobPosition: jobPosition || jobAppliedFor || null,
         jobType,
         destinationCountry,
-        destinationPreference: Array.isArray(destinationPreference)
-          ? destinationPreference
+        destinationPreference: Array.isArray(destinationPreference || preferredDestination || preferredDestinations)
+          ? (destinationPreference || preferredDestination || preferredDestinations)
           : toArrayField(destinationPreference || preferredDestination || preferredDestinations),
         expectedSalary,
         photoUrl,

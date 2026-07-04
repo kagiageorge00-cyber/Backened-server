@@ -25,6 +25,7 @@ const {
 const { sendEmail } = require("../email");
 
 const { FRONTEND_URL } = require("../config");
+const { getCandidateDisplayName } = require('../utils/candidateDisplayName');
 
 // WhatsApp Cloud API Service
 const {
@@ -41,6 +42,8 @@ const {
   validateWhatsAppCredentials,
   verifyWhatsAppAccess,
 } = require("../services/whatsappCloudService");
+
+const WhatsAppContact = require('../models/WhatsAppContact');
 
 // Required fields for publishing
 const REQUIRED_FIELDS_FOR_PUBLISH = [
@@ -205,7 +208,7 @@ router.post(
         setImmediate(async () => {
           try {
             await notifyPaymentApproved({
-              candidateName: candidate?.fullName || candidate?.name || 'Candidate',
+              candidateName: getCandidateDisplayName(candidate),
               amount: payment.amount,
               currency: payment.metadata?.currency || 'KES',
               paymentId: payment._id,
@@ -223,7 +226,7 @@ router.post(
       });
 
       const email = candidate?.email || payment.metadata?.email;
-      const name = candidate?.fullName || candidate?.name || payment.metadata?.name || 'Candidate';
+      const name = getCandidateDisplayName(candidate || payment.metadata || {});
       const phoneParam = candidate?.phone || payment.userId;
       const link = `${FRONTEND_URL}/candidate-form?phone=${encodeURIComponent(phoneParam)}`;
 
@@ -432,7 +435,7 @@ router.post("/payments/:paymentId/reject", requireAdminAuth, async (req, res) =>
     setImmediate(async () => {
       try {
         await notifyPaymentRejected({
-          candidateName: candidate?.fullName || candidate?.name || 'Candidate',
+          candidateName: getCandidateDisplayName(candidate),
           amount: payment.amount,
           currency: payment.metadata?.currency || 'KES',
           paymentId: payment._id,
@@ -1130,8 +1133,18 @@ router.post('/whatsapp/bulk', requireAdminAuth, async (req, res) => {
       });
     }
 
-    // Run bulk send in background
-    const result = await sendBulkMessages(recipients, message, {
+    // Only send to contacts that are opted-in in our database
+    const normalized = recipients.map(r => (r || '').toString().trim());
+    const optedInContacts = await WhatsAppContact.find({ phoneNumber: { $in: normalized }, optedIn: true, optedOut: false }).select('phoneNumber').lean();
+    const optedInNumbers = optedInContacts.map(c => c.phoneNumber);
+    const skipped = normalized.filter(n => !optedInNumbers.includes(n));
+
+    if (optedInNumbers.length === 0) {
+      return res.status(400).json({ success: false, error: 'No recipients are marked as opted-in in the system', skipped });
+    }
+
+    // Run bulk send in background for opted-in numbers only
+    const result = await sendBulkMessages(optedInNumbers, message, {
       delay,
       templateName: type === 'template' ? templateName : null,
       parameters: type === 'template' ? parameters : null,
@@ -1146,8 +1159,9 @@ router.post('/whatsapp/bulk', requireAdminAuth, async (req, res) => {
 
     return res.json({
       success: true,
-      message: 'Bulk messages queued',
+      message: 'Bulk messages queued for opted-in recipients',
       results: result.results,
+      skipped,
     });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });

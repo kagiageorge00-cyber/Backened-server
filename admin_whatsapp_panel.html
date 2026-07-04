@@ -648,6 +648,10 @@
 
                     <div id="bulkAlert" class="alert"></div>
 
+                    <div class="alert warning" style="background:#fff3cd;color:#856404;border:1px solid #ffeeba;margin-bottom:12px;">
+                        <strong>Compliance:</strong> Only send messages to users who have explicitly consented to receive WhatsApp communications. Repeated unsolicited messages may violate WhatsApp policies.
+                    </div>
+
                     <div class="form-group">
                         <label>Recipients (Paste phone numbers, one per line or comma-separated)</label>
                         <textarea id="bulkRecipients" placeholder="254712345678&#10;254787654321&#10;254712345679" style="min-height: 150px;"></textarea>
@@ -692,6 +696,38 @@
                     <button class="btn btn-success" onclick="sendBulkCampaign()" style="width: 100%;">
                         🚀 Send Campaign
                     </button>
+                </div>
+
+                <!-- CAMPAIGN BUILDER -->
+                <div id="campaigns" class="panel">
+                    <div class="panel-title">🎯 Campaign Builder</div>
+
+                    <div id="campaignAlert" class="alert"></div>
+
+                    <div class="form-group">
+                        <label>Campaign Name</label>
+                        <input type="text" id="campaignName" placeholder="Name your campaign">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Message</label>
+                        <textarea id="campaignMessage" placeholder="Message body for recipients"></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Audience Tags (comma-separated)</label>
+                        <input type="text" id="campaignTags" placeholder="e.g., jobseeker,travel">
+                    </div>
+
+                    <div class="btn-group">
+                        <button class="btn btn-primary" onclick="createCampaign()">Create Campaign</button>
+                        <button class="btn btn-secondary" onclick="refreshCampaigns()">Refresh List</button>
+                    </div>
+
+                    <div style="margin-top:12px">
+                        <h4>Existing Campaigns</h4>
+                        <div id="campaignList">Loading...</div>
+                    </div>
                 </div>
 
                 <!-- CONFIGURATION -->
@@ -1025,6 +1061,56 @@ WHATSAPP_ACCESS_TOKEN=EAAcTy7Mgi90BR12vSdQxMzACZAQOTSHZA5qVQqQqqDCYO2mAvmrCDGlmD
             } catch (err) {
                 showError('bulkAlert', err.message);
             }
+        }
+
+        async function createCampaign() {
+            const name = document.getElementById('campaignName').value.trim();
+            const message = document.getElementById('campaignMessage').value.trim();
+            const tags = (document.getElementById('campaignTags').value || '').split(',').map(s => s.trim()).filter(Boolean);
+
+            if (!name || !message) return alert('Name and message are required');
+
+            const res = await fetch(`${API_BASE_URL}/admin/whatsapp/campaigns`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': localStorage.getItem('adminToken') ? 'Bearer ' + localStorage.getItem('adminToken') : '' },
+                body: JSON.stringify({ name, message, audienceTags: tags })
+            });
+
+            const data = await res.json();
+            if (!data.success) return alert('Create failed: ' + (data.error || JSON.stringify(data)));
+            alert('Campaign created');
+            refreshCampaigns();
+        }
+
+        async function refreshCampaigns() {
+            const res = await fetch(`${API_BASE_URL}/admin/whatsapp/campaigns`, { headers: { 'Authorization': localStorage.getItem('adminToken') ? 'Bearer ' + localStorage.getItem('adminToken') : '' } });
+            const data = await res.json();
+            if (!data.success) return document.getElementById('campaignList').innerText = 'Failed to load';
+            const list = data.data || [];
+            document.getElementById('campaignList').innerHTML = list.map(c => `
+                <div style="border:1px solid #ddd;padding:8px;margin-bottom:8px;">
+                    <strong>${c.name}</strong> — <em>${c.status}</em><br>
+                    ${c.message.substring(0,120)}<br>
+                    <button onclick="queueCampaign('${c._id}')">Queue</button>
+                    <button onclick="launchCampaign('${c._id}')">Launch</button>
+                </div>
+            `).join('') || 'No campaigns';
+        }
+
+        async function queueCampaign(id) {
+            if (!confirm('Queue this campaign for sending?')) return;
+            const res = await fetch(`${API_BASE_URL}/admin/whatsapp/campaigns/${id}/queue`, { method: 'POST', headers: { 'Authorization': localStorage.getItem('adminToken') ? 'Bearer ' + localStorage.getItem('adminToken') : '' }});
+            const data = await res.json();
+            alert(data.success ? 'Queued: ' + (data.contactsQueued || data.contactsQueued) : 'Queue failed: ' + (data.error || JSON.stringify(data)));
+            refreshCampaigns();
+        }
+
+        async function launchCampaign(id) {
+            if (!confirm('Launch this campaign? This will start sending to queued contacts.')) return;
+            const res = await fetch(`${API_BASE_URL}/admin/whatsapp/campaigns/${id}/launch`, { method: 'POST', headers: { 'Authorization': localStorage.getItem('adminToken') ? 'Bearer ' + localStorage.getItem('adminToken') : '' }});
+            const data = await res.json();
+            alert(data.success ? 'Launched' : 'Launch failed: ' + (data.error || JSON.stringify(data)));
+            refreshCampaigns();
         }
 
         // ALERT HELPERS

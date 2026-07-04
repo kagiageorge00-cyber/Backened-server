@@ -108,6 +108,27 @@ async function importContacts(req, res) {
  * Get all contacts
  * GET /admin/whatsapp/contacts
  */
+async function createContact(req, res) {
+  try {
+    const { fullName, phoneNumber, tags = [] } = req.body;
+
+    if (!fullName || !phoneNumber) {
+      return res.status(400).json({ success: false, error: 'Name and phone number are required' });
+    }
+
+    const result = await contactService.createOrUpdateContact({
+      fullName,
+      phoneNumber,
+      source: 'manual',
+      tags: Array.isArray(tags) ? tags : [tags],
+    });
+
+    res.status(201).json({ success: true, data: result.contact, isNew: result.isNew });
+  } catch (error) {
+    res.status(400).json({ success: false, error: error.message });
+  }
+}
+
 async function getContacts(req, res) {
   try {
     const { page = 1, limit = 20, optedOut, search, tags } = req.query;
@@ -486,6 +507,7 @@ async function addTagsToContacts(req, res) {
 
 module.exports = {
   importContacts,
+  createContact,
   getContacts,
   getContactStatistics,
   createCampaign,

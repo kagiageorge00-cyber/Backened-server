@@ -185,6 +185,7 @@ router.post('/register', async (req, res) => {
       termsAccepted,
       password,
       candidateId,
+      documents,
     } = req.body;
 
     const normalized = {
@@ -232,6 +233,16 @@ router.post('/register', async (req, res) => {
       preferredCandidateNationality: sanitizeValue(preferredCandidateNationality),
       termsAccepted: termsAccepted === 'true' || termsAccepted === true,
       password: sanitizeValue(password),
+      documents: Array.isArray(documents)
+        ? documents
+            .map((doc) => ({
+              type: sanitizeValue(doc?.type),
+              label: sanitizeValue(doc?.label),
+              url: sanitizeValue(doc?.url),
+              status: sanitizeValue(doc?.status) || 'Uploaded',
+            }))
+            .filter((doc) => doc.type || doc.label || doc.url)
+        : [],
     };
 
     const requiredFields = [
@@ -334,6 +345,7 @@ router.post('/register', async (req, res) => {
       verificationStatus: 'new_registration',
       status: 'pending',
       password: hashedPassword,
+      documents: normalized.documents,
       profileCompletion: 0,
     });
 

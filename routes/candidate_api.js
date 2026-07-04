@@ -16,6 +16,7 @@ const Employer = require('../models/Employer');
 const Job = require('../models/Job');
 
 const jwtAuth = require('../middleware/jwtAuth');
+const { getCandidatePortalGreetingName, getCandidateNameValue } = require('../utils/candidateDisplayName');
 
 const JWT_SECRET = process.env.CANDIDATE_JWT_SECRET || 'candidate_secret_key';
 
@@ -29,8 +30,8 @@ function normalizeCandidate(candidate) {
   return {
     uniqueCode: candidateObj.uniqueCode || candidateObj.candidateId || (candidateObj._id ? candidateObj._id.toString() : null),
     candidateId: candidateObj.candidateId || candidateObj.uniqueCode || (candidateObj._id ? candidateObj._id.toString() : null),
-    name: candidateObj.fullName || candidateObj.name,
-    fullName: candidateObj.fullName || candidateObj.name,
+    name: getCandidateNameValue(candidateObj),
+    fullName: getCandidateNameValue(candidateObj),
     email: candidateObj.email,
     phone: candidateObj.phone,
     country: candidateObj.country,
@@ -201,8 +202,8 @@ router.post('/auth/login', async (req, res) => {
       token,
       data: {
         uniqueCode: candidate.uniqueCode || candidate._id,
-        name: candidate.fullName || candidate.name,
-        fullName: candidate.fullName || candidate.name,
+        name: getCandidatePortalGreetingName(candidate),
+        fullName: getCandidatePortalGreetingName(candidate),
         email: candidate.email,
         phone: candidate.phone
       }

@@ -7,18 +7,13 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
 const rateLimit = require('express-rate-limit');
 const whatsappAdminController = require('../controllers/whatsappAdminController');
 
-// Middleware for admin authentication
-const adminAuth = (req, res, next) => {
-  // TODO: Implement your JWT verification logic
-  // For now, check if user has admin role
-  if (req.user?.role !== 'admin') {
-    return res.status(403).json({ success: false, error: 'Admin access required' });
-  }
-  next();
-};
+// Use central admin auth middleware
+const { requireAdminAuth } = require('../middleware/adminAuth');
+const adminAuth = requireAdminAuth;
 
 // Rate limiting
 const contactImportLimiter = rateLimit({
@@ -34,9 +29,15 @@ const campaignLimiter = rateLimit({
 });
 
 // File upload configuration
+// Ensure upload directory exists
+const uploadDir = path.join(__dirname, '../uploads/whatsapp-imports');
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, path.join(__dirname, '../uploads/whatsapp-imports'));
+    cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
@@ -78,6 +79,12 @@ router.post(
   upload.single('file'),
   whatsappAdminController.importContacts
 );
+
+/**
+ * Create a single contact
+ * POST /admin/whatsapp/contacts
+ */
+router.post('/contacts', adminAuth, whatsappAdminController.createContact);
 
 /**
  * Get all contacts (paginated)

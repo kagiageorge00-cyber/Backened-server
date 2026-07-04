@@ -19,6 +19,21 @@ const app = express();
 
 const { FRONTEND_URL } = require('./config');
 
+const allowedOrigins = new Set([
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'http://localhost:52150',
+  'http://localhost:8080',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:52150',
+  'http://127.0.0.1:8080',
+  'https://blissconnect12.netlify.app',
+  'https://www.blissconnect12.netlify.app',
+  process.env.FRONTEND_URL,
+  FRONTEND_URL,
+].filter(Boolean));
+
 // ======================
 // SECURITY MIDDLEWARE
 // ======================
@@ -27,9 +42,25 @@ if (helmet) {
 }
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || FRONTEND_URL || '*',
+    origin: (origin, callback) => {
+      if (!origin) {
+        return callback(null, true);
+      }
+
+      if (
+        allowedOrigins.has(origin) ||
+        /^(http|https):\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin) ||
+        /\.netlify\.app$/i.test(origin)
+      ) {
+        return callback(null, true);
+      }
+
+      console.warn(`CORS blocked origin: ${origin}`);
+      return callback(null, false);
+    },
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true,
   })
 );
 
@@ -154,8 +185,20 @@ const notificationsRoutes = require('./routes/notifications');
 const contractsRoutes = require('./routes/contracts');
 const adminStatsRoutes = require('./routes/adminStats');
 const candidateApiRoutes = require('./routes/candidate_api');
+const messagesRoutes = require('./routes/messages');
+const jobsRoutes = require('./routes/jobs');
 const whatsappWebhookRoutes = require('./routes/whatsappWebhook');
 const whatsappEmbeddedSignupRoutes = require('./routes/whatsappEmbeddedSignup');
+// Admin WhatsApp routes (campaign management)
+let whatsappAdminRoutes;
+try {
+  whatsappAdminRoutes = require('./routes/whatsappAdmin');
+  const { requireAdminAuth } = require('./middleware/adminAuth');
+  app.use('/api/admin/whatsapp', requireAdminAuth, whatsappAdminRoutes);
+  console.log('✅ WhatsApp admin routes mounted at /api/admin/whatsapp');
+} catch (err) {
+  console.warn('⚠️ Whatsapp admin routes not mounted:', err.message);
+}
 
 // Gracefully handle flightSearch module (may not exist in all deployments)
 let flightSearch;
@@ -188,6 +231,8 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/deployments', deploymentsRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/contracts', contractsRoutes);
+app.use('/api/messages', messagesRoutes);
+app.use('/api/jobs', jobsRoutes);
 app.use('/api/admin/stats', adminStatsRoutes);
 app.use('/api', submitPaymentsRoutes);
 // Mount updated submit-payments routes before legacy submitpayments fallback.
@@ -396,7 +441,7 @@ app.post('/api/candidate/login', async (req, res) => {
       return res.status(401).json({ success: false, error: 'Invalid ID or password' });
     }
 
-    res.json({ success: true, candidateId: candidate.uniqueCode, fullName: candidate.fullName });
+    res.json({ success: true, candidateId: candidate.uniqueCode, fullName: candidate.fullName || candidate.name || candidate.uniqueCode });
   } catch (err) {
     console.error('Login error:', err);
     res.status(500).json({ success: false, error: err.message });
