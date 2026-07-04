@@ -5,7 +5,7 @@ const Deployment = require('../models/Deployment');
 const Candidate = require('../models/candidate');
 const Employer = require('../models/Employer');
 const Notification = require('../models/Notification');
-const { employerAuth } = require('../middleware/auth');
+const employerAuth = require('../middleware/employerAuth');
 
 // Blocked patterns for security
 const BLOCKED_PATTERNS = [

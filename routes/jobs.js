@@ -3,7 +3,7 @@ const router = express.Router();
 const Job = require('../models/Job');
 const JobApplication = require('../models/JobApplication');
 const Notification = require('../models/Notification');
-const { employerAuth } = require('../middleware/auth');
+const employerAuth = require('../middleware/employerAuth');
 
 // Generate Job ID
 function generateJobId() {
