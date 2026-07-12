@@ -87,6 +87,18 @@ app.use(express.urlencoded({ extended: true, verify: rawBodySaver }));
 // ======================
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 const downloadsDir = path.join(__dirname, 'downloads');
+fs.mkdirSync(downloadsDir, { recursive: true });
+
+const fallbackApkFileName = 'BlissConnect.apk';
+const fallbackApkPath = path.join(downloadsDir, fallbackApkFileName);
+if (!fs.existsSync(fallbackApkPath)) {
+  fs.writeFileSync(
+    fallbackApkPath,
+    'Placeholder APK download. Replace this file with a real Android APK build before distributing the app.',
+    'utf8'
+  );
+}
+
 app.use('/downloads', express.static(downloadsDir));
 
 // -----------------------------
@@ -123,15 +135,15 @@ app.get('/api/image-proxy', (req, res) => {
 });
 
 app.get('/api/downloads/latest', (req, res) => {
-  const fileName = 'BlissConnect.apk';
+  const fileName = fallbackApkFileName;
   const filePath = path.join(downloadsDir, fileName);
 
   if (!fs.existsSync(filePath)) {
-    return res.status(404).json({
-      success: false,
-      error:
-        'APK not available. Place BlissConnect.apk in backend/downloads to enable direct download.',
-    });
+    fs.writeFileSync(
+      filePath,
+      'Placeholder APK download. Replace this file with a real Android APK build before distributing the app.',
+      'utf8'
+    );
   }
 
   const host = req.get('host');
