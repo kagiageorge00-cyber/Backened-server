@@ -275,7 +275,7 @@ PORT=3000
    ```
 3. **Verify endpoints:**
    ```bash
-   curl http://localhost:3000/api/health
+   curl https://backened-server-1.onrender.com/api/health
    # Expected: { \"success\": true, \"status\": \"ok\" }
    ```
 4. **Test payment flow** end-to-end

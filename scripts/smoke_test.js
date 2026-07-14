@@ -1,6 +1,6 @@
 (async ()=>{
   const axios = require('axios');
-  const u = 'http://localhost:3000';
+  const u = process.env.BACKEND_URL || 'https://backened-server-1.onrender.com';
   try {
     let r = await axios.get(u + '/api/health');
     console.log('/api/health', r.status);

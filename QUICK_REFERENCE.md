@@ -153,20 +153,20 @@ Contact automatically excluded from future campaigns when detected.
 
 ```bash
 # 1. Test webhook verification
-curl -X GET "http://localhost:3000/api/whatsapp/webhook?hub.mode=subscribe&hub.verify_token=YOUR_TOKEN&hub.challenge=TEST123"
+curl -X GET "https://backened-server-1.onrender.com/api/whatsapp/webhook?hub.mode=subscribe&hub.verify_token=YOUR_TOKEN&hub.challenge=TEST123"
 # Should return: TEST123
 
 # 2. Import contacts
-curl -X POST http://localhost:3000/api/admin/whatsapp/contacts/import \
+curl -X POST https://backened-server-1.onrender.com/api/admin/whatsapp/contacts/import \
   -H "Authorization: Bearer YOUR_JWT" \
   -F "file=@contacts.csv"
 
 # 3. Get contacts
-curl -X GET http://localhost:3000/api/admin/whatsapp/contacts \
+curl -X GET https://backened-server-1.onrender.com/api/admin/whatsapp/contacts \
   -H "Authorization: Bearer YOUR_JWT"
 
 # 4. Get dashboard stats
-curl -X GET http://localhost:3000/api/admin/whatsapp/statistics/dashboard \
+curl -X GET https://backened-server-1.onrender.com/api/admin/whatsapp/statistics/dashboard \
   -H "Authorization: Bearer YOUR_JWT"
 ```
 

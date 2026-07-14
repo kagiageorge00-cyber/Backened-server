@@ -20,16 +20,16 @@ const app = express();
 const { FRONTEND_URL } = require('./config');
 
 const allowedOrigins = new Set([
-  'http://localhost:3000',
   'http://localhost:5173',
   'http://localhost:52150',
   'http://localhost:8080',
-  'http://127.0.0.1:3000',
   'http://127.0.0.1:5173',
   'http://127.0.0.1:52150',
   'http://127.0.0.1:8080',
   'https://blissconnect12.netlify.app',
   'https://www.blissconnect12.netlify.app',
+  'https://backened-server-1.onrender.com',
+  'https://www.backened-server-1.onrender.com',
   process.env.FRONTEND_URL,
   FRONTEND_URL,
 ].filter(Boolean));
@@ -50,7 +50,8 @@ app.use(
       if (
         allowedOrigins.has(origin) ||
         /^(http|https):\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin) ||
-        /\.netlify\.app$/i.test(origin)
+        /\.netlify\.app$/i.test(origin) ||
+        /\.onrender\.com$/i.test(origin)
       ) {
         return callback(null, true);
       }

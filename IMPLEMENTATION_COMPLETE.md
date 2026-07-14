@@ -265,7 +265,7 @@ db.candidates.aggregate([
 ### API Verification
 ```bash
 # Test marketplace endpoint
-curl http://localhost:3000/api/candidates/marketplace
+curl https://backened-server-1.onrender.com/api/candidates/marketplace
 
 # Expected response includes all 21 fields
 # Sensitive fields must be absent

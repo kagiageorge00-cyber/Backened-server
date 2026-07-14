@@ -215,7 +215,7 @@ async function submitCandidateForm(event) {
 
 ### 5. API Endpoints Reference
 
-**Base URL:** `https://your-backend-url` (or http://localhost:3000 for testing)
+**Base URL:** `https://backened-server-1.onrender.com`
 
 #### Payment Submission
 ```
@@ -368,11 +368,11 @@ async function handleFormSubmit(formData) {
 
 ## Testing in Development
 
-**Backend running on:** `http://localhost:3000`
+**Backend running on:** `https://backened-server-1.onrender.com`
 
 **Test payment flow:**
 ```bash
-curl -X POST http://localhost:3000/api/submitpayments/submitPayment \
+curl -X POST https://backened-server-1.onrender.com/api/submitpayments/submitPayment \
   -H "Content-Type: application/json" \
   -d '{
     "userId": "+254712345678",

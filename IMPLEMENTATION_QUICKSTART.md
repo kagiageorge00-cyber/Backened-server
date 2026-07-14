@@ -104,7 +104,7 @@ node workers/whatsappQueueWorker.js
 ### Test 1: Import Contacts
 
 ```bash
-curl -X POST http://localhost:3000/api/admin/whatsapp/contacts/import \
+curl -X POST https://backened-server-1.onrender.com/api/admin/whatsapp/contacts/import \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -F "file=@contacts.csv" \
   -F "tags=tech" \
@@ -121,14 +121,14 @@ Jane Smith,+254712345679,referral,hr
 ### Test 2: Get Contacts
 
 ```bash
-curl -X GET "http://localhost:3000/api/admin/whatsapp/contacts?page=1&limit=20" \
+curl -X GET "https://backened-server-1.onrender.com/api/admin/whatsapp/contacts?page=1&limit=20" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
 ### Test 3: Create Campaign
 
 ```bash
-curl -X POST http://localhost:3000/api/admin/whatsapp/campaigns \
+curl -X POST https://backened-server-1.onrender.com/api/admin/whatsapp/campaigns \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -142,7 +142,7 @@ curl -X POST http://localhost:3000/api/admin/whatsapp/campaigns \
 ### Test 4: Queue Campaign
 
 ```bash
-curl -X POST http://localhost:3000/api/admin/whatsapp/campaigns/{campaignId}/queue \
+curl -X POST https://backened-server-1.onrender.com/api/admin/whatsapp/campaigns/{campaignId}/queue \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
@@ -161,7 +161,7 @@ Response:
 ### Test 5: Launch Campaign
 
 ```bash
-curl -X POST http://localhost:3000/api/admin/whatsapp/campaigns/{campaignId}/launch \
+curl -X POST https://backened-server-1.onrender.com/api/admin/whatsapp/campaigns/{campaignId}/launch \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
@@ -171,7 +171,7 @@ Watch queue worker logs - messages should start processing!
 
 ```bash
 # WhatsApp will send verification request
-curl -X GET "http://localhost:3000/api/whatsapp/webhook?hub.mode=subscribe&hub.challenge=test&hub.verify_token=your_secure_token"
+curl -X GET "https://backened-server-1.onrender.com/api/whatsapp/webhook?hub.mode=subscribe&hub.challenge=test&hub.verify_token=your_secure_token"
 
 # Should return: test
 ```
@@ -179,7 +179,7 @@ curl -X GET "http://localhost:3000/api/whatsapp/webhook?hub.mode=subscribe&hub.c
 ### Test 7: Simulate Opt-Out
 
 ```bash
-curl -X POST http://localhost:3000/api/whatsapp/webhook \
+curl -X POST https://backened-server-1.onrender.com/api/whatsapp/webhook \
   -H "Content-Type: application/json" \
   -d '{
     "object": "whatsapp_business_account",

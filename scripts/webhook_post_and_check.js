@@ -6,6 +6,7 @@
   const MONGO = process.env.MONGO_URI || 'mongodb://localhost:27017/bliss';
   await mongoose.connect(MONGO);
 
+  const backendUrl = process.env.BACKEND_URL || 'https://backened-server-1.onrender.com';
   const phone = '+15551234567';
   const payload = {
     object: 'whatsapp_business_account',
@@ -33,7 +34,7 @@
 
   try {
     console.log('Posting webhook payload to /api/whatsapp/webhook');
-    const r = await axios.post('http://localhost:3000/api/whatsapp/webhook', payload, { headers: { 'content-type': 'application/json' } });
+    const r = await axios.post(`${backendUrl}/api/whatsapp/webhook`, payload, { headers: { 'content-type': 'application/json' } });
     console.log('POST status:', r.status);
   } catch (err) {
     console.error('POST error:', err.response ? err.response.status : err.message);
