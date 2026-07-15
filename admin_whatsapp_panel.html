@@ -766,9 +766,16 @@ WHATSAPP_ACCESS_TOKEN=EAAcTy7Mgi90BR12vSdQxMzACZAQOTSHZA5qVQqQqqDCYO2mAvmrCDGlmD
     </div>
 
     <script>
-        const API_BASE_URL = 'https://backened-server-1.onrender.com/api';
-        // For local development:
-        // const API_BASE_URL = 'http://localhost:5000/api';
+        function getConfiguredApiBaseUrl() {
+            const configuredBaseUrl = (
+                window.__BACKEND_URL__ ||
+                window.__API_BASE_URL__ ||
+                'https://backened-server-1.onrender.com'
+            ) || 'https://backened-server-1.onrender.com';
+            return `${configuredBaseUrl.replace(/\/+$/, '')}/api`;
+        }
+
+        const API_BASE_URL = getConfiguredApiBaseUrl();
         
         let adminToken = localStorage.getItem('adminToken');
 
