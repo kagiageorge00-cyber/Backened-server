@@ -585,6 +585,62 @@ app.post('/api/medical/book', async (req, res) => {
 });
 
 // ======================
+// OFFICE VISIT BOOKINGS
+// ======================
+const officeVisitBookingSchema = new mongoose.Schema(
+  {
+    fullName: String,
+    phone: String,
+    email: String,
+    preferredDate: String,
+    preferredTime: String,
+    purpose: String,
+    createdAt: String,
+    status: {
+      type: String,
+      default: 'pending'
+    }
+  },
+  { timestamps: true }
+);
+
+const OfficeVisitBooking = mongoose.model('OfficeVisitBooking', officeVisitBookingSchema);
+
+app.post('/api/office-visit-bookings', async (req, res) => {
+  try {
+    const booking = await OfficeVisitBooking.create(req.body);
+    res.status(201).json({
+      success: true,
+      booking,
+      id: booking._id.toString()
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.get('/api/office-visit-bookings', async (req, res) => {
+  try {
+    const bookings = await OfficeVisitBooking.find({}).sort({ createdAt: -1 }).lean();
+    res.json({
+      success: true,
+      bookings: bookings.map((booking) => ({
+        ...booking,
+        id: booking._id.toString()
+      }))
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// ======================
 // VIDEO UPLOAD
 // ======================
 const storage = multer.diskStorage({

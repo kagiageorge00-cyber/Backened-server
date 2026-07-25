@@ -4,10 +4,22 @@ const { FRONTEND_URL } = require('../config');
 
 // Unified notification system
 async function sendNotification(user, message) {
-  try {
-    await sendWhatsAppMessage(user.phone, message);
-  } catch (e) {
-    console.log('[NOTIFY FALLBACK]', user.phone, message);
+  if (!user) return;
+
+  if (user.phone) {
+    try {
+      await sendWhatsAppMessage(user.phone, message);
+    } catch (e) {
+      console.log('[NOTIFY FALLBACK] WhatsApp failed for', user.phone, e.message);
+    }
+  }
+
+  if (user.email) {
+    try {
+      await sendEmail(user.email, 'Bliss Connect Notification', message);
+    } catch (e) {
+      console.log('[NOTIFY FALLBACK] Email failed for', user.email, e.message);
+    }
   }
 }
 
@@ -25,29 +37,42 @@ module.exports.sendMedicalReminder = sendMedicalReminder;
 // ===============================================
 async function notifyPaymentSuccess(user) {
   const message = 'Hello 👋, your payment has been received successfully. Your application is now being processed.';
-  
-  // Fire-and-forget: send both WhatsApp and email without waiting
-  setImmediate(async () => {
-    try {
-      // Try WhatsApp
-      await sendWhatsAppMessage(user.phone, message);
-    } catch (e) {
-      console.log('WhatsApp notification failed, continuing with email');
-    }
-  });
-
-  // Send email with candidate form link
-  if (user.email) {
-    // link using phone param — uniqueCode may not exist yet
-    const candidateFormLink = user.phone
+  const candidateFormLink = user.candidateFormLink
+    ? user.candidateFormLink
+    : user.phone
       ? `${FRONTEND_URL}/candidate-form?phone=${encodeURIComponent(user.phone)}`
       : `${FRONTEND_URL}/candidate-form`;
-    sendEmail(
-      user.email,
-      'Payment Received - Complete Your Form ✅',
-      `Hello ${user.name || 'there'},\n\nYour payment has been received successfully! ✅\n\nNext step: Complete your candidate form to get verified:\n${candidateFormLink}\n\nBest regards,\nBliss Connect Team`
-    );
-  }
+
+  // Fire-and-forget: send WhatsApp and email without blocking caller
+  setImmediate(async () => {
+    if (user.phone) {
+      try {
+        await sendWhatsAppMessage(user.phone, message);
+      } catch (e) {
+        console.log('WhatsApp notification failed, continuing with email', e.message);
+      }
+    }
+
+    if (user.email) {
+      try {
+        await sendEmail(
+          user.email,
+          'Payment Received - Complete Your Form ✅',
+          `Hello ${user.name || 'there'},\n\nYour payment has been received successfully! ✅\n\nNext step: Complete your candidate form to get verified:\n${candidateFormLink}\n\nBest regards,\nBliss Connect Team`,
+          `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #ffffff; border-radius: 8px; border: 1px solid #e5e7eb;">
+            <h2 style="color: #1d4ed8; margin-top: 0;">Payment Received ✅</h2>
+            <p>Hello ${user.name || 'there'},</p>
+            <p>Your payment has been received successfully. Your application is now being processed.</p>
+            <p>Next step: complete your candidate form to continue:</p>
+            <p><a href="${candidateFormLink}" style="display: inline-block; background: #2563eb; color: white; padding: 12px 20px; text-decoration: none; border-radius: 6px;">Complete Your Candidate Form</a></p>
+            <p style="margin-top: 24px; color: #6b7280; font-size: 13px;">Bliss Connect Team</p>
+          </div>`
+        );
+      } catch (e) {
+        console.log('Email notification failed for payment success:', e.message);
+      }
+    }
+  });
 }
 
 // ===============================================

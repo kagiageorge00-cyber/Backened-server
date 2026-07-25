@@ -1,52 +1,43 @@
-// WhatsApp Cloud API service (TEST ONLY)
-// Reads credentials from environment variables
-// Usage: sendWhatsAppMessage(to, message)
-
 const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 require('dotenv').config();
 
+const whatsappCloudService = (() => {
+  try {
+    return require('./services/whatsappCloudService');
+  } catch (err) {
+    console.warn('⚠️ WhatsApp Cloud service unavailable:', err.message);
+    return null;
+  }
+})();
+
 const PHONE_ID = process.env.WHATSAPP_PHONE_ID;
 const TOKEN = process.env.WHATSAPP_TOKEN;
-const API_URL = `https://graph.facebook.com/v25.0/${PHONE_ID}/messages`;
-
-// Only allow sending to verified test numbers
-const VERIFIED_TEST_NUMBERS = [
-  // Example: '2547XXXXXXXX',
-];
+const CLOUD_CONFIGURED = Boolean(PHONE_ID && TOKEN && whatsappCloudService && whatsappCloudService.validateConfig());
 
 async function sendWhatsAppMessage(to, message) {
-  if (!PHONE_ID || !TOKEN) {
-    console.log('[WHATSAPP] Missing credentials');
-    return { success: true, fallback: true, error: 'Missing credentials' };
+  if (!to || !message) {
+    console.warn('[WHATSAPP] Missing recipient or message');
+    return { success: false, error: 'Missing recipient or message' };
   }
-  if (!VERIFIED_TEST_NUMBERS.includes(to)) {
-    console.log(`[WHATSAPP] Blocked: ${to} not in test numbers`);
-    return { success: true, fallback: true, error: 'Not a test number' };
+
+  const cleanedPhone = String(to).replace(/[\s\-()]/g, '');
+
+  if (CLOUD_CONFIGURED) {
+    try {
+      const result = await whatsappCloudService.sendTextMessage(cleanedPhone, message);
+      if (result && result.success) {
+        return result;
+      }
+      throw new Error(result?.error || 'WhatsApp Cloud send failed');
+    } catch (err) {
+      console.error('[WHATSAPP] Cloud send failed:', err.message);
+      // fall through to fallback behavior
+    }
   }
-  const body = {
-    messaging_product: 'whatsapp',
-    to,
-    type: 'text',
-    text: { body: message },
-  };
-  try {
-    const res = await fetch(API_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${TOKEN}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json();
-    console.log('[WHATSAPP] Response:', data);
-    if (!res.ok) throw new Error(data.error?.message || 'WhatsApp API error');
-    return { success: true, data };
-  } catch (err) {
-    console.log('[WHATSAPP] Fallback:', err.message);
-    console.log('[WHATSAPP] Message:', { to, message });
-    return { success: true, fallback: true, error: err.message };
-  }
+
+  console.log('[WHATSAPP] Cloud API not configured or failed, falling back to test mode');
+  console.log('[WHATSAPP] Fallback message:', { to: cleanedPhone, message });
+  return { success: true, fallback: true, error: 'Fallback mode, message logged' };
 }
 
 module.exports = { sendWhatsAppMessage };

@@ -645,6 +645,16 @@ router.post('/form/submit', async (req, res) => {
           (passwordPlain ? ` Your password is ${passwordPlain}.` : ''),
         htmlBody
       );
+
+      if (candidate.phone) {
+        try {
+          const { sendWhatsAppMessage } = require('../whatsapp');
+          const whatsappMessage = `✅ Registration complete. Your Candidate ID is ${candidate.uniqueCode}. Complete your candidate form using this link: ${confirmationLink}`;
+          await sendWhatsAppMessage(candidate.phone, whatsappMessage);
+        } catch (waErr) {
+          console.warn('WhatsApp notification failed for candidate registration:', waErr.message || waErr);
+        }
+      }
     }
 
     const responseCandidate = candidate.toObject ? candidate.toObject() : { ...candidate };
