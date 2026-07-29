@@ -5,7 +5,6 @@
 
 const contactService = require('../services/whatsappContactService');
 const campaignService = require('../services/whatsappCampaignService');
-const { messageQueue } = require('../services/whatsappQueueService');
 const WhatsAppImportHistory = require('../models/WhatsAppImportHistory');
 const Papa = require('papaparse');
 const fs = require('fs');

@@ -1,14 +1,52 @@
 const express = require('express');
 const router = express.Router();
 const Notification = require('../models/Notification');
+const { createNotification } = require('../utils/notificationHelper');
 
 router.post('/create', async (req, res) => {
   try {
-    const { userId, userType, title, message, notificationType, actionUrl } = req.body;
-    if (!userId || !title || !message) return res.status(400).json({ success: false, error: 'userId, title and message required' });
+    const {
+      userId,
+      userType,
+      title,
+      message,
+      notificationType,
+      actionUrl,
+      category,
+      entityType,
+      entityId,
+      candidateName,
+      employerName,
+      amount,
+      currency,
+      phoneNumber,
+      email,
+      html,
+    } = req.body;
 
-    const notificationId = `NOT-${Date.now()}-${Math.round(Math.random() * 10000)}`;
-    const note = await Notification.create({ notificationId, userId, userType, title, message, notificationType, actionUrl });
+    if (!userId || !title || !message) {
+      return res.status(400).json({ success: false, error: 'userId, title and message required' });
+    }
+
+    const note = await createNotification({
+      userId,
+      userType,
+      title,
+      message,
+      type: notificationType,
+      actionUrl,
+      category,
+      entityType,
+      entityId,
+      candidateName,
+      employerName,
+      amount,
+      currency,
+      phoneNumber,
+      email,
+      html,
+    });
+
     return res.status(201).json({ success: true, data: note });
   } catch (err) {
     console.error('Notification create error:', err);

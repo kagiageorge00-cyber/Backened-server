@@ -5,27 +5,234 @@
  */
 
 const { Worker, Queue } = require('bullmq');
-const redis = require('ioredis');
+const Redis = require('ioredis');
 const WhatsAppQueue = require('../models/WhatsAppQueue');
 const WhatsAppCampaign = require('../models/WhatsAppCampaign');
 const WhatsAppMessageLog = require('../models/WhatsAppMessageLog');
 const whatsappCloudService = require('./whatsappCloudService');
 require('dotenv').config();
 
-const redisConnection = new redis({
-  host: process.env.REDIS_HOST || 'localhost',
-  port: process.env.REDIS_PORT || 6379,
-});
+let messageQueue = null;
+let messageWorker = null;
+let redisConnection = null;
+let redisAvailable = null;
+let redisErrorReported = false;
+let redisResetInProgress = false;
 
-// Create queue
-const messageQueue = new Queue('whatsapp-messages', { connection: redisConnection });
+function isRedisConnectionError(err) {
+  if (!err) {
+    return false;
+  }
 
-/**
- * Process a single message from queue
- */
-const messageWorker = new Worker(
-  'whatsapp-messages',
-  async job => {
+  if (typeof err === 'string') {
+    return /ECONNREFUSED|ECONNRESET/i.test(err);
+  }
+
+  const message = String(err.message || err);
+  if (/ECONNREFUSED|ECONNRESET/i.test(message)) {
+    return true;
+  }
+
+  if (err.code === 'ECONNREFUSED' || err.code === 'ECONNRESET') {
+    return true;
+  }
+
+  if (err.cause) {
+    return isRedisConnectionError(err.cause);
+  }
+
+  const nested = err.errors;
+  if (nested) {
+    const errors = Array.isArray(nested) ? nested : Array.from(nested);
+    return errors.some(isRedisConnectionError);
+  }
+
+  if (err.stack && /ECONNREFUSED|ECONNRESET/i.test(err.stack)) {
+    return true;
+  }
+
+  return false;
+}
+
+async function resetRedisState() {
+  if (redisResetInProgress) {
+    return;
+  }
+
+  redisResetInProgress = true;
+  redisAvailable = false;
+  redisErrorReported = false;
+
+  const worker = messageWorker;
+  const queue = messageQueue;
+  const connection = redisConnection;
+
+  messageWorker = null;
+  messageQueue = null;
+  redisConnection = null;
+
+  if (worker) {
+    worker.removeAllListeners();
+    try {
+      await worker.close();
+    } catch (closeError) {
+      // ignore worker close failure
+    }
+  }
+
+  if (queue) {
+    queue.removeAllListeners();
+    try {
+      await queue.close();
+    } catch (closeError) {
+      // ignore queue close failure
+    }
+  }
+
+  if (connection) {
+    connection.removeAllListeners();
+    try {
+      connection.disconnect();
+    } catch (disconnectError) {
+      // ignore disconnect failure
+    }
+  }
+
+  redisResetInProgress = false;
+}
+
+function getRedisConnection() {
+  if (redisConnection) {
+    return redisConnection;
+  }
+
+  redisConnection = new Redis({
+    host: process.env.REDIS_HOST || 'localhost',
+    port: process.env.REDIS_PORT || 6379,
+    enableOfflineQueue: false,
+    lazyConnect: true,
+    connectTimeout: 2000,
+    maxRetriesPerRequest: 1,
+    retryStrategy: () => null,
+  });
+
+  redisConnection.on('error', err => {
+    if (!redisErrorReported) {
+      console.warn('⚠️ Redis connection error:', err.message);
+      redisErrorReported = true;
+    }
+    redisAvailable = false;
+  });
+
+  redisConnection.on('end', () => {
+    redisAvailable = false;
+  });
+
+  redisConnection.on('ready', () => {
+    redisAvailable = true;
+    redisErrorReported = false;
+  });
+
+  return redisConnection;
+}
+
+async function ensureRedisAvailable() {
+  if (redisAvailable === true) {
+    return true;
+  }
+
+  const connection = getRedisConnection();
+  if (connection.status === 'ready') {
+    redisAvailable = true;
+    redisErrorReported = false;
+    return true;
+  }
+
+  try {
+    await connection.connect();
+    await connection.ping();
+    redisAvailable = true;
+    redisErrorReported = false;
+    return true;
+  } catch (error) {
+    if (!redisErrorReported) {
+      console.warn('⚠️ Redis unavailable for WhatsApp queue:', error.message);
+      redisErrorReported = true;
+    }
+    await resetRedisState();
+    return false;
+  }
+}
+
+async function createQueueIfNeeded() {
+  if (messageQueue && redisAvailable !== false) {
+    return messageQueue;
+  }
+
+  if (messageQueue && redisAvailable === false) {
+    await resetRedisState();
+  }
+
+  const isAvailable = await ensureRedisAvailable();
+  if (!isAvailable) {
+    return null;
+  }
+
+  try {
+    messageQueue = new Queue('whatsapp-messages', { connection: getRedisConnection() });
+    messageQueue.on('error', err => {
+      if (isRedisConnectionError(err)) {
+        if (!redisErrorReported) {
+          console.warn('⚠️ Redis connection failed for WhatsApp queue:', err.message);
+          redisErrorReported = true;
+        }
+        resetRedisState().catch(() => {});
+      } else {
+        console.error('WhatsApp queue error:', err);
+      }
+    });
+
+    try {
+      await messageQueue.waitUntilReady();
+    } catch (error) {
+      if (isRedisConnectionError(error)) {
+        if (!redisErrorReported) {
+          console.warn('⚠️ Redis unavailable while initializing WhatsApp queue:', error.message);
+          redisErrorReported = true;
+        }
+      } else {
+        console.error('❌ WhatsApp queue failed to become ready:', error);
+      }
+      await resetRedisState();
+      return null;
+    }
+  } catch (error) {
+    console.warn('⚠️ Redis unavailable for WhatsApp queue; queue disabled:', error.message);
+    await resetRedisState();
+    return null;
+  }
+
+  return messageQueue;
+}
+
+async function createWorkerIfNeeded() {
+  if (messageWorker && redisAvailable !== false) {
+    return messageWorker;
+  }
+
+  if (messageWorker && redisAvailable === false) {
+    await resetRedisState();
+  }
+
+  const queue = await createQueueIfNeeded();
+  if (!queue) {
+    return null;
+  }
+
+  try {
+    messageWorker = new Worker(
+      'whatsapp-messages',
+      async job => {
     const { queueId, phoneNumber, message, messageType, templateName, templateParams, campaignId } = job.data;
 
     try {
@@ -149,20 +356,72 @@ const messageWorker = new Worker(
       // Retry job
       throw error;
     }
-  },
-  {
-    connection: redisConnection,
-    concurrency: 10, // Process 10 messages concurrently
-    defaultJobOptions: {
-      attempts: 3,
-      backoff: {
-        type: 'exponential',
-        delay: 5000,
-      },
-      removeOnComplete: true,
     },
+    {
+      connection: getRedisConnection(),
+      concurrency: 10, // Process 10 messages concurrently
+      defaultJobOptions: {
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 5000,
+        },
+        removeOnComplete: true,
+      },
+    }
+    );
+
+    messageWorker.on('completed', job => {
+      console.log(`✅ Job ${job.id} completed`);
+    });
+
+    messageWorker.on('failed', (job, err) => {
+      console.error(`❌ Job ${job.id} failed:`, err.message);
+    });
+
+    messageWorker.on('error', err => {
+      if (isRedisConnectionError(err)) {
+        if (!redisErrorReported) {
+          console.warn('⚠️ Redis connection failed for WhatsApp worker:', err.message);
+          redisErrorReported = true;
+        }
+        resetRedisState().catch(() => {});
+      } else {
+        console.error('Worker error:', err);
+      }
+    });
+
+    try {
+      await messageWorker.waitUntilReady();
+    } catch (error) {
+      if (isRedisConnectionError(error)) {
+        if (!redisErrorReported) {
+          console.warn('⚠️ Redis unavailable while initializing WhatsApp worker:', error.message);
+          redisErrorReported = true;
+        }
+      } else {
+        console.error('❌ WhatsApp worker failed to become ready:', error);
+      }
+      await resetRedisState();
+      return null;
+    }
+  } catch (error) {
+    if (isRedisConnectionError(error)) {
+      if (!redisErrorReported) {
+        console.warn('⚠️ Redis connection failed while starting WhatsApp worker:', error.message);
+        redisErrorReported = true;
+      }
+      await resetRedisState();
+      return null;
+    }
+
+    console.warn('⚠️ Redis unavailable for WhatsApp worker; worker disabled:', error.message);
+    await resetRedisState();
+    return null;
   }
-);
+
+  return messageWorker;
+}
 
 /**
  * Process queue records and add jobs
@@ -170,6 +429,10 @@ const messageWorker = new Worker(
  */
 async function processQueue() {
   try {
+    const queue = await createQueueIfNeeded();
+    if (!queue) {
+      return { success: false, skipped: true, reason: 'redis_unavailable' };
+    }
     // Find pending messages that are ready to retry
     const runningCampaignIds = await WhatsAppCampaign.find({ status: 'running' }).distinct('_id');
 
@@ -189,7 +452,7 @@ async function processQueue() {
     for (const queueRecord of pendingMessages) {
       try {
         // Add job to queue
-        await messageQueue.add(
+        await queue.add(
           'send-message',
           {
             queueId: queueRecord._id.toString(),
@@ -228,6 +491,11 @@ async function processQueue() {
  */
 async function batchProcessCampaign(campaignId, batchSize = 100) {
   try {
+    const queue = await createQueueIfNeeded();
+    if (!queue) {
+      return { success: false, skipped: true, reason: 'redis_unavailable' };
+    }
+
     const queueRecords = await WhatsAppQueue.find({
       campaignId: require('mongoose').Types.ObjectId(campaignId),
       status: 'pending',
@@ -240,7 +508,7 @@ async function batchProcessCampaign(campaignId, batchSize = 100) {
     let added = 0;
     for (const record of queueRecords) {
       try {
-        await messageQueue.add(
+        await queue.add(
           'send-message',
           {
             queueId: record._id.toString(),
@@ -284,13 +552,18 @@ async function retryFailedMessages() {
 
     console.log(`🔄 Retrying ${failedMessages.length} failed messages`);
 
+    const queue = await createQueueIfNeeded();
+    if (!queue) {
+      return { success: false, skipped: true, reason: 'redis_unavailable' };
+    }
+
     for (const record of failedMessages) {
       record.status = 'pending';
       record.retryCount = 0;
       record.nextRetryAt = null;
       await record.save();
 
-      await messageQueue.add(
+      await queue.add(
         'send-message',
         {
           queueId: record._id.toString(),
@@ -311,22 +584,9 @@ async function retryFailedMessages() {
   }
 }
 
-// Event handlers
-messageWorker.on('completed', job => {
-  console.log(`✅ Job ${job.id} completed`);
-});
-
-messageWorker.on('failed', (job, err) => {
-  console.error(`❌ Job ${job.id} failed:`, err.message);
-});
-
-messageWorker.on('error', err => {
-  console.error('Worker error:', err);
-});
-
 module.exports = {
-  messageQueue,
-  messageWorker,
+  getMessageQueue: createQueueIfNeeded,
+  getMessageWorker: createWorkerIfNeeded,
   processQueue,
   batchProcessCampaign,
   retryFailedMessages,

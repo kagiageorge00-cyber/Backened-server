@@ -6,13 +6,55 @@
 const WhatsAppCampaign = require('../models/WhatsAppCampaign');
 const WhatsAppQueue = require('../models/WhatsAppQueue');
 const WhatsAppContact = require('../models/WhatsAppContact');
-const { Queue } = require('bullmq');
 const redis = require('ioredis');
 
-const redisClient = new redis({
-  host: process.env.REDIS_HOST || 'localhost',
-  port: process.env.REDIS_PORT || 6379,
-});
+let redisClient = null;
+let redisErrorReported = false;
+
+function getRedisClient() {
+  if (redisClient) {
+    return redisClient;
+  }
+
+  redisClient = new redis({
+    host: process.env.REDIS_HOST || 'localhost',
+    port: process.env.REDIS_PORT || 6379,
+    enableOfflineQueue: false,
+    lazyConnect: true,
+    connectTimeout: 1500,
+    maxRetriesPerRequest: 1,
+    retryStrategy: () => null,
+  });
+
+  redisClient.on('error', err => {
+    if (!redisErrorReported) {
+      console.warn('⚠️ Redis unavailable for WhatsApp campaign service:', err.message);
+      redisErrorReported = true;
+    }
+  });
+
+  return redisClient;
+}
+
+async function notifyCampaignLaunch(campaignId) {
+  const client = getRedisClient();
+
+  try {
+    if (client.status !== 'ready') {
+      await client.connect();
+    }
+
+    await client.set(`campaign:${campaignId}:launch`, '1', 'EX', 86400);
+    redisErrorReported = false;
+    return true;
+  } catch (error) {
+    if (!redisErrorReported) {
+      console.warn('⚠️ Redis unavailable for campaign launch notification:', error.message);
+      redisErrorReported = true;
+    }
+    return false;
+  }
+}
 
 /**
  * Create a new campaign
@@ -237,8 +279,8 @@ async function launchCampaign(campaignId) {
     campaign.updatedAt = new Date();
     await campaign.save();
 
-    // Notify queue worker
-    await redisClient.set(`campaign:${campaignId}:launch`, '1', 'EX', 86400);
+    // Notify queue worker without failing the launch if Redis is unavailable
+    await notifyCampaignLaunch(campaignId);
 
     return {
       campaignId,

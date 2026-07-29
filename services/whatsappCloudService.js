@@ -531,6 +531,65 @@ async function sendTemplateMessage(phoneNumber, templateName, parameters = [], l
   }
 }
 
+async function createMessageTemplate(name, bodyText, languageCode = 'en_US', category = 'TRANSACTIONAL', headerText = null, footerText = null) {
+  try {
+    if (!validateConfig()) {
+      throw new Error('WhatsApp Cloud API not configured');
+    }
+
+    const url = `${API_BASE_URL}/${WABA_ID}/message_templates`;
+
+    const components = [];
+    if (headerText) {
+      components.push({
+        type: 'HEADER',
+        format: 'TEXT',
+        text: headerText,
+      });
+    }
+
+    components.push({
+      type: 'BODY',
+      text: bodyText,
+    });
+
+    if (footerText) {
+      components.push({
+        type: 'FOOTER',
+        text: footerText,
+      });
+    }
+
+    const payload = {
+      name,
+      language: { code: languageCode },
+      category,
+      components,
+    };
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${ACCESS_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw new Error(data?.error?.message || `WhatsApp API Error: ${response.status}`);
+    }
+
+    console.log('✅ WhatsApp template created:', { name, languageCode, category, data });
+    return { success: true, data };
+  } catch (error) {
+    console.error('❌ WhatsApp template create error:', error.message);
+    return { success: false, error: error.message, data: null };
+  }
+}
+
 /**
  * Send message with media (image, video, document, audio)
  * @param {string} phoneNumber - Recipient phone number
@@ -908,4 +967,5 @@ module.exports = {
   getWhatsAppAssetsReport,
   validateWhatsAppCredentials,
   verifyWhatsAppAccess,
+  createMessageTemplate,
 };

@@ -6,6 +6,10 @@ const path = require('path');
 const multer = require('multer');
 const rateLimit = require('express-rate-limit');
 const logger = require('./utils/logger');
+const {
+  createOfficeVisitBooking,
+  getOfficeVisitBookings,
+} = require('./services/officeVisitBookingService');
 require('dotenv').config();
 
 let helmet;
@@ -102,6 +106,14 @@ if (!fs.existsSync(fallbackApkPath)) {
 
 app.use('/downloads', express.static(downloadsDir));
 
+app.get('/admin/whatsapp-panel', (req, res) => {
+  res.sendFile(path.join(__dirname, 'admin_whatsapp_panel.html'));
+});
+
+app.get('/admin', (req, res) => {
+  res.redirect('/admin/whatsapp-panel');
+});
+
 // -----------------------------
 // IMAGE PROXY (adds CORS)
 // -----------------------------
@@ -173,6 +185,7 @@ const candidateRoutes = require('./routes/candidateRoutes');
 const applyRoutes = require('./routes/applyRoutes');
 const registerRoutes = require('./routes/register');
 const paymentRoutes = require('./routes/payment');
+const paymentRoutesV2 = require('./routes/paymentRoutes');
 const uploadRoutes = require('./routes/upload');
 let adminRoutes;
 try {
@@ -202,6 +215,11 @@ const messagesRoutes = require('./routes/messages');
 const jobsRoutes = require('./routes/jobs');
 const whatsappWebhookRoutes = require('./routes/whatsappWebhook');
 const whatsappEmbeddedSignupRoutes = require('./routes/whatsappEmbeddedSignup');
+const blissAuthRoutes = require('./routes/bliss_auth');
+const modularAuthRoutes = require('./auth/routes/authRoutes');
+const dashboardRoutes = require('./dashboard/routes/dashboardRoutes');
+const inboxRoutes = require('./inbox/routes/inboxRoutes');
+const SocketManager = require('./inbox/socket/socketManager');
 // Admin WhatsApp routes (campaign management)
 let whatsappAdminRoutes;
 try {
@@ -233,10 +251,15 @@ app.use('/api/apply', applyRoutes);
 app.use(['/api/register', '/api/candidate/register'], registerRoutes);
 app.use('/api/employers', employerRoutes);
 app.use('/api/payments', paymentRoutes);
+app.use('/api/payments', paymentRoutesV2);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/whatsapp', whatsappWebhookRoutes);
 app.use('/api/whatsapp', whatsappEmbeddedSignupRoutes);
+app.use('/api/bliss-auth', blissAuthRoutes);
+app.use('/api/auth', modularAuthRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/inbox', inboxRoutes);
 app.use('/api/marketplace', marketplaceRoutes);
 app.use('/api/interviews', interviewsRoutes);
 app.use('/api/shortlist', shortlistRoutes);
@@ -259,6 +282,10 @@ app.use('/api/candidate/v2', candidateApiRoutes);
 // ======================
 app.get('/api/admin/health', (req, res) => {
   res.json({ success: true, message: 'Admin routes working ✅' });
+});
+
+app.get('/api/auth/health', (req, res) => {
+  res.json({ success: true, message: 'Bliss authentication backend is live.' });
 });
 // legacy submitpayments fallback remains last to avoid overriding active /api/submitPayment routes
 
@@ -587,55 +614,48 @@ app.post('/api/medical/book', async (req, res) => {
 // ======================
 // OFFICE VISIT BOOKINGS
 // ======================
-const officeVisitBookingSchema = new mongoose.Schema(
-  {
-    fullName: String,
-    phone: String,
-    email: String,
-    preferredDate: String,
-    preferredTime: String,
-    purpose: String,
-    createdAt: String,
-    status: {
-      type: String,
-      default: 'pending'
-    }
-  },
-  { timestamps: true }
-);
-
-const OfficeVisitBooking = mongoose.model('OfficeVisitBooking', officeVisitBookingSchema);
-
 app.post('/api/office-visit-bookings', async (req, res) => {
   try {
-    const booking = await OfficeVisitBooking.create(req.body);
+    const booking = await createOfficeVisitBooking(req.body);
     res.status(201).json({
       success: true,
       booking,
-      id: booking._id.toString()
+      id: booking._id.toString(),
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message,
     });
   }
 });
 
 app.get('/api/office-visit-bookings', async (req, res) => {
   try {
-    const bookings = await OfficeVisitBooking.find({}).sort({ createdAt: -1 }).lean();
+    const bookings = await getOfficeVisitBookings();
     res.json({
       success: true,
-      bookings: bookings.map((booking) => ({
-        ...booking,
-        id: booking._id.toString()
-      }))
+      bookings,
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message,
+    });
+  }
+});
+
+app.get('/api/admin/office-visit-bookings', async (req, res) => {
+  try {
+    const bookings = await getOfficeVisitBookings();
+    res.json({
+      success: true,
+      bookings,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
     });
   }
 });
@@ -739,6 +759,9 @@ app.use((req, res) => {
 // ======================
 // DATABASE + SERVER
 // ======================
+let httpServer;
+let socketManager;
+
 async function startServer() {
   const PORT = process.env.PORT || 3000;
 
@@ -755,9 +778,12 @@ async function startServer() {
     console.warn('⚠️ MongoDB connection failed; continuing without database:', error.message);
   }
 
-  app.listen(PORT, () => {
+  httpServer = app.listen(PORT, () => {
     logger.info(`Server running on port ${PORT}`);
   });
+
+  socketManager = new SocketManager(httpServer);
+  logger.info('Socket.IO messaging backend initialized');
 }
 
 module.exports = app;

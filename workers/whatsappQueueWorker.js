@@ -5,12 +5,10 @@
  */
 
 const mongoose = require('mongoose');
-const { Worker } = require('bullmq');
-const redis = require('ioredis');
 require('dotenv').config();
 
 // Import services
-const { messageQueue, messageWorker, processQueue } = require('../services/whatsappQueueService');
+const whatsappQueueService = require('../services/whatsappQueueService');
 
 // Connect to MongoDB
 async function connectMongoDB() {
@@ -29,27 +27,36 @@ async function initializeWorker() {
     await connectMongoDB();
 
     console.log('🚀 WhatsApp Queue Worker started');
-    console.log('📊 Processing messages with concurrency: 10');
+
+    const worker = await whatsappQueueService.getMessageWorker();
+    if (!worker) {
+      console.warn('⚠️ Redis unavailable, WhatsApp queue worker disabled. Message processing will be skipped.');
+    } else {
+      console.log('📊 Processing messages with concurrency: 10');
+    }
 
     // Process queue every 5 seconds
     setInterval(async () => {
-      await processQueue();
+      await whatsappQueueService.processQueue();
     }, 5000);
 
     // Handle graceful shutdown
-    process.on('SIGTERM', async () => {
-      console.log('⛔ SIGTERM received, shutting down gracefully...');
-      await messageWorker.close();
+    const shutdown = async (signal) => {
+      console.log(`⛔ ${signal} received, shutting down gracefully...`);
+      const workerInstance = await whatsappQueueService.getMessageWorker();
+      if (workerInstance && typeof workerInstance.close === 'function') {
+        try {
+          await workerInstance.close();
+        } catch (error) {
+          console.warn('⚠️ Error closing WhatsApp worker during shutdown:', error.message);
+        }
+      }
       await mongoose.disconnect();
       process.exit(0);
-    });
+    };
 
-    process.on('SIGINT', async () => {
-      console.log('⛔ SIGINT received, shutting down gracefully...');
-      await messageWorker.close();
-      await mongoose.disconnect();
-      process.exit(0);
-    });
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT', () => shutdown('SIGINT'));
 
     console.log('✅ Worker ready to process messages');
   } catch (error) {

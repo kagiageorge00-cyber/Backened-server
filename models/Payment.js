@@ -1,64 +1,52 @@
-// models/Payment.js
-
-const mongoose = require("mongoose");
+const mongoose = require('mongoose');
 
 const paymentSchema = new mongoose.Schema(
   {
-    intentId: {
+    candidateId: {
       type: String,
-      required: true,
-      unique: true,
-      trim: true,
-    },
-
-    userId: {
-      type: String, // can later change to ObjectId if linking to User
       required: true,
       index: true,
-    },
-
-    amount: {
-      type: Number,
-      required: true,
-      min: 0,
-    },
-
-    title: {
-      type: String,
-      required: true,
       trim: true,
     },
-
-    method: {
-      type: String,
-      enum: ["mpesa", "card", "flutterwave", "cash"],
-      default: "mpesa",
-    },
-
-    status: {
-      type: String,
-      enum: ["pending", "approved", "rejected", "completed", "failed"],
-      default: "pending",
-      index: true,
-    },
-
     transactionId: {
       type: String,
       trim: true,
       index: true,
     },
-
-    metadata: {
-      type: mongoose.Schema.Types.Mixed, // more flexible than Object
-      default: {},
-    },
-    formLink: {
+    invoiceId: {
       type: String,
+      trim: true,
       default: null,
     },
-    linkGeneratedAt: {
-      type: Date,
+    checkoutId: {
+      type: String,
+      trim: true,
       default: null,
+    },
+    paymentMethod: {
+      type: String,
+      enum: ['mpesa', 'card', 'visa', 'mastercard', 'cash'],
+      default: 'mpesa',
+    },
+    amount: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+    currency: {
+      type: String,
+      default: 'KES',
+      trim: true,
+    },
+    status: {
+      type: String,
+      enum: ['pending', 'processing', 'paid', 'failed', 'rejected', 'completed'],
+      default: 'pending',
+      index: true,
+    },
+    metadata: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
     },
   },
   {
@@ -66,15 +54,8 @@ const paymentSchema = new mongoose.Schema(
   }
 );
 
-// ======================
-// INDEXES (FAST QUERIES)
-// ======================
-paymentSchema.index({ userId: 1, status: 1 });
+paymentSchema.index({ candidateId: 1, status: 1 });
 
-// ======================
-// EXPORT SAFE MODEL
-// ======================
-const Payment =
-  mongoose.models.Payment || mongoose.model("Payment", paymentSchema);
+const Payment = mongoose.models.Payment || mongoose.model('Payment', paymentSchema);
 
 module.exports = Payment;

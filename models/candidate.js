@@ -1,8 +1,6 @@
 const mongoose = require('mongoose');
 
-
 const candidateSchema = new mongoose.Schema({
-  // ===== IDENTITY =====
   name: String,
   fullName: String,
   email: String,
@@ -19,8 +17,6 @@ const candidateSchema = new mongoose.Schema({
     index: true,
     default: null,
   },
-
-  // ===== PERSONAL INFORMATION =====
   country: String,
   nationality: String,
   gender: String,
@@ -31,8 +27,6 @@ const candidateSchema = new mongoose.Schema({
     enum: ['Single', 'Married', 'Divorced', 'Widowed', 'Separated'],
   },
   numberOfChildren: Number,
-
-  // ===== EDUCATION & PROFESSIONAL =====
   education: String,
   educationalLevel: {
     type: String,
@@ -43,22 +37,16 @@ const candidateSchema = new mongoose.Schema({
   languages: [String],
   idNumber: String,
   county: String,
-
-  // ===== JOB PREFERENCES =====
   jobPosition: String,
   jobType: String,
   jobAppliedFor: String,
   destinationCountry: String,
   destinationPreference: [String],
   expectedSalary: String,
-
-  // ===== APPLICATION METADATA =====
   appliedJobId: String,
   appliedJobTitle: String,
   appliedEmployerId: String,
   appliedEmployerName: String,
-
-  // ===== DOCUMENTS & MEDIA =====
   photoUrl: String,
   videoUrl: String,
   passportUrl: String,
@@ -83,8 +71,6 @@ const candidateSchema = new mongoose.Schema({
       }
     ],
   },
-
-  // ===== STATUS & VERIFICATION =====
   isVerified: {
     type: Boolean,
     default: false,
@@ -98,11 +84,20 @@ const candidateSchema = new mongoose.Schema({
     type: String,
     default: 'Registration',
   },
+  applicationStatus: {
+    type: String,
+    default: 'Pending Payment',
+  },
   paymentStatus: {
     type: String,
-    enum: ['pending', 'completed'],
-    default: 'pending',
+    enum: ['Pending', 'Paid', 'Failed', 'Unpaid'],
+    default: 'Pending',
   },
+  paymentReference: String,
+  paymentMethod: String,
+  paymentDate: Date,
+  transactionId: String,
+  amount: Number,
   profileCompletion: {
     type: Number,
     default: 0,
@@ -111,8 +106,6 @@ const candidateSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
-
-  // ===== REFERENCES & TIMESTAMPS =====
   paymentId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Payment',
@@ -130,5 +123,4 @@ const candidateSchema = new mongoose.Schema({
   },
 });
 
-
-module.exports = mongoose.model('Candidate', candidateSchema)
+module.exports = mongoose.model('Candidate', candidateSchema);

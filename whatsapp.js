@@ -10,9 +10,14 @@ const whatsappCloudService = (() => {
   }
 })();
 
-const PHONE_ID = process.env.WHATSAPP_PHONE_ID;
-const TOKEN = process.env.WHATSAPP_TOKEN;
-const CLOUD_CONFIGURED = Boolean(PHONE_ID && TOKEN && whatsappCloudService && whatsappCloudService.validateConfig());
+const WHATSAPP_PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID;
+const WHATSAPP_ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
+const CLOUD_CONFIGURED = Boolean(
+  WHATSAPP_PHONE_NUMBER_ID &&
+  WHATSAPP_ACCESS_TOKEN &&
+  whatsappCloudService &&
+  whatsappCloudService.validateConfig()
+);
 
 async function sendWhatsAppMessage(to, message) {
   if (!to || !message) {
@@ -20,7 +25,9 @@ async function sendWhatsAppMessage(to, message) {
     return { success: false, error: 'Missing recipient or message' };
   }
 
-  const cleanedPhone = String(to).replace(/[\s\-()]/g, '');
+  const cleanedPhone = String(to)
+    .replace(/[\s\-()\.\+]/g, '')
+    .replace(/^00/, '');
 
   if (CLOUD_CONFIGURED) {
     try {

@@ -154,7 +154,13 @@ async function sendMailWithResend(to, subject, text, html) {
     subject,
     html,
   });
-  console.log('📧 Resend response:', resp && resp.id ? resp.id : resp);
+
+  console.log('📧 Resend response:', resp);
+
+  if (resp && resp.error) {
+    throw new Error(`Resend API error: ${resp.error.message || JSON.stringify(resp.error)}`);
+  }
+
   return resp;
 }
 

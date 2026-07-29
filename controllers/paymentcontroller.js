@@ -1,186 +1,321 @@
 // backend/controllers/paymentController.js
 
-const crypto = require("crypto");
-const Payment = require("../models/payment");
-const { stkPush } = require("../services/mpesaService");
-const flutterwaveService = require("../services/flutterwaveService");
+const Payment = require('../models/Payment');
+const Candidate = require('../models/candidate');
+const logger = require('../utils/logger');
+const { createCheckoutSession, verifyTransaction } = require('../services/intasendService');
+const { applicationFeeConfig } = require('../config/payment');
 
+function normalizeAmount(amount) {
+  const parsed = Number(amount);
+  return Number.isFinite(parsed) ? parsed : applicationFeeConfig.amount;
+}
 
-// ================= CREATE INTENT =================
-exports.createIntent = async (req, res) => {
+function sanitizePayload(payload) {
+  return Object.fromEntries(
+    Object.entries(payload).filter(([, value]) => value !== undefined)
+  );
+}
+
+function buildCandidateUpdatePayload({
+  payment,
+  paymentMethod,
+  status,
+  transactionId,
+  amount,
+  paymentReference,
+  invoiceId,
+  checkoutId,
+}) {
+  return sanitizePayload({
+    paymentStatus: status === 'paid' ? 'Paid' : status === 'failed' ? 'Failed' : 'Pending',
+    paymentReference: paymentReference || payment?.paymentReference || transactionId || invoiceId || '',
+    paymentMethod: paymentMethod || payment?.paymentMethod || 'mpesa',
+    paymentDate: status === 'paid' ? new Date() : undefined,
+    transactionId: transactionId || payment?.transactionId || '',
+    amount: amount || payment?.amount || 0,
+    applicationStatus: status === 'paid' ? 'Application Submitted' : status === 'failed' ? 'Payment Failed' : 'Pending Payment',
+  });
+}
+
+exports.createPayment = async (req, res, next) => {
   try {
-    const { userId, amount, title } = req.body;
+    const {
+      candidateId,
+      amount,
+      paymentMethod = 'mpesa',
+      title,
+      email,
+      fullName,
+      phoneNumber,
+      metadata = {},
+    } = req.body;
 
-    if (!userId || !amount || !title) {
-      return res.status(400).json({
-        success: false,
-        error: "userId, amount and title are required",
-      });
+    if (!candidateId) {
+      return res.status(400).json({ success: false, error: 'candidateId is required.' });
     }
 
-    const intentId = crypto.randomUUID();
+    const candidate = (await Candidate.findById(candidateId)) || (await Candidate.findOne({ candidateId }));
+    if (!candidate) {
+      return res.status(404).json({ success: false, error: 'Candidate not found.' });
+    }
+
+    const normalizedAmount = normalizeAmount(amount ?? applicationFeeConfig.amount);
+
+    const checkoutSession = await createCheckoutSession({
+      candidate,
+      amount: normalizedAmount,
+      currency: applicationFeeConfig.currency,
+      paymentMethod,
+      title: title || applicationFeeConfig.title,
+      email: email || candidate.email,
+      phoneNumber: phoneNumber || candidate.phone,
+      metadata: {
+        fullName: fullName || candidate.fullName || candidate.name || '',
+        ...metadata,
+      },
+    });
 
     const payment = await Payment.create({
-      intentId,
-      userId,
-      amount,
-      title,
-      status: "pending",
+      candidateId: candidate._id.toString(),
+      transactionId: checkoutSession.transactionId || `BLISS-${Date.now()}`,
+      invoiceId: checkoutSession.invoiceId || null,
+      checkoutId: checkoutSession.checkoutId || null,
+      paymentMethod,
+      amount: normalizedAmount,
+      currency: applicationFeeConfig.currency,
+      status: 'pending',
+      metadata: {
+        checkoutUrl: checkoutSession.checkoutUrl,
+        ...metadata,
+      },
     });
+
+    await Candidate.findByIdAndUpdate(
+      candidate._id,
+      {
+        $set: {
+          paymentStatus: 'Pending',
+          paymentMethod,
+          amount: normalizedAmount,
+          applicationStatus: 'Pending Payment',
+        },
+      },
+      { new: true }
+    );
 
     return res.status(201).json({
       success: true,
-      intentId,
-      payment,
+      message: 'Payment session created successfully.',
+      payment: {
+        id: payment._id,
+        candidateId: payment.candidateId,
+        status: payment.status,
+        paymentMethod: payment.paymentMethod,
+        amount: payment.amount,
+        currency: payment.currency,
+        checkoutUrl: checkoutSession.checkoutUrl,
+        invoiceId: payment.invoiceId,
+        transactionId: payment.transactionId,
+      },
     });
   } catch (error) {
-    console.error("Create Intent Error:", error);
-
-    return res.status(500).json({
-      success: false,
-      error: "Failed to create payment intent",
-    });
+    logger.error('Create payment failed', { message: error.message });
+    return next(error);
   }
 };
 
+exports.createStkPayment = async (req, res, next) => {
+  req.body.paymentMethod = 'mpesa';
+  return exports.createPayment(req, res, next);
+};
 
-// ================= MPESA PAYMENT =================
-exports.payWithMpesa = async (req, res) => {
+exports.createCardPayment = async (req, res, next) => {
+  req.body.paymentMethod = 'card';
+  return exports.createPayment(req, res, next);
+};
+
+exports.verifyPayment = async (req, res, next) => {
   try {
-    const { intentId, phone } = req.body;
+    const { paymentId, candidateId, transactionId } = req.body;
 
-    if (!intentId || !phone) {
-      return res.status(400).json({
-        success: false,
-        error: "intentId and phone are required",
-      });
+    if (!paymentId && !candidateId && !transactionId) {
+      return res.status(400).json({ success: false, error: 'paymentId, candidateId, or transactionId is required.' });
     }
 
-    const payment = await Payment.findOne({ where: { intentId } });
+    const query = paymentId ? { _id: paymentId } : candidateId ? { candidateId } : { transactionId };
+    const payment = await Payment.findOne(query).sort({ createdAt: -1 });
 
     if (!payment) {
-      return res.status(404).json({
-        success: false,
-        error: "Payment intent not found",
-      });
+      return res.status(404).json({ success: false, error: 'Payment record not found.' });
     }
 
-    // format phone (2547XXXXXXXX)
-    const formattedPhone = phone.startsWith("0")
-      ? "254" + phone.substring(1)
-      : phone;
-
-    const response = await stkPush({
-      phone: formattedPhone,
-      amount: payment.amount,
-      accountReference: intentId,
-      transactionDesc: payment.title,
-    });
-
-    if (!response.success) {
-      return res.status(400).json(response);
+    if (payment.status === 'paid') {
+      return res.status(200).json({ success: true, message: 'Payment already verified.', payment });
     }
 
-    // save checkout request ID
-    await payment.update({
-      transactionId: response.checkoutRequestId,
-      status: "processing",
-    });
+    const remoteVerification = await verifyTransaction(payment.transactionId || transactionId);
+    const paymentVerified = remoteVerification?.status === 'paid' || remoteVerification?.status === 'successful' || remoteVerification?.data?.status === 'paid';
 
-    return res.json({
-      success: true,
-      message: "STK push sent",
-      checkoutRequestId: response.checkoutRequestId,
-    });
+    if (paymentVerified) {
+      payment.status = 'paid';
+      payment.updatedAt = new Date();
+      await payment.save();
+
+      const candidate = await Candidate.findById(payment.candidateId);
+      if (candidate) {
+        const updatePayload = buildCandidateUpdatePayload({
+          payment,
+          paymentMethod: payment.paymentMethod,
+          status: 'paid',
+          transactionId: payment.transactionId,
+          amount: payment.amount,
+          paymentReference: payment.invoiceId || payment.transactionId,
+          invoiceId: payment.invoiceId,
+          checkoutId: payment.checkoutId,
+        });
+        await Candidate.findByIdAndUpdate(candidate._id, { $set: updatePayload }, { new: true });
+      }
+
+      return res.status(200).json({ success: true, message: 'Payment verified successfully.', payment });
+    }
+
+    return res.status(200).json({ success: false, message: 'Payment is still pending or could not be verified yet.', payment });
   } catch (error) {
-    console.error("MPESA Error:", error);
-
-    return res.status(500).json({
-      success: false,
-      error: "MPESA payment failed",
-    });
+    logger.error('Payment verification failed', { message: error.message });
+    return next(error);
   }
 };
 
-
-// ================= FLUTTERWAVE PAYMENT =================
-exports.payWithFlutterwave = async (req, res) => {
+exports.handleWebhook = async (req, res, next) => {
   try {
-    const { intentId, email, name } = req.body;
+    const event = req.body || {};
+    const paymentReference = event.payment_reference || event.paymentReference || event.invoice_id || event.invoiceId || event.transaction_id || event.transactionId || event.id;
+    const transactionId = event.transaction_id || event.transactionId || event.id || paymentReference;
+    const invoiceId = event.invoice_id || event.invoiceId;
+    const checkoutId = event.checkout_id || event.checkoutId;
+    const paymentMethod = event.payment_method || event.paymentMethod || 'mpesa';
+    const amount = Number(event.amount || event.total_amount || event.amount_paid || 0);
+    const status = event.status === 'paid' || event.status === 'successful' || event.status === 'completed' ? 'paid' : event.status === 'failed' ? 'failed' : 'pending';
 
-    if (!intentId || !email || !name) {
-      return res.status(400).json({
-        success: false,
-        error: "intentId, email and name are required",
-      });
-    }
+    logger.info('Received IntaSend webhook', { transactionId, status, paymentReference });
 
-    const payment = await Payment.findOne({ where: { intentId } });
+    const payment = await Payment.findOne({
+      $or: [
+        { transactionId },
+        { invoiceId },
+        { checkoutId },
+        { 'metadata.paymentReference': paymentReference },
+      ],
+    }).sort({ createdAt: -1 });
 
     if (!payment) {
-      return res.status(404).json({
-        success: false,
-        error: "Payment intent not found",
-      });
+      return res.status(404).json({ success: false, error: 'Payment not found for webhook payload.' });
     }
 
-    const response = await flutterwaveService.initializePayment({
-      amount: payment.amount,
-      email,
-      name,
-      tx_ref: intentId,
-    });
+    if (status === 'paid') {
+      payment.status = 'paid';
+      payment.paymentMethod = paymentMethod;
+      payment.transactionId = transactionId;
+      payment.invoiceId = invoiceId || payment.invoiceId;
+      payment.checkoutId = checkoutId || payment.checkoutId;
+      payment.amount = amount || payment.amount;
+      payment.metadata = { ...payment.metadata, ...event };
+      await payment.save();
 
-    if (!response.success) {
-      return res.status(400).json(response);
+      const candidate = await Candidate.findById(payment.candidateId);
+      if (candidate) {
+        const updatePayload = buildCandidateUpdatePayload({
+          payment,
+          paymentMethod,
+          status: 'paid',
+          transactionId,
+          amount: payment.amount,
+          paymentReference,
+          invoiceId,
+          checkoutId,
+        });
+        await Candidate.findByIdAndUpdate(candidate._id, { $set: updatePayload }, { new: true });
+      }
+    } else if (status === 'failed') {
+      payment.status = 'failed';
+      payment.metadata = { ...payment.metadata, ...event };
+      await payment.save();
+
+      const candidate = await Candidate.findById(payment.candidateId);
+      if (candidate) {
+        const updatePayload = buildCandidateUpdatePayload({
+          payment,
+          paymentMethod,
+          status: 'failed',
+          transactionId,
+          amount: payment.amount,
+          paymentReference,
+          invoiceId,
+          checkoutId,
+        });
+        await Candidate.findByIdAndUpdate(candidate._id, { $set: updatePayload }, { new: true });
+      }
     }
 
-    // save reference
-    await payment.update({
-      status: "processing",
-      transactionId: intentId,
-    });
-
-    return res.json({
-      success: true,
-      link: response.link, // redirect user to this
-    });
+    return res.status(200).json({ success: true, message: 'Webhook processed successfully.' });
   } catch (error) {
-    console.error("Flutterwave Error:", error);
-
-    return res.status(500).json({
-      success: false,
-      error: "Flutterwave payment failed",
-    });
+    logger.error('Webhook processing failed', { message: error.message });
+    return next(error);
   }
 };
 
-
-// ================= VERIFY PAYMENT =================
-exports.verifyPayment = async (req, res) => {
+exports.getPaymentStatus = async (req, res, next) => {
   try {
-    const { intentId } = req.params;
-
-    const payment = await Payment.findOne({ where: { intentId } });
-
-    if (!payment) {
-      return res.status(404).json({
-        success: false,
-        error: "Payment not found",
-      });
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ success: false, error: 'Payment id is required.' });
     }
 
-    return res.json({
+    const payment = await Payment.findOne({
+      $or: [
+        { _id: id },
+        { candidateId: id },
+        { transactionId: id },
+      ],
+    }).sort({ createdAt: -1 });
+
+    if (!payment) {
+      return res.status(404).json({ success: false, error: 'Payment not found.' });
+    }
+
+    const candidate = await Candidate.findById(payment.candidateId);
+
+    return res.status(200).json({
       success: true,
-      status: payment.status,
-      payment,
+      payment: {
+        id: payment._id,
+        candidateId: payment.candidateId,
+        status: payment.status,
+        paymentMethod: payment.paymentMethod,
+        amount: payment.amount,
+        currency: payment.currency,
+        transactionId: payment.transactionId,
+        invoiceId: payment.invoiceId,
+        checkoutId: payment.checkoutId,
+        createdAt: payment.createdAt,
+        updatedAt: payment.updatedAt,
+      },
+      candidate: candidate
+        ? {
+            id: candidate._id,
+            applicationStatus: candidate.applicationStatus,
+            paymentStatus: candidate.paymentStatus,
+            paymentReference: candidate.paymentReference,
+            paymentMethod: candidate.paymentMethod,
+            paymentDate: candidate.paymentDate,
+            transactionId: candidate.transactionId,
+            amount: candidate.amount,
+          }
+        : null,
     });
   } catch (error) {
-    console.error("Verify Error:", error);
-
-    return res.status(500).json({
-      success: false,
-      error: "Failed to verify payment",
-    });
+    logger.error('Payment status lookup failed', { message: error.message });
+    return next(error);
   }
 };

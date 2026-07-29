@@ -490,6 +490,7 @@
             <div class="sidebar-logo">Bliss Admin</div>
             <ul class="sidebar-menu">
                 <li><a onclick="showPanel('dashboard')" class="active">📊 Dashboard</a></li>
+                <li><a onclick="showPanel('bookings')">📅 Office Bookings</a></li>
                 <li><a onclick="showPanel('whatsapp')">💬 WhatsApp Messages</a></li>
                 <li><a onclick="showPanel('bulk')">📤 Bulk Campaign</a></li>
                 <li><a onclick="showPanel('config')">⚙️ Configuration</a></li>
@@ -539,6 +540,21 @@
                     <button class="btn btn-primary" onclick="checkWhatsAppConfig()">
                         🔄 Refresh Configuration
                     </button>
+                </div>
+
+                <!-- OFFICE BOOKINGS -->
+                <div id="bookings" class="panel">
+                    <div class="panel-title">
+                        📅 Office Visit Bookings
+                    </div>
+
+                    <div id="bookingsAlert" class="alert"></div>
+
+                    <div class="btn-group" style="margin-top:0; margin-bottom:12px;">
+                        <button class="btn btn-primary" onclick="loadOfficeBookings()">🔄 Refresh Bookings</button>
+                    </div>
+
+                    <div id="bookingsList">Loading bookings...</div>
                 </div>
 
                 <!-- SEND MESSAGE -->
@@ -770,7 +786,9 @@ WHATSAPP_ACCESS_TOKEN=EAAcTy7Mgi90BR12vSdQxMzACZAQOTSHZA5qVQqQqqDCYO2mAvmrCDGlmD
             const configuredBaseUrl = (
                 window.__BACKEND_URL__ ||
                 window.__API_BASE_URL__ ||
-                'https://backened-server-1.onrender.com'
+                (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+                    ? window.location.origin
+                    : 'https://backened-server-1.onrender.com')
             ) || 'https://backened-server-1.onrender.com';
             return `${configuredBaseUrl.replace(/\/+$/, '')}/api`;
         }
@@ -832,6 +850,42 @@ WHATSAPP_ACCESS_TOKEN=EAAcTy7Mgi90BR12vSdQxMzACZAQOTSHZA5qVQqQqqDCYO2mAvmrCDGlmD
             adminToken = null;
             document.getElementById('loginPage').style.display = 'flex';
             document.getElementById('adminPage').style.display = 'none';
+        }
+
+        async function loadOfficeBookings() {
+            try {
+                const res = await fetch(`${API_BASE_URL}/admin/office-visit-bookings`, {
+                    headers: { 'Authorization': `Bearer ${adminToken}` },
+                });
+
+                const data = await res.json();
+
+                if (!data.success) {
+                    showError('bookingsAlert', data.error || 'Unable to load bookings');
+                    return;
+                }
+
+                const bookings = data.bookings || [];
+                const rows = bookings.map((booking) => `
+                    <div style="border:1px solid #ddd;padding:12px;margin-bottom:10px;border-radius:8px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+                            <strong>${booking.fullName || 'Unnamed visitor'}</strong>
+                            <span class="status-badge connected">${booking.status || 'pending'}</span>
+                        </div>
+                        <div style="margin-top:8px;color:#555;">
+                            <div>Phone: ${booking.phone || '—'}</div>
+                            <div>Email: ${booking.email || '—'}</div>
+                            <div>Date: ${booking.preferredDate || '—'} • Time: ${booking.preferredTime || '—'}</div>
+                            <div>Purpose: ${booking.purpose || '—'}</div>
+                            <div>Booked: ${booking.createdAt ? new Date(booking.createdAt).toLocaleString() : '—'}</div>
+                        </div>
+                    </div>
+                `).join('');
+
+                document.getElementById('bookingsList').innerHTML = rows || '<div>No office bookings yet.</div>';
+            } catch (err) {
+                showError('bookingsAlert', err.message);
+            }
         }
 
         // CHECK WHATSAPP CONFIG
@@ -1006,6 +1060,7 @@ WHATSAPP_ACCESS_TOKEN=EAAcTy7Mgi90BR12vSdQxMzACZAQOTSHZA5qVQqQqqDCYO2mAvmrCDGlmD
                 document.getElementById('loginPage').style.display = 'none';
                 document.getElementById('adminPage').style.display = 'flex';
                 checkWhatsAppConfig();
+                loadOfficeBookings();
             }
         });
 
