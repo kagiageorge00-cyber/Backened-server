@@ -7,7 +7,7 @@ const {
   verifyPayment,
   handleWebhook,
   getPaymentStatus,
-} = require('../controllers/paymentController');
+} = require('../controllers/paymentcontroller');
 const { verifyPaymentWebhook } = require('../middleware/paymentWebhookMiddleware');
 
 router.get('/', (req, res) => {

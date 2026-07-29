@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const paymentController = require('../controllers/paymentController');
+const paymentController = require('../controllers/paymentcontroller');
 const { verifyPaymentWebhook } = require('../middleware/paymentWebhookMiddleware');
 
 router.get('/', (req, res) => {
