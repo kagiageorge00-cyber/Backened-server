@@ -26,6 +26,8 @@ const signatureUpload = multer({
   limits: { fileSize: 20 * 1024 * 1024 },
 });
 
+const { generateContractPdf } = require('../services/contractService');
+
 router.use(employerAuth);
 
 // Generate contract
@@ -96,6 +98,25 @@ router.post('/generate', async (req, res) => {
     });
 
     await contract.save();
+
+    // Audit: contract generated
+    try {
+      const audit = require('../middleware/audit');
+      // create a lightweight log entry
+      const ActivityLog = require('../models/ActivityLog');
+      await ActivityLog.create({ actorId: employer.employerId, actorType: 'employer', action: 'generate_contract', entityType: 'contract', entityId: contractId, details: { deploymentId } });
+    } catch (e) {
+      console.warn('Audit create failed:', e.message || e);
+    }
+
+    // Generate PDF file for contract and update contractUrl if successful
+    try {
+      const { filePath, fileName } = await generateContractPdf(contract.toObject());
+      contract.contractUrl = `/uploads/contracts/${fileName}`;
+      await contract.save();
+    } catch (pdfErr) {
+      console.warn('Contract PDF generation failed:', pdfErr.message || pdfErr);
+    }
 
     // Create notification for employer
     await Notification.create({
@@ -185,6 +206,15 @@ router.post('/:contractId/sign', signatureUpload.single('signatureFile'), async 
 
     await contract.save();
 
+    // Audit signature upload
+    try {
+      const ActivityLog = require('../models/ActivityLog');
+      const actorId = employer ? employer.employerId : (req.body.userId || 'unknown');
+      await ActivityLog.create({ actorId, actorType: signatureType === 'employer' ? 'employer' : 'candidate', action: 'upload_signature', entityType: 'contract', entityId: contractId, details: { signatureType } });
+    } catch (e) {
+      console.warn('Audit signature failed:', e.message || e);
+    }
+
     // Notify both parties
     const candidate = await Candidate.findOne({
       $or: [
@@ -229,6 +259,46 @@ router.post('/:contractId/sign', signatureUpload.single('signatureFile'), async 
       });
     }
 
+    // If both parties have signed, finalize contract and release documents
+    if (contract.employerSigned && contract.candidateSigned) {
+      contract.contractStatus = 'signed';
+      await contract.save();
+
+      if (candidate) {
+        candidate.contactReleased = true;
+        candidate.status = 'in_process';
+        await candidate.save();
+
+        // Notify candidate that documents have been released
+        await Notification.create({
+          notificationId: `NTF-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          userId: candidate._id.toString(),
+          userType: 'candidate',
+          title: 'Documents Released',
+          message: 'Your documents have been unlocked for the employer after contract signing.',
+          notificationType: 'document',
+          category: 'documents_released',
+          entityType: 'contract',
+          entityId: contractId,
+          actionUrl: `/candidate/contracts/${contractId}`,
+        });
+
+        // Notify employer that contract is fully signed
+        await Notification.create({
+          notificationId: `NTF-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          userId: contract.employerId,
+          userType: 'employer',
+          title: 'Contract Fully Signed',
+          message: 'Both parties have signed the contract. Candidate documents are now available for download.',
+          notificationType: 'contract',
+          category: 'contract_finalized',
+          entityType: 'contract',
+          entityId: contractId,
+          actionUrl: `/employer/contracts/${contractId}`,
+        });
+      }
+    }
+
     return res.status(200).json({
       success: true,
       message: 'Signature uploaded successfully',
@@ -258,6 +328,62 @@ router.get('/:contractId', async (req, res) => {
     });
   } catch (err) {
     console.error('Fetch contract error:', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Manager/admin signature endpoint (requires manager/admin role)
+const requireRole = require('../middleware/requireRole');
+router.post('/:contractId/manager-sign', requireRole('admin'), signatureUpload.single('signatureFile'), async (req, res) => {
+  try {
+    const { contractId } = req.params;
+    if (!req.file) return res.status(400).json({ success: false, error: 'signatureFile required' });
+
+    const contract = await Contract.findOne({ contractId });
+    if (!contract) return res.status(404).json({ success: false, error: 'Contract not found' });
+
+    const signaturePath = `/uploads/signatures/${req.file.filename}`;
+    contract.managerSignatureUrl = signaturePath;
+    contract.managerSigned = true;
+    contract.managerSignedAt = new Date();
+    contract.contractStatus = 'signed';
+    contract.adminVerified = true;
+    contract.verifiedAt = new Date();
+    await contract.save();
+
+    // Notify both parties
+    await Notification.create({
+      notificationId: `NTF-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      userId: contract.employerId,
+      userType: 'employer',
+      title: 'Contract Manager Signed',
+      message: 'A manager has reviewed and signed the contract. Contract is now verified.',
+      notificationType: 'contract',
+      category: 'contract_verified',
+      entityType: 'contract',
+      entityId: contractId,
+      actionUrl: `/employer/contracts/${contractId}`,
+    });
+
+    const candidateDoc = await Candidate.findOne({ $or: [{ candidateId: contract.candidateId }, { uniqueCode: contract.candidateId }] });
+    if (candidateDoc) {
+      await Notification.create({
+        notificationId: `NTF-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        userId: candidateDoc._id.toString(),
+        userType: 'candidate',
+        title: 'Contract Verified',
+        message: 'Your contract has been verified by management.',
+        notificationType: 'contract',
+        category: 'contract_verified',
+        entityType: 'contract',
+        entityId: contractId,
+        actionUrl: `/candidate/contracts/${contractId}`,
+      });
+    }
+
+    return res.json({ success: true, message: 'Contract manager-signed and verified', contract: contract.toObject() });
+  } catch (err) {
+    console.error('Manager sign error:', err);
     return res.status(500).json({ success: false, error: err.message });
   }
 });

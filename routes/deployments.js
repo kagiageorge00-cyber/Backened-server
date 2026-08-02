@@ -7,6 +7,7 @@ const employerAuth = require('../middleware/employerAuth');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const { buildDeploymentSummary, calculateDeploymentFees } = require('../services/localRecruitmentService');
 
 const receiptStorage = multer.diskStorage({
   destination(req, file, cb) {
@@ -118,7 +119,7 @@ router.post('/:deploymentId/pay', async (req, res) => {
   try {
     const employer = req.employer;
     const { deploymentId } = req.params;
-    const { amount, paymentMethod } = req.body;
+    const { amount, paymentMethod, grossSalary, candidateName } = req.body;
     if (!deploymentId || !amount) return res.status(400).json({ success: false, error: 'deploymentId and amount required' });
 
     const dep = await Deployment.findOne({ deploymentId });
@@ -129,13 +130,24 @@ router.post('/:deploymentId/pay', async (req, res) => {
 
     const PaymentRecord = require('../models/PaymentRecord');
     const Contract = require('../models/Contract');
+    const fees = calculateDeploymentFees(grossSalary || dep.deploymentFee || amount);
 
     const paymentId = `PAY-${Date.now()}`;
-    const pr = await PaymentRecord.create({ paymentId, deploymentId, employerId: employer.employerId, amount, paymentMethod, paymentStatus: 'completed', paidAt: new Date() });
+    const pr = await PaymentRecord.create({
+      paymentId,
+      deploymentId,
+      employerId: employer.employerId,
+      amount: Number(amount || fees.totalDue),
+      paymentMethod: paymentMethod || 'bank_transfer',
+      paymentStatus: 'completed',
+      paidAt: new Date(),
+    });
 
     dep.paid = true;
-    dep.paymentStatus = 'paid';
+    dep.paymentStatus = 'verified';
     dep.currentStage = 'Payment';
+    dep.deploymentFee = fees.totalDue;
+    dep.paymentMethod = paymentMethod || 'bank_transfer';
     await dep.save();
 
     const candidate = await Candidate.findOne({
@@ -153,11 +165,33 @@ router.post('/:deploymentId/pay', async (req, res) => {
       await candidate.save();
     }
 
-    const contract = await Contract.create({ contractId: `CTR-${Date.now()}`, deploymentId, contractFile: 'generated-contract.pdf' });
+    const contract = await Contract.create({
+      contractId: `CTR-${Date.now()}`,
+      deploymentId,
+      employerId: employer.employerId,
+      candidateId: dep.candidateId,
+      candidateName: candidateName || candidate?.fullName || dep.candidateName || 'Candidate',
+      employerName: employer.companyName || employer.fullName || 'Employer',
+      contractStatus: 'pending_employer_signature',
+    });
 
-    return res.json({ success: true, payment: pr, contract, deployment: dep });
+    return res.json({ success: true, payment: pr, contract, deployment: dep, fees, summary: buildDeploymentSummary({ candidateName: candidateName || candidate?.fullName || dep.candidateName || 'Candidate', grossSalary: grossSalary || dep.deploymentFee || amount, paymentMethod: paymentMethod || 'bank_transfer' }) });
   } catch (err) {
     console.error('Deployment pay error:', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/:deploymentId/fees', async (req, res) => {
+  try {
+    const { deploymentId } = req.params;
+    const { grossSalary, candidateName, paymentMethod } = req.body;
+    const dep = await Deployment.findOne({ deploymentId });
+    if (!dep) return res.status(404).json({ success: false, error: 'Deployment not found' });
+    const summary = buildDeploymentSummary({ candidateName: candidateName || dep.candidateName || 'Candidate', grossSalary: grossSalary || dep.deploymentFee || 0, paymentMethod });
+    return res.json({ success: true, data: summary });
+  } catch (err) {
+    console.error('Deployment fees error:', err);
     return res.status(500).json({ success: false, error: err.message });
   }
 });

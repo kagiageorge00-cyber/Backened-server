@@ -19,6 +19,9 @@ const {
   signAdminToken,
   requireAdminAuth,
   revokeAdminToken,
+  ADMIN_ROLES,
+  ADMIN_DEFAULT_ROLE,
+  isValidAdminRole,
 } = require("../middleware/adminAuth");
 
 // ✅ FIX: correct import
@@ -108,12 +111,16 @@ function sanitizeValue(value) {
 // ======================
 router.post("/login", async (req, res) => {
   try {
-    const { username, password } = req.body;
+    const { username, password, role } = req.body;
 
-      if (!username || !password) {
+    if (!username || !password) {
       return res
         .status(400)
         .json({ success: false, error: "Missing fields" });
+    }
+
+    if (role && !isValidAdminRole(role)) {
+      return res.status(400).json({ success: false, error: 'Invalid admin role' });
     }
 
     if (!compareAdminCredentials(username, password)) {
@@ -122,11 +129,13 @@ router.post("/login", async (req, res) => {
         .json({ success: false, error: "Invalid credentials" });
     }
 
-    const token = signAdminToken({ username, role: 'admin' });
+    const selectedRole = isValidAdminRole(role) ? role : ADMIN_DEFAULT_ROLE;
+    const token = signAdminToken({ username, role: selectedRole });
 
     res.json({
       success: true,
       token,
+      role: selectedRole,
       expiresIn: process.env.ADMIN_JWT_EXPIRY || '1h',
     });
   } catch (err) {
@@ -699,6 +708,14 @@ router.get('/dashboard/summary', requireAdminAuth, async (req, res) => {
       pendingEmployers,
       activeEmployers,
     });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.get('/roles', requireAdminAuth, (req, res) => {
+  try {
+    return res.json({ success: true, roles: ADMIN_ROLES });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });
   }

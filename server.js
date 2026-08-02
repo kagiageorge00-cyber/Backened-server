@@ -200,6 +200,8 @@ try {
 const submitPaymentsRoutes = require('./routes/submitpayments');
 const submitPaymentsLegacy = require('./submitpayments');
 const employerRoutes = require('./routes/employers');
+const localRecruitmentRoutes = require('./routes/localRecruitment');
+const internationalRecruitmentRoutes = require('./routes/internationalRecruitment');
 const CandidateModel = require('./models/candidate');
 const bcrypt = require('bcryptjs');
 const marketplaceRoutes = require('./routes/marketplace');
@@ -219,7 +221,11 @@ const blissAuthRoutes = require('./routes/bliss_auth');
 const modularAuthRoutes = require('./auth/routes/authRoutes');
 const dashboardRoutes = require('./dashboard/routes/dashboardRoutes');
 const inboxRoutes = require('./inbox/routes/inboxRoutes');
+const agentsRoutes = require('./routes/agents');
+const agentPortalRoutes = require('./routes/agentPortal');
 const SocketManager = require('./inbox/socket/socketManager');
+const travelRoutes = require('./routes/travelRoutes');
+const staffPortalRoutes = require('./routes/staffPortal');
 // Admin WhatsApp routes (campaign management)
 let whatsappAdminRoutes;
 try {
@@ -246,6 +252,7 @@ try {
 // API ROUTES
 // ======================
 app.use('/api/candidates', candidateRoutes);
+app.use('/api/candidates', marketplaceRoutes);
 app.use('/api/candidate', candidateRoutes);
 app.use('/api/apply', applyRoutes);
 app.use(['/api/register', '/api/candidate/register'], registerRoutes);
@@ -258,8 +265,12 @@ app.use('/api/whatsapp', whatsappWebhookRoutes);
 app.use('/api/whatsapp', whatsappEmbeddedSignupRoutes);
 app.use('/api/bliss-auth', blissAuthRoutes);
 app.use('/api/auth', modularAuthRoutes);
+app.use('/api', travelRoutes);
+app.use('/api/staff', staffPortalRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/inbox', inboxRoutes);
+app.use('/api/agents', agentsRoutes);
+app.use('/api/agent-portal', agentPortalRoutes);
 app.use('/api/marketplace', marketplaceRoutes);
 app.use('/api/interviews', interviewsRoutes);
 app.use('/api/shortlist', shortlistRoutes);
@@ -269,6 +280,8 @@ app.use('/api/notifications', notificationsRoutes);
 app.use('/api/contracts', contractsRoutes);
 app.use('/api/messages', messagesRoutes);
 app.use('/api/jobs', jobsRoutes);
+app.use('/api/local-recruitment', localRecruitmentRoutes);
+app.use('/api/international-recruitment', internationalRecruitmentRoutes);
 app.use('/api/admin/stats', adminStatsRoutes);
 app.use('/api', submitPaymentsRoutes);
 // Mount updated submit-payments routes before legacy submitpayments fallback.
@@ -784,6 +797,13 @@ async function startServer() {
 
   socketManager = new SocketManager(httpServer);
   logger.info('Socket.IO messaging backend initialized');
+  try {
+    const socketService = require('./inbox/socket/socketService');
+    socketService.setSocketServer(socketManager.io);
+    logger.info('Socket service connected');
+  } catch (err) {
+    logger.warn('Failed to attach socket service:', err.message || err);
+  }
 }
 
 module.exports = app;
@@ -791,3 +811,97 @@ module.exports = app;
 if (require.main === module) {
   startServer();
 }
+
+// ==========================
+// Contract download endpoints
+// ==========================
+const jwt = require('jsonwebtoken');
+const ContractModel = require('./models/Contract');
+
+// Employer can request a short-lived download token for a contract
+app.post('/api/contracts/:contractId/download-token', async (req, res) => {
+  try {
+    const auth = req.headers.authorization || req.headers.Authorization;
+    if (!auth || !auth.toString().startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, error: 'Employer authorization required' });
+    }
+    const token = auth.toString().replace(/^Bearer\s+/i, '');
+    const { verifyEmployerToken } = require('./services/jwtService');
+    let decoded;
+    try {
+      decoded = verifyEmployerToken(token);
+    } catch (err) {
+      return res.status(401).json({ success: false, error: 'Invalid employer token' });
+    }
+
+    const { contractId } = req.params;
+    const contract = await ContractModel.findOne({ contractId });
+    if (!contract) return res.status(404).json({ success: false, error: 'Contract not found' });
+    if (contract.employerId !== decoded.employerId) return res.status(403).json({ success: false, error: 'Access denied' });
+
+    const downloadSecret = process.env.DOWNLOAD_JWT_SECRET || process.env.JWT_SECRET || 'download_secret';
+    const downloadToken = jwt.sign({ contractId }, downloadSecret, { expiresIn: '15m' });
+
+    return res.json({ success: true, downloadToken, expiresIn: 15 * 60 });
+  } catch (err) {
+    console.error('Download token error:', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Public download route: accepts employer Authorization or ?token=
+app.get('/api/contracts/download/:contractId', async (req, res) => {
+  try {
+    const { contractId } = req.params;
+    const downloadToken = req.query.token;
+    const auth = req.headers.authorization || req.headers.Authorization;
+
+    let allowed = false;
+
+    // Check employer auth
+    if (auth && auth.toString().startsWith('Bearer ')) {
+      const token = auth.toString().replace(/^Bearer\s+/i, '');
+      try {
+        const { verifyEmployerToken } = require('./services/jwtService');
+        const decoded = verifyEmployerToken(token);
+        if (decoded && decoded.employerId) {
+          const Contract = await ContractModel.findOne({ contractId });
+          if (Contract && Contract.employerId === decoded.employerId) allowed = true;
+        }
+      } catch (err) {
+        // ignore
+      }
+    }
+
+    // Check download token
+    if (!allowed && downloadToken) {
+      try {
+        const downloadSecret = process.env.DOWNLOAD_JWT_SECRET || process.env.JWT_SECRET || 'download_secret';
+        const decoded = jwt.verify(downloadToken.toString(), downloadSecret);
+        if (decoded && decoded.contractId === contractId) allowed = true;
+      } catch (err) {
+        // invalid token
+      }
+    }
+
+    if (!allowed) return res.status(403).json({ success: false, error: 'Access denied' });
+
+    const contract = await ContractModel.findOne({ contractId });
+    if (!contract) return res.status(404).json({ success: false, error: 'Contract not found' });
+
+    // Only allow download if both parties have signed (documents release condition)
+    if (!(contract.employerSigned && contract.candidateSigned)) {
+      return res.status(403).json({ success: false, error: 'Contract not yet fully signed' });
+    }
+
+    const filePath = path.join(__dirname, 'uploads', 'contracts', `${contractId}.pdf`);
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ success: false, error: 'Contract PDF not found' });
+    }
+
+    return res.download(filePath, `${contractId}.pdf`);
+  } catch (err) {
+    console.error('Contract download error:', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});

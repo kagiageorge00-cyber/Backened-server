@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Notification = require('../models/Notification');
 const { createNotification } = require('../utils/notificationHelper');
+const PushToken = require('../models/PushToken');
 
 router.post('/create', async (req, res) => {
   try {
@@ -72,6 +73,34 @@ router.get('/user/:userType/:userId', async (req, res) => {
     return res.json({ success: true, data: notes });
   } catch (err) {
     console.error('Notification fetch error:', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Register push token (device)
+router.post('/register-token', async (req, res) => {
+  try {
+    const { userId, userType, token, platform } = req.body;
+    if (!userId || !token) return res.status(400).json({ success: false, error: 'userId and token are required' });
+    await PushToken.findOneAndUpdate({ userId, token }, { $set: { userType, platform, token, userId } }, { upsert: true });
+    return res.json({ success: true, message: 'Token registered' });
+  } catch (err) {
+    console.error('Register token error:', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Send push (stub) to a userId
+router.post('/send-push', async (req, res) => {
+  try {
+    const { userId, title, message } = req.body;
+    if (!userId || !message) return res.status(400).json({ success: false, error: 'userId and message required' });
+    const tokens = await PushToken.find({ userId });
+    // TODO: integrate with FCM/APNs production provider
+    console.log('Would send push to tokens:', tokens.map(t => t.token));
+    return res.json({ success: true, sent: tokens.length });
+  } catch (err) {
+    console.error('Send push error:', err);
     return res.status(500).json({ success: false, error: err.message });
   }
 });

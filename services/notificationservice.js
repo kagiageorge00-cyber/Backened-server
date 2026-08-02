@@ -1,6 +1,7 @@
 const { sendWhatsAppMessage } = require('../whatsapp');
 const { sendEmail } = require('../email');
 const { FRONTEND_URL } = require('../config');
+const socketService = require('../inbox/socket/socketService');
 
 // Unified notification system
 async function sendNotification(user, message) {
@@ -20,6 +21,13 @@ async function sendNotification(user, message) {
     } catch (e) {
       console.log('[NOTIFY FALLBACK] Email failed for', user.email, e.message);
     }
+  }
+  // Real-time in-app notification via Socket.IO (room = user id or phone/email)
+  try {
+    const userRoom = user._id ? user._id.toString() : (user.id || user.employerId || user.phone || user.email);
+    socketService.emitToUser(userRoom, 'notification', { title: 'Bliss Connect', message });
+  } catch (err) {
+    console.warn('Socket emit failed:', err.message || err);
   }
 }
 

@@ -6,7 +6,30 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'boss123';
 const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH || null;
 const ADMIN_JWT_SECRET = process.env.ADMIN_JWT_SECRET || 'admin_secret_key';
 const ADMIN_JWT_EXPIRY = process.env.ADMIN_JWT_EXPIRY || '1h';
+const ADMIN_DEFAULT_ROLE = process.env.ADMIN_DEFAULT_ROLE || 'super_administrator';
+
+const ADMIN_ROLES = [
+  'super_administrator',
+  'administrator',
+  'operations_manager',
+  'recruitment_manager',
+  'employer_relations_manager',
+  'customer_care_manager',
+  'travel_manager',
+  'visa_manager',
+  'finance_manager',
+  'marketing_manager',
+  'hr_manager',
+  'it_administrator',
+  'support_supervisor',
+  'auditor',
+];
+
 const adminTokenBlacklist = new Set();
+
+function isValidAdminRole(role) {
+  return typeof role === 'string' && ADMIN_ROLES.includes(role);
+}
 
 function compareAdminCredentials(username, password) {
   if (!username || !password) return false;
@@ -20,7 +43,8 @@ function compareAdminCredentials(username, password) {
 }
 
 function signAdminToken(payload) {
-  return jwt.sign(payload, ADMIN_JWT_SECRET, {
+  const role = isValidAdminRole(payload?.role) ? payload.role : ADMIN_DEFAULT_ROLE;
+  return jwt.sign({ ...payload, role }, ADMIN_JWT_SECRET, {
     expiresIn: ADMIN_JWT_EXPIRY,
   });
 }
@@ -59,11 +83,26 @@ function requireAdminAuth(req, res, next) {
   }
 }
 
+function requireAdminRole(allowedRoles = []) {
+  return (req, res, next) => {
+    requireAdminAuth(req, res, () => {
+      if (allowedRoles.length > 0 && !allowedRoles.includes(req.admin?.role)) {
+        return res.status(403).json({ success: false, error: 'Insufficient admin privileges' });
+      }
+      next();
+    });
+  };
+}
+
 module.exports = {
   compareAdminCredentials,
   signAdminToken,
+  verifyAdminToken,
   requireAdminAuth,
+  requireAdminRole,
   revokeAdminToken,
   ADMIN_USERNAME,
   ADMIN_JWT_EXPIRY,
+  ADMIN_ROLES,
+  isValidAdminRole,
 };
