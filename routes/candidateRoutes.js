@@ -158,11 +158,16 @@ function normalizeCandidate(candidate) {
     profileCompletion: candidateObj.profileCompletion || 0,
     profilePhoto: candidateObj.profilePhoto || candidateObj.photoUrl,
     photoUrl: candidateObj.photoUrl || candidateObj.profilePhoto,
-    videoUrl: candidateObj.videoUrl,
+    videoUrl: candidateObj.videoUrl || candidateObj.introductionVideoUrl,
+    introductionVideoUrl: candidateObj.introductionVideoUrl || candidateObj.videoUrl,
     passportUrl: candidateObj.passportUrl,
     medicalUrl: candidateObj.medicalUrl,
     resumeUrl: candidateObj.resumeUrl,
     additionalUrl: candidateObj.additionalUrl,
+    goodConductUrl: candidateObj.goodConductUrl,
+    otherDocumentUrl: candidateObj.otherDocumentUrl,
+    nationalIdFrontUrl: candidateObj.nationalIdFrontUrl,
+    nationalIdBackUrl: candidateObj.nationalIdBackUrl,
     documents: candidateObj.documents || { certificates: [], uploads: [] },
     createdAt: candidateObj.createdAt,
   };
@@ -188,7 +193,7 @@ function buildMarketplaceCandidate(candidate) {
   const availabilityLabel = candidateObj.status === 'available' || candidateObj.availability === 'Available'
     ? 'Immediately Available'
     : (candidateObj.availability || candidateObj.status || 'Unavailable');
-  const hasVideo = !!candidateObj.videoUrl;
+  const hasVideo = !!(candidateObj.videoUrl || candidateObj.introductionVideoUrl);
   const hasPassport = !!candidateObj.passportUrl;
   const hasMedical = !!candidateObj.medicalUrl;
   const hasResume = !!candidateObj.resumeUrl;
@@ -225,6 +230,8 @@ function buildMarketplaceCandidate(candidate) {
     profilePhotoUrl: avatarUrl,
     imageUrl: profilePhoto,
     avatarUrl: avatarUrl,
+    videoUrl: candidateObj.videoUrl || candidateObj.introductionVideoUrl,
+    introductionVideoUrl: candidateObj.introductionVideoUrl || candidateObj.videoUrl,
     videoAvailable: hasVideo,
     passportAvailable: hasPassport,
     medicalAvailable: hasMedical,

@@ -619,6 +619,81 @@ async function listStaffAccounts(req, res) {
   }
 }
 
+async function createStaffAccount(req, res) {
+  try {
+    const {
+      fullName,
+      email,
+      phone,
+      password,
+      role = 'Customer Care Officer',
+      department = 'Customer Care',
+      blissId,
+      country = 'Kenya',
+      avatar,
+    } = req.body;
+
+    if (!fullName || !email || !phone || !password) {
+      return res.status(400).json({
+        success: false,
+        error: 'fullName, email, phone and password are required',
+      });
+    }
+
+    const normalizedEmail = email.toString().trim().toLowerCase();
+    if (mongoose.connection.readyState === 1) {
+      const existing = await Staff.findOne({ email: normalizedEmail });
+      if (existing) {
+        return res.status(409).json({ success: false, error: 'Staff account already exists' });
+      }
+
+      const staff = await Staff.create({
+        fullName,
+        email: normalizedEmail,
+        phone,
+        password,
+        role,
+        department,
+        blissId: blissId || `BC-${Date.now()}`,
+        country,
+        avatar: avatar ?? '',
+      });
+      const staffData = staff.toObject();
+      delete staffData.password;
+      return res.status(201).json({ success: true, data: staffData });
+    }
+
+    const existing = memoryState.staff.find(
+      (item) => item.email.toString().trim().toLowerCase() === normalizedEmail,
+    );
+    if (existing) {
+      return res.status(409).json({ success: false, error: 'Staff account already exists' });
+    }
+
+    const newStaff = {
+      _id: `staff-${memoryState.staff.length + 1}`,
+      fullName,
+      email: normalizedEmail,
+      phone,
+      password,
+      role,
+      department,
+      blissId: blissId ?? `BC-${String(memoryState.staff.length + 1).padStart(6, '0')}`,
+      country,
+      avatar: avatar ?? '',
+      online: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    memoryState.staff.unshift(newStaff);
+    const responseStaff = { ...newStaff };
+    delete responseStaff.password;
+    return res.status(201).json({ success: true, data: responseStaff });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+}
+
 async function dashboard(req, res) {
   try {
     await ensureDemoConversations();
@@ -851,6 +926,7 @@ async function performance(req, res) {
 module.exports = {
   login,
   listStaffAccounts,
+  createStaffAccount,
   dashboard,
   listChats,
   getChatById,

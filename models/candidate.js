@@ -53,6 +53,12 @@ const candidateSchema = new mongoose.Schema({
   medicalUrl: String,
   resumeUrl: String,
   additionalUrl: String,
+  goodConductUrl: String,
+  introductionVideoUrl: String,
+  otherDocumentUrl: String,
+  nationalIdFrontUrl: String,
+  nationalIdBackUrl: String,
+  candidateFormLink: String,
   documents: {
     passportPhoto: String,
     nationalId: String,

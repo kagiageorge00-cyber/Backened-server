@@ -3,6 +3,12 @@ const Candidate = require('../models/candidate');
 
 const router = express.Router();
 
+function generateCandidateCode() {
+  const year = new Date().getFullYear();
+  const seq = Math.floor(1000 + Math.random() * 9000);
+  return `CAND-${year}-${seq}`;
+}
+
 const sendError = (res, status, error) => res.status(status).json({ success: false, error });
 
 // Helper: calculate profile completion based on marketplace fields
@@ -62,6 +68,11 @@ router.post('/', async (req, res) => {
       medicalUrl,
       resumeUrl,
       additionalUrl,
+      goodConductUrl,
+      introductionVideoUrl,
+      otherDocumentUrl,
+      nationalIdFrontUrl,
+      nationalIdBackUrl,
     } = req.body || {};
 
     if (!email || !phone) {
@@ -75,6 +86,7 @@ router.post('/', async (req, res) => {
       name: name || fullName || candidate?.name || '',
       email,
       phone,
+      uniqueCode: candidate?.uniqueCode || generateCandidateCode(),
       country: country || candidate?.country || '',
       nationality: nationality || candidate?.nationality || '',
       religion: religion || candidate?.religion || '',
@@ -93,11 +105,16 @@ router.post('/', async (req, res) => {
       destinationPreference: destinationPreference || candidate?.destinationPreference || [],
       expectedSalary: expectedSalary || candidate?.expectedSalary || '',
       photoUrl: photoUrl || candidate?.photoUrl || '',
-      videoUrl: videoUrl || candidate?.videoUrl || '',
+      videoUrl: introductionVideoUrl || videoUrl || candidate?.videoUrl || '',
+      introductionVideoUrl: introductionVideoUrl || candidate?.introductionVideoUrl || '',
       passportUrl: passportUrl || candidate?.passportUrl || '',
       medicalUrl: medicalUrl || candidate?.medicalUrl || '',
       resumeUrl: resumeUrl || candidate?.resumeUrl || '',
       additionalUrl: additionalUrl || candidate?.additionalUrl || '',
+      goodConductUrl: goodConductUrl || candidate?.goodConductUrl || '',
+      otherDocumentUrl: otherDocumentUrl || candidate?.otherDocumentUrl || '',
+      nationalIdFrontUrl: nationalIdFrontUrl || candidate?.nationalIdFrontUrl || '',
+      nationalIdBackUrl: nationalIdBackUrl || candidate?.nationalIdBackUrl || '',
       isVerified: candidate?.isVerified ?? false,
       status: candidate?.status || 'in_process',
       paymentStatus: candidate?.paymentStatus || 'pending',

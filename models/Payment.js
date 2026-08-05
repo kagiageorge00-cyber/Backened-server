@@ -18,6 +18,19 @@ const paymentSchema = new mongoose.Schema(
       trim: true,
       default: null,
     },
+    formLink: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    linkGeneratedAt: {
+      type: Date,
+      default: null,
+    },
+    approvedAt: {
+      type: Date,
+      default: null,
+    },
     checkoutId: {
       type: String,
       trim: true,

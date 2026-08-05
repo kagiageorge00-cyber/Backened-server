@@ -48,9 +48,10 @@ const upload = multer({
 // ========================
 // UPLOAD ROUTE
 // ========================
-router.post("/", upload.single("image"), async (req, res) => {
+router.post("/", upload.any(), async (req, res) => {
   try {
-    if (!req.file) {
+    const file = req.file || (Array.isArray(req.files) && req.files[0]);
+    if (!file) {
       return res.status(400).json({
         success: false,
         error: "No file uploaded",
@@ -59,8 +60,8 @@ router.post("/", upload.single("image"), async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      url: req.file.path,
-      fileName: req.file.filename,
+      url: file.path,
+      fileName: file.filename,
     });
 
   } catch (err) {

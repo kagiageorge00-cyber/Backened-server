@@ -49,6 +49,7 @@ const {
 
 const WhatsAppContact = require('../models/WhatsAppContact');
 const WhatsAppMessageLog = require('../models/WhatsAppMessageLog');
+const staffController = require('../controllers/staffController');
 
 // Required fields for publishing
 const REQUIRED_FIELDS_FOR_PUBLISH = [
@@ -180,16 +181,7 @@ router.post(
       }
 
       payment.status = "approved";
-      // generate application form link and save
-      try {
-        const formLink = `${FRONTEND_URL}/#/candidate-form/${payment._id}`;
-        payment.formLink = formLink;
-        payment.linkGeneratedAt = new Date();
-        await payment.save();
-      } catch (linkErr) {
-        console.error('❌ Failed to generate/save form link:', linkErr);
-      }
-      await payment.save();
+      payment.approvedAt = new Date();
 
       const candidate = await Candidate.findOne({
         $or: [
@@ -199,19 +191,31 @@ router.post(
         ],
       });
 
+      const formLinkTarget = candidate?.uniqueCode
+        ? `${FRONTEND_URL}/candidate-form?candidateId=${encodeURIComponent(candidate.uniqueCode)}`
+        : `${FRONTEND_URL}/candidate-form?phone=${encodeURIComponent(candidate?.phone || payment.userId)}`;
+
+      payment.formLink = formLinkTarget;
+      payment.linkGeneratedAt = new Date();
+      await payment.save();
+
       if (candidate) {
         candidate.isVerified = true;
         candidate.paymentStatus = "completed";
         candidate.status = "approved";
+        candidate.candidateFormLink = formLinkTarget;
         await candidate.save();
       }
 
       await createNotification({
-        userId: payment.userId,
+        userId: candidate?.phone || candidate?.email || candidate?.uniqueCode || payment.userId,
         title: 'Payment Approved',
-        message: 'Your payment has been approved. Continue your application.',
-        type: 'approval',
-        actionUrl: `/candidate-form?phone=${encodeURIComponent(candidate?.phone || payment.userId)}`,
+        message: 'Your payment has been approved. Upload your photo and resume using the candidate form link.',
+        type: 'payment',
+        category: 'payment',
+        actionUrl: formLinkTarget,
+        entityType: 'payment',
+        entityId: payment._id.toString(),
       });
 
       // Notify admin about payment approval
@@ -720,6 +724,9 @@ router.get('/roles', requireAdminAuth, (req, res) => {
     return res.status(500).json({ success: false, error: err.message });
   }
 });
+
+router.get('/staff', requireAdminAuth, staffController.listStaffAccounts);
+router.post('/staff', requireAdminAuth, staffController.createStaffAccount);
 
 router.get('/employers', requireAdminAuth, async (req, res) => {
   try {
