@@ -5,7 +5,7 @@ console.log('🧪 Testing Admin Login Endpoint...\n');
 
 // Simulate the admin routes
 const ADMIN_USERNAME = 'boss';
-const ADMIN_PASSWORD = 'boss123';
+const ADMIN_PASSWORD = 'boss@bliss';
 const ADMIN_PASSWORD_HASH = bcrypt.hashSync(ADMIN_PASSWORD, 10);
 
 console.log(`📝 Username: ${ADMIN_USERNAME}`);
@@ -13,7 +13,7 @@ console.log(`📝 Password: ${ADMIN_PASSWORD}`);
 console.log(`🔐 Password Hash: ${ADMIN_PASSWORD_HASH.substring(0, 20)}...\n`);
 
 // Test password verification
-const testPassword = 'boss123';
+const testPassword = 'boss@bliss';
 const passwordMatch = bcrypt.compareSync(testPassword, ADMIN_PASSWORD_HASH);
 
 console.log(`✅ Testing Password Verification:`);
@@ -40,10 +40,10 @@ try {
 }
 
 // Test the endpoint URL
-const backendUrl = 'https://backened-server.onrender.com';
+const backendUrl = 'https://backened_server_1.onrender.com';
 const loginUrl = `${backendUrl}/api/admin/login`;
 console.log(`🌍 Endpoint URL: ${loginUrl}`);
 console.log(`\n✅ To test with curl:`);
 console.log(`   curl -X POST ${loginUrl} \\`);
 console.log(`   -H "Content-Type: application/json" \\`);
-console.log(`   -d '{"username":"boss","password":"boss123"}'\n`);
+console.log(`   -d '{"username":"boss","password":"boss@bliss"}'\n`);

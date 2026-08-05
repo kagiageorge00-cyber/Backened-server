@@ -32,8 +32,8 @@ const allowedOrigins = new Set([
   'http://127.0.0.1:8080',
   'https://blissconnect12.netlify.app',
   'https://www.blissconnect12.netlify.app',
-  'https://backened-server-1.onrender.com',
-  'https://www.backened-server-1.onrender.com',
+  'https://backened_server_1.onrender.com',
+  'https://www.backened_server_1.onrender.com',
   process.env.FRONTEND_URL,
   FRONTEND_URL,
 ].filter(Boolean));

@@ -14,7 +14,7 @@ function request(options, body) {
 }
 
 (async () => {
-  const backendUrl = process.env.BACKEND_URL || 'https://backened-server-1.onrender.com';
+  const backendUrl = process.env.BACKEND_URL || 'https://backened_server_1.onrender.com';
   const backendHost = new URL(backendUrl).hostname;
 
   try {
@@ -24,7 +24,7 @@ function request(options, body) {
     const count = await request({ hostname: backendHost, port: 443, path: '/api/admin/notifications/unread/count', method: 'GET' });
     console.log('COUNT', count.statusCode, count.body);
 
-    const loginBody = JSON.stringify({ username: 'boss', password: 'boss123' });
+    const loginBody = JSON.stringify({ username: 'boss', password: 'boss@bliss' });
     const login = await request({ hostname: backendHost, port: 443, path: '/api/admin/login', method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(loginBody) } }, loginBody);
     console.log('LOGIN', login.statusCode, login.body);
   } catch (err) {

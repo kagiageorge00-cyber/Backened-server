@@ -37,6 +37,6 @@ describe('backend URL configuration', () => {
     delete process.env.API_BASE_URL;
     delete process.env.REACT_APP_API_BASE_URL;
 
-    expect(getBackendBaseUrl()).toBe('https://backened-server-1.onrender.com');
+    expect(getBackendBaseUrl()).toBe('https://backened_server_1.onrender.com');
   });
 });

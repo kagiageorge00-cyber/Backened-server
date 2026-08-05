@@ -91,7 +91,7 @@ describe('Admin payment approval flow', () => {
       .post('/api/admin/login')
       .send({
         username: 'boss',
-        password: 'boss123',
+        password: 'boss@bliss',
       });
 
     expect(loginRes.status).toBe(200);

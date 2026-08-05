@@ -8,7 +8,7 @@ const app = require('../server');
 
     const loginRes = await request(app)
       .post('/api/admin/login')
-      .send({ username: 'boss', password: 'boss123' })
+      .send({ username: 'boss', password: 'boss@bliss' })
       .set('Content-Type', 'application/json');
     console.log('LOGIN:', loginRes.status, loginRes.text);
   } catch (err) {
