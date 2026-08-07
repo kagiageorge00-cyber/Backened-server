@@ -82,6 +82,14 @@ const jobSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    images: {
+      type: [String],
+      default: [],
+    },
+    coverImage: {
+      type: String,
+      trim: true,
+    },
     requiredSkills: [String],
     qualifications: {
       type: String,

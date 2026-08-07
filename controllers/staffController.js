@@ -402,11 +402,17 @@ async function updateApplication(req, res) {
   try {
     await ensureDemoData();
     const { id } = req.params;
-    const application = memoryState.applications.find((item) => item.applicationId === id);
+    const application = memoryState.applications.find((item) => item.applicationId === id || item._id === id);
     if (!application) {
       return res.status(404).json({ success: false, error: 'Application not found' });
     }
-    Object.assign(application, req.body);
+    const nextApplication = {
+      ...application,
+      ...req.body,
+      applicationId: application.applicationId || id,
+      updatedAt: new Date().toISOString(),
+    };
+    Object.assign(application, nextApplication);
     return res.json({ success: true, data: application });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
@@ -426,12 +432,13 @@ async function completeCandidate(req, res) {
   try {
     await ensureDemoData();
     const { id } = req.params;
-    const candidate = memoryState.pendingCandidates.find((item) => item.candidateId === id);
+    const candidate = memoryState.pendingCandidates.find((item) => item.candidateId === id || item._id === id);
     if (!candidate) {
       return res.status(404).json({ success: false, error: 'Candidate not found' });
     }
     candidate.outstanding = [];
     candidate.completedAt = new Date().toISOString();
+    candidate.status = 'Completed';
     return res.json({ success: true, data: candidate });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
@@ -510,11 +517,12 @@ async function updateBookingStatus(req, res) {
   try {
     await ensureDemoData();
     const { id } = req.params;
-    const booking = memoryState.bookings.find((item) => item.bookingId === id);
+    const booking = memoryState.bookings.find((item) => item.bookingId === id || item._id === id);
     if (!booking) {
       return res.status(404).json({ success: false, error: 'Booking not found' });
     }
-    booking.status = req.body.status || booking.status;
+    booking.status = req.body?.status || booking.status;
+    booking.updatedAt = new Date().toISOString();
     return res.json({ success: true, data: booking });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
@@ -534,13 +542,14 @@ async function respondSupportTicket(req, res) {
   try {
     await ensureDemoData();
     const { id } = req.params;
-    const ticket = memoryState.supportTickets.find((item) => item.ticketId === id);
+    const ticket = memoryState.supportTickets.find((item) => item.ticketId === id || item._id === id);
     if (!ticket) {
       return res.status(404).json({ success: false, error: 'Ticket not found' });
     }
     if (!ticket.messages) ticket.messages = [];
-    ticket.messages.push({ from: 'staff', text: req.body.response || 'Staff replied' });
+    ticket.messages.push({ from: 'staff', text: req.body?.response || req.body?.message || 'Staff replied' });
     ticket.status = 'Pending';
+    ticket.updatedAt = new Date().toISOString();
     return res.json({ success: true, data: ticket });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
@@ -585,26 +594,31 @@ async function listJobs(req, res) {
 
 async function login(req, res) {
   try {
-    const { email, password } = req.body;
+    const { email, password } = req.body || {};
     if (!email || !password) {
       return res.status(400).json({ success: false, error: 'email and password are required' });
     }
 
+    const normalizedEmail = email.toString().trim().toLowerCase();
     const accounts = await seedStaffDirectory();
     if (mongoose.connection.readyState === 1) {
-      const found = await Staff.findOne({ email });
+      const found = await Staff.findOne({ email: normalizedEmail });
       if (!found) return res.status(401).json({ success: false, error: 'Invalid staff credentials' });
       const isMatch = await found.comparePassword(password);
       if (!isMatch) return res.status(401).json({ success: false, error: 'Invalid staff credentials' });
       const token = createToken(found);
-      return res.json({ success: true, token, staff: { ...found.toObject(), password: undefined } });
+      const staff = found.toObject();
+      delete staff.password;
+      return res.json({ success: true, token, staff });
     }
 
-    const match = accounts.find((item) => item.email === email);
+    const match = accounts.find((item) => item.email?.toString().trim().toLowerCase() === normalizedEmail);
     if (!match) return res.status(401).json({ success: false, error: 'Invalid staff credentials' });
     if (match.password !== password) return res.status(401).json({ success: false, error: 'Invalid staff credentials' });
     const token = createToken(match);
-    return res.json({ success: true, token, staff: { ...match, password: undefined } });
+    const staff = { ...match };
+    delete staff.password;
+    return res.json({ success: true, token, staff });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
   }
@@ -631,7 +645,8 @@ async function createStaffAccount(req, res) {
       blissId,
       country = 'Kenya',
       avatar,
-    } = req.body;
+      isActive = true,
+    } = req.body || {};
 
     if (!fullName || !email || !phone || !password) {
       return res.status(400).json({
@@ -657,6 +672,7 @@ async function createStaffAccount(req, res) {
         blissId: blissId || `BC-${Date.now()}`,
         country,
         avatar: avatar ?? '',
+        isActive,
       });
       const staffData = staff.toObject();
       delete staffData.password;
@@ -664,7 +680,7 @@ async function createStaffAccount(req, res) {
     }
 
     const existing = memoryState.staff.find(
-      (item) => item.email.toString().trim().toLowerCase() === normalizedEmail,
+      (item) => item.email?.toString().trim().toLowerCase() === normalizedEmail,
     );
     if (existing) {
       return res.status(409).json({ success: false, error: 'Staff account already exists' });
@@ -681,6 +697,7 @@ async function createStaffAccount(req, res) {
       blissId: blissId ?? `BC-${String(memoryState.staff.length + 1).padStart(6, '0')}`,
       country,
       avatar: avatar ?? '',
+      isActive,
       online: true,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),

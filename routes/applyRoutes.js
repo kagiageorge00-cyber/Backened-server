@@ -1,4 +1,5 @@
 const express = require('express');
+const bcrypt = require('bcryptjs');
 const Candidate = require('../models/candidate');
 
 const router = express.Router();
@@ -40,6 +41,8 @@ function calculateProfileCompletion(candidate) {
 router.post('/', async (req, res) => {
   try {
     const {
+      candidateId,
+      password,
       fullName,
       name,
       email,
@@ -79,14 +82,25 @@ router.post('/', async (req, res) => {
       return sendError(res, 400, 'email and phone are required');
     }
 
-    let candidate = await Candidate.findOne({ $or: [{ email }, { phone }] });
+    let candidate = await Candidate.findOne({
+      $or: [
+        { email },
+        { phone },
+        { uniqueCode: candidateId },
+      ],
+    });
+
+    let hashedPassword = candidate?.password;
+    if (password) {
+      hashedPassword = await bcrypt.hash(password, 10);
+    }
 
     const payload = {
       fullName: fullName || name || candidate?.fullName || '',
       name: name || fullName || candidate?.name || '',
       email,
       phone,
-      uniqueCode: candidate?.uniqueCode || generateCandidateCode(),
+      uniqueCode: candidate?.uniqueCode || candidateId || generateCandidateCode(),
       country: country || candidate?.country || '',
       nationality: nationality || candidate?.nationality || '',
       religion: religion || candidate?.religion || '',
@@ -119,6 +133,10 @@ router.post('/', async (req, res) => {
       status: candidate?.status || 'in_process',
       paymentStatus: candidate?.paymentStatus || 'pending',
     };
+
+    if (hashedPassword) {
+      payload.password = hashedPassword;
+    }
 
     if (candidate) {
       // Update existing candidate

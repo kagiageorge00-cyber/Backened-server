@@ -40,7 +40,7 @@ try {
 }
 
 // Test the endpoint URL
-const backendUrl = 'https://backened_server_1.onrender.com';
+const backendUrl = 'https://backened-server-1.onrender.com';
 const loginUrl = `${backendUrl}/api/admin/login`;
 console.log(`🌍 Endpoint URL: ${loginUrl}`);
 console.log(`\n✅ To test with curl:`);

@@ -6,7 +6,7 @@
   const MONGO = process.env.MONGO_URI || 'mongodb://localhost:27017/bliss';
   await mongoose.connect(MONGO);
 
-  const backendUrl = process.env.BACKEND_URL || 'https://backened_server_1.onrender.com';
+  const backendUrl = process.env.BACKEND_URL || 'https://backened-server-1.onrender.com';
   const phone = '+15551234567';
   const payload = {
     object: 'whatsapp_business_account',

@@ -1,4 +1,4 @@
-const { computeBlissMatchScore } = require('../services/candidateMarketplaceService');
+const { buildCandidateMarketplaceProfile, computeBlissMatchScore } = require('../services/candidateMarketplaceService');
 
 describe('candidate marketplace scoring', () => {
   test('computes a strong match for aligned candidates', () => {
@@ -35,5 +35,16 @@ describe('candidate marketplace scoring', () => {
     );
 
     expect(score).toBe(100);
+  });
+
+  test('uses introductionVideoUrl when building the marketplace profile', () => {
+    const profile = buildCandidateMarketplaceProfile({
+      _id: 'cand-123',
+      uniqueCode: 'CAND-0001',
+      fullName: 'Grace Akinyi',
+      introductionVideoUrl: 'https://cdn.example.com/intro.mp4',
+    });
+
+    expect(profile.videoUrl).toBe('https://cdn.example.com/intro.mp4');
   });
 });

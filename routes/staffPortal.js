@@ -1,6 +1,12 @@
 const express = require('express');
 const router = express.Router();
+const Candidate = require('../models/candidate');
+const authenticateStaff = require('../middleware/staffAuth');
 const staffController = require('../controllers/staffController');
+
+function sanitizeValue(value) {
+  return typeof value === 'string' ? value.trim() : value;
+}
 
 router.post('/login', staffController.login);
 router.get('/accounts', staffController.listStaffAccounts);
@@ -33,5 +39,103 @@ router.post('/support/tickets/:id/respond', staffController.respondSupportTicket
 router.get('/assignments', staffController.listAssignments);
 router.post('/marketplace/jobs', staffController.postMarketplaceJob);
 router.get('/marketplace/jobs', staffController.listJobs);
+
+router.get('/marketplace/search', authenticateStaff, async (req, res) => {
+  try {
+    const { query, skills, country, status } = req.query;
+
+    const filter = {};
+
+    if (query) {
+      filter.$or = [
+        { fullName: { $regex: query, $options: 'i' } },
+        { name: { $regex: query, $options: 'i' } },
+        { email: { $regex: query, $options: 'i' } },
+        { phone: { $regex: query, $options: 'i' } },
+        { candidateId: { $regex: query, $options: 'i' } },
+        { uniqueCode: { $regex: query, $options: 'i' } },
+      ];
+    }
+
+    if (skills) {
+      filter.skills = { $regex: skills, $options: 'i' };
+    }
+
+    if (country) {
+      filter.country = { $regex: country, $options: 'i' };
+    }
+
+    if (status) {
+      filter.status = status;
+    }
+
+    const candidates = await Candidate.find(filter).limit(50).sort({ createdAt: -1 });
+
+    return res.json({ success: true, data: candidates, total: candidates.length });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.patch('/marketplace/candidates/:id', authenticateStaff, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updates = {};
+    const restrictedFields = [
+      '_id',
+      '__v',
+      'password',
+      'resetToken',
+      'resetTokenExpires',
+      'paymentReference',
+      'paymentMethod',
+      'paymentDate',
+      'transactionId',
+      'amount',
+      'paymentId',
+      'createdAt',
+      'applicationDate',
+    ];
+
+    Object.keys(req.body || {}).forEach((field) => {
+      if (restrictedFields.includes(field)) {
+        return;
+      }
+      if (req.body[field] !== undefined) {
+        updates[field] = sanitizeValue(req.body[field]);
+      }
+    });
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ success: false, error: 'At least one marketplace field must be provided' });
+    }
+
+    const validStatuses = ['available', 'in_process', 'deployed', 'approved', 'rejected'];
+    if (updates.status && !validStatuses.includes(updates.status)) {
+      return res.status(400).json({ success: false, error: `Status must be one of: ${validStatuses.join(', ')}` });
+    }
+
+    const candidate = await Candidate.findOneAndUpdate(
+      {
+        $or: [
+          { _id: id },
+          { uniqueCode: id },
+          { phone: id },
+          { email: id },
+        ],
+      },
+      { $set: updates },
+      { new: true }
+    );
+
+    if (!candidate) {
+      return res.status(404).json({ success: false, error: 'Candidate not found' });
+    }
+
+    return res.json({ success: true, message: 'Marketplace candidate updated', data: candidate });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 module.exports = router;

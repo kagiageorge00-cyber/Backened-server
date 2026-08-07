@@ -14,7 +14,7 @@ function request(options, body) {
 }
 
 (async () => {
-  const backendUrl = process.env.BACKEND_URL || 'https://backened_server_1.onrender.com';
+  const backendUrl = process.env.BACKEND_URL || 'https://backened-server-1.onrender.com';
   const backendHost = new URL(backendUrl).hostname;
 
   try {

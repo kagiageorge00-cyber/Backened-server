@@ -29,6 +29,10 @@ const { sendEmail } = require("../email");
 
 const { FRONTEND_URL } = require("../config");
 const { getCandidateDisplayName } = require('../utils/candidateDisplayName');
+const {
+  ensureCandidatePortalCredentials,
+  notifyCandidatePortalReady,
+} = require('../utils/candidatePortalCredentials');
 
 // WhatsApp Cloud API Service
 const {
@@ -199,11 +203,15 @@ router.post(
       payment.linkGeneratedAt = new Date();
       await payment.save();
 
+      let portalCredentials = null;
       if (candidate) {
         candidate.isVerified = true;
         candidate.paymentStatus = "completed";
         candidate.status = "approved";
         candidate.candidateFormLink = formLinkTarget;
+        candidate.applicationStatus = 'Payment Approved';
+        candidate.currentStatus = 'Registration';
+        portalCredentials = await ensureCandidatePortalCredentials(candidate);
         await candidate.save();
       }
 
@@ -217,6 +225,27 @@ router.post(
         entityType: 'payment',
         entityId: payment._id.toString(),
       });
+
+      if (candidate) {
+        await notifyCandidatePortalReady({
+          candidate,
+          userId: candidate.phone || candidate.email || candidate.uniqueCode || payment.userId,
+          title: 'Registration Can Continue',
+          message: `Your payment is approved. Your candidate portal account is ready. Candidate ID: ${portalCredentials?.uniqueCode || candidate.uniqueCode}. Use the link below to continue registration.`,
+          actionUrl: formLinkTarget,
+          email: candidate.email,
+          phoneNumber: candidate.phone,
+          html: `
+            <div style="font-family: Arial, sans-serif; padding: 24px; background: #f8fafc; border-radius: 10px;">
+              <h2 style="color: #0f172a; margin-top: 0;">Your registration can continue</h2>
+              <p>Your payment has been approved.</p>
+              <p><strong>Candidate ID:</strong> ${portalCredentials?.uniqueCode || candidate.uniqueCode || 'N/A'}</p>
+              <p><strong>Password:</strong> ${portalCredentials?.password || 'Contact support'}</p>
+              <p><a href="${formLinkTarget}" style="display:inline-block;padding:12px 20px;background:#2563eb;color:white;text-decoration:none;border-radius:6px;">Continue Registration</a></p>
+            </div>
+          `,
+        });
+      }
 
       // Notify admin about payment approval
       if (process.env.NODE_ENV !== 'test') {
@@ -243,7 +272,11 @@ router.post(
       const email = candidate?.email || payment.metadata?.email;
       const name = getCandidateDisplayName(candidate || payment.metadata || {});
       const phoneParam = candidate?.phone || payment.userId;
-      const link = `${FRONTEND_URL}/candidate-form?phone=${encodeURIComponent(phoneParam)}`;
+      const link = candidate?.uniqueCode
+        ? `${FRONTEND_URL}/candidate-form?candidateId=${encodeURIComponent(candidate.uniqueCode)}`
+        : `${FRONTEND_URL}/candidate-form?phone=${encodeURIComponent(phoneParam)}`;
+      const portalId = portalCredentials?.uniqueCode || candidate?.uniqueCode || null;
+      const portalPassword = portalCredentials?.password || null;
 
       if (email) {
         setImmediate(async () => {
@@ -265,7 +298,9 @@ router.post(
                 <p style="font-size: 16px; line-height: 1.6; margin: 0 0 16px;">Hello ${name},</p>
                 <p style="font-size: 16px; line-height: 1.6; margin: 0 0 16px;">Your payment has been reviewed and approved successfully. Thank you for completing this step.</p>
                 <p style="font-size: 16px; line-height: 1.6; margin: 0 0 16px;">Please proceed to complete your candidate form using the link below:</p>
-                <p style="margin: 0 0 24px;"><a href="${link}" style="display: inline-block; padding: 12px 20px; background-color: #0056d6; color: #ffffff; text-decoration: none; border-radius: 4px;">Complete Candidate Form</a></p>
+                <p style="margin: 0 0 16px;"><a href="${link}" style="display: inline-block; padding: 12px 20px; background-color: #0056d6; color: #ffffff; text-decoration: none; border-radius: 4px;">Complete Candidate Form</a></p>
+                ${portalId ? `<p style="font-size: 16px; line-height: 1.6; margin: 0 0 8px;"><strong>Candidate ID:</strong> ${portalId}</p>` : ''}
+                ${portalPassword ? `<p style="font-size: 16px; line-height: 1.6; margin: 0 0 16px;"><strong>Password:</strong> ${portalPassword}</p>` : ''}
                 <p style="font-size: 16px; line-height: 1.6; margin: 0 0 16px;">If you need assistance, reply to this email and our support team will be happy to help.</p>
                 <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #e0e0e0; color: #777; font-size: 14px;">
                   <p style="margin: 0;">Bliss Connect</p>
@@ -911,10 +946,12 @@ router.get("/marketplace/search", requireAdminAuth, async (req, res) => {
 
     if (query) {
       filter.$or = [
-        { fullName: { $regex: query, $options: "i" } },
-        { name: { $regex: query, $options: "i" } },
-        { email: { $regex: query, $options: "i" } },
-        { phone: { $regex: query, $options: "i" } },
+        { fullName: { $regex: query, $options: 'i' } },
+        { name: { $regex: query, $options: 'i' } },
+        { email: { $regex: query, $options: 'i' } },
+        { phone: { $regex: query, $options: 'i' } },
+        { candidateId: { $regex: query, $options: 'i' } },
+        { uniqueCode: { $regex: query, $options: 'i' } },
       ];
     }
 
@@ -977,6 +1014,67 @@ router.patch("/marketplace/candidates/:id/status", requireAdminAuth, async (req,
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.patch('/marketplace/candidates/:id', requireAdminAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updates = {};
+    const restrictedFields = [
+      '_id',
+      '__v',
+      'password',
+      'resetToken',
+      'resetTokenExpires',
+      'paymentReference',
+      'paymentMethod',
+      'paymentDate',
+      'transactionId',
+      'amount',
+      'paymentId',
+      'createdAt',
+      'applicationDate',
+    ];
+
+    Object.keys(req.body || {}).forEach((field) => {
+      if (restrictedFields.includes(field)) {
+        return;
+      }
+      if (req.body[field] !== undefined) {
+        updates[field] = sanitizeValue(req.body[field]);
+      }
+    });
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ success: false, error: 'At least one marketplace field must be provided' });
+    }
+
+    const validStatuses = ['available', 'in_process', 'deployed', 'approved', 'rejected'];
+    if (updates.status && !validStatuses.includes(updates.status)) {
+      return res.status(400).json({ success: false, error: `Status must be one of: ${validStatuses.join(', ')}` });
+    }
+
+    const candidate = await Candidate.findOneAndUpdate(
+      {
+        $or: [
+          { _id: id },
+          { uniqueCode: id },
+          { phone: id },
+          { email: id },
+        ],
+      },
+      { $set: updates },
+      { new: true }
+    );
+
+    if (!candidate) {
+      return res.status(404).json({ success: false, error: 'Candidate not found' });
+    }
+
+    return res.json({ success: true, message: 'Marketplace candidate updated', data: candidate });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
   }
 });
 

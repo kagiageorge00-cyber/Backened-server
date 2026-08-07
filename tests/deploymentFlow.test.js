@@ -13,11 +13,31 @@ jest.mock('../models/Contract', () => ({
   create: jest.fn(),
 }));
 
+// Mock employer authentication to inject a test employer into requests
+jest.mock('../middleware/employerAuth', () => jest.fn((req, res, next) => {
+  req.employer = {
+    employerId: 'EMP-1',
+    status: 'active',
+    verificationStatus: 'verified_employer',
+    companyName: 'Demo Co'
+  };
+  next();
+}));
+
+// Ensure candidate model is mocked to avoid real DB calls
+jest.mock('../models/candidate', () => ({
+  findOne: jest.fn(),
+}));
+
+// Increase default test timeout for longer async flows
+jest.setTimeout(30000);
+
 const request = require('supertest');
 const app = require('../server');
 const Deployment = require('../models/Deployment');
 const PaymentRecord = require('../models/PaymentRecord');
 const Contract = require('../models/Contract');
+const Candidate = require('../models/candidate');
 
 describe('Deployment flow end to end', () => {
   beforeEach(() => {
@@ -55,6 +75,7 @@ describe('Deployment flow end to end', () => {
       save: jest.fn().mockResolvedValue(true)
     };
     Deployment.findOne.mockResolvedValue(depRecord);
+    Candidate.findOne.mockResolvedValue({ candidateId: 'CAN-1', status: 'available', isVerified: true, fullName: 'Test Candidate', save: jest.fn().mockResolvedValue(true) });
     PaymentRecord.create.mockResolvedValue({ paymentId: 'PAY-123', deploymentId: 'DEP-123' });
     Contract.create.mockResolvedValue({ contractId: 'CTR-123', deploymentId: 'DEP-123' });
 

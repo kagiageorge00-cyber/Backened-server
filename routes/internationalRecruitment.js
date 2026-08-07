@@ -1,5 +1,5 @@
 const express = require('express');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 const Candidate = require('../models/candidate');
 const Interview = require('../models/Interview');
 const Deployment = require('../models/Deployment');
@@ -102,7 +102,7 @@ router.post('/interviews', employerAuth, async (req, res) => {
       location,
       interviewStatus: 'requested',
       meetingStatus: 'scheduled',
-      roomId: `room-${uuidv4()}`,
+      roomId: `room-${randomUUID()}`,
       channelName: `intl_interview_${interviewId}`,
     });
 
@@ -202,9 +202,38 @@ router.post('/deployment/payment', employerAuth, async (req, res) => {
     const visaCharge = Number(visaFee) || 0;
     const ticketCharge = Number(flightTicketFee) || 0;
     const relocationCharge = Number(relocationAllowance) || 0;
-    const employerFee = grossSalary * 0.8;
-    const candidateFee = grossSalary * 0.15;
-    const totalDue = employerFee + candidateFee + visaCharge + ticketCharge + relocationCharge;
+    const isHousemaid = /housemaid/i.test(candidate.jobPosition || '') || /housemaid/i.test(candidate.jobAppliedFor || '');
+    const employerCountry = (employer.country || '').toLowerCase();
+    const isLebanonEmployer = employerCountry === 'lebanon';
+
+    let employerFee;
+    let candidateFee;
+    let totalDue;
+    let fixedVisaCharge = visaCharge;
+    let fixedTicketCharge = ticketCharge;
+    let fixedRelocationCharge = relocationCharge;
+
+    if (isLebanonEmployer) {
+      // Lebanon employers pay a fixed USD 2500 deployment fee due to high boarding cost.
+      employerFee = 2500;
+      candidateFee = 0;
+      totalDue = 2500;
+      fixedVisaCharge = 0;
+      fixedTicketCharge = 0;
+      fixedRelocationCharge = 0;
+    } else if (isHousemaid) {
+      // For international housemaid placements, the deployment fee is a fixed USD 1000.
+      employerFee = 1000;
+      candidateFee = 0;
+      totalDue = 1000;
+      fixedVisaCharge = 0;
+      fixedTicketCharge = 0;
+      fixedRelocationCharge = 0;
+    } else {
+      employerFee = grossSalary * 0.8;
+      candidateFee = grossSalary * 0.15;
+      totalDue = employerFee + candidateFee + visaCharge + ticketCharge + relocationCharge;
+    }
 
     const deploymentId = `INTDEP-${Date.now()}`;
     const deployment = await Deployment.create({
@@ -222,9 +251,9 @@ router.post('/deployment/payment', employerAuth, async (req, res) => {
       currentStage: 'Visa & Deployment Payment',
       progress: 20,
       deploymentStatus: 'international',
-      visaFee: visaCharge,
-      flightTicketFee: ticketCharge,
-      relocationAllowance: relocationCharge,
+      visaFee: fixedVisaCharge,
+      flightTicketFee: fixedTicketCharge,
+      relocationAllowance: fixedRelocationCharge,
       employerFee,
       candidateFee,
     });

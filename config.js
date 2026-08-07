@@ -1,6 +1,6 @@
 require('dotenv').config();
 
-const DEFAULT_BACKEND_URL = 'https://backened_server_1.onrender.com';
+const DEFAULT_BACKEND_URL = 'https://backened-server-1.onrender.com';
 
 function normalizeUrl(value) {
   if (!value) return null;

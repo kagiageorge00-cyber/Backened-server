@@ -1,5 +1,5 @@
 const express = require('express');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 const Employer = require('../models/Employer');
 const Candidate = require('../models/candidate');
 const Interview = require('../models/Interview');
@@ -139,7 +139,7 @@ router.post('/interviews', employerAuth, async (req, res) => {
       location,
       interviewStatus: 'requested',
       meetingStatus: 'scheduled',
-      roomId: `room-${uuidv4()}`,
+      roomId: `room-${randomUUID()}`,
       channelName: `interview_${interviewId}`,
     });
 

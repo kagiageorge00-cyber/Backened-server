@@ -5,6 +5,7 @@ const Candidate = require('../models/candidate');
 const Notification = require('../models/Notification');
 const employerAuth = require('../middleware/employerAuth');
 const crypto = require('crypto');
+const { generateRtcSession } = require('../services/rtcService');
 
 const asyncCandidateLookup = async (candidateId) => {
   if (!candidateId) return null;
@@ -73,6 +74,11 @@ router.post('/request', employerAuth, async (req, res) => {
       : 'video';
 
     const interviewId = `INT-${Date.now()}`;
+    const channelName = `interview_${interviewId}`;
+    const rtcSession = normalizedInterviewType === 'text'
+      ? { provider: 'none', token: null, channelName, uid: 0 }
+      : await generateRtcSession({ interviewId, channelName, uid: 0, interviewType: normalizedInterviewType });
+
     const interview = await Interview.create({
       interviewId,
       employerId: employer.employerId,
@@ -82,8 +88,8 @@ router.post('/request', employerAuth, async (req, res) => {
       interviewType: normalizedInterviewType,
       meetingLink: meetingLink || `https://meet.blissconnect.local/${crypto.randomUUID()}`,
       notes,
-      channelName: `interview_${interviewId}`,
-      agoraToken: normalizedInterviewType === 'text' ? null : `token_${Date.now()}_placeholder`,
+      channelName: rtcSession.channelName,
+      agoraToken: rtcSession.token,
       meetingStatus: 'scheduled',
       interviewStatus: 'requested',
     });
@@ -189,8 +195,14 @@ router.post('/:interviewId/start', employerAuth, async (req, res) => {
     interview.meetingStatus = 'active';
     interview.interviewStatus = 'accepted';
     if (interview.interviewType && ['video', 'voice'].includes(interview.interviewType)) {
-      interview.channelName = interview.channelName || `interview_${interview.interviewId}`;
-      interview.agoraToken = interview.agoraToken || `token_${Date.now()}_placeholder`;
+      const rtcSession = await generateRtcSession({
+        interviewId: interview.interviewId,
+        channelName: interview.channelName || `interview_${interview.interviewId}`,
+        uid: 0,
+        interviewType: interview.interviewType,
+      });
+      interview.channelName = rtcSession.channelName;
+      interview.agoraToken = interview.agoraToken || rtcSession.token;
     }
     await interview.save();
 

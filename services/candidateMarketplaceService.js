@@ -67,7 +67,7 @@ function computeBlissMatchScore(candidate, employerRequirements = {}) {
 function buildCandidateMarketplaceProfile(candidate, employerRequirements = {}) {
   const candidateObj = candidate && typeof candidate.toObject === 'function' ? candidate.toObject() : { ...candidate };
   const photoUrl = sanitizeText(candidateObj.photoUrl || candidateObj.profilePhoto || candidateObj.imageUrl, '');
-  const videoUrl = sanitizeText(candidateObj.videoUrl, '');
+  const videoUrl = sanitizeText(candidateObj.videoUrl || candidateObj.introductionVideoUrl || candidateObj.introVideoUrl || candidateObj.introVideo || '', '');
   const skills = Array.isArray(candidateObj.skills) ? candidateObj.skills : [];
   const languages = Array.isArray(candidateObj.languages) ? candidateObj.languages : [];
   const workExperience = Array.isArray(candidateObj.workExperience) && candidateObj.workExperience.length

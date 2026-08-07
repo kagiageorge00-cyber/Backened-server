@@ -17,6 +17,7 @@ const Job = require('../models/Job');
 
 const jwtAuth = require('../middleware/jwtAuth');
 const { getCandidatePortalGreetingName, getCandidateNameValue } = require('../utils/candidateDisplayName');
+const { generateRtcSession } = require('../services/rtcService');
 
 const JWT_SECRET = process.env.CANDIDATE_JWT_SECRET || 'candidate_secret_key';
 
@@ -502,12 +503,16 @@ router.post('/interviews/:id/accept', jwtAuth, async (req, res) => {
     if (!interview || interview.candidateId.toString() !== candidate._id.toString()) return res.status(404).json({ success: false, error: 'Interview not found' });
     interview.interviewStatus = 'accepted';
     
-    // Generate Agora channel and token if video/voice interview
+    // Generate a RTC channel and token if video/voice interview
     if (interview.interviewType && ['video', 'voice'].includes(interview.interviewType)) {
-      interview.channelName = `interview_${interview._id}`;
-      // TODO: Generate actual Agora token using Agora REST API
-      // For now, use a placeholder token - in production, call Agora's token generation service
-      interview.agoraToken = `token_${Date.now()}_placeholder`;
+      const rtcSession = await generateRtcSession({
+        interviewId: interview.interviewId,
+        channelName: interview.channelName || `interview_${interview.interviewId}`,
+        uid: 0,
+        interviewType: interview.interviewType,
+      });
+      interview.channelName = rtcSession.channelName;
+      interview.agoraToken = rtcSession.token;
     }
     
     await interview.save();

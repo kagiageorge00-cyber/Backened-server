@@ -21,7 +21,7 @@ try {
 
 const app = express();
 
-const { FRONTEND_URL } = require('./config');
+const { FRONTEND_URL, BACKEND_URL } = require('./config');
 
 const allowedOrigins = new Set([
   'http://localhost:5173',
@@ -32,8 +32,8 @@ const allowedOrigins = new Set([
   'http://127.0.0.1:8080',
   'https://blissconnect12.netlify.app',
   'https://www.blissconnect12.netlify.app',
-  'https://backened_server_1.onrender.com',
-  'https://www.backened_server_1.onrender.com',
+  'https://backened-server-1.onrender.com',
+  'https://www.backened-server-1.onrender.com',
   process.env.FRONTEND_URL,
   FRONTEND_URL,
 ].filter(Boolean));
@@ -176,11 +176,160 @@ app.get('/api/downloads/latest', (req, res) => {
 // ======================
 const Candidate = require('./models/candidate');
 const User = require('./models/User');
+const Job = require('./models/Job');
 
 // ======================
-// ROUTES
-// (MATCHES YOUR ACTUAL FILES)
+// PUBLIC LANDING ROUTES
 // ======================
+app.get('/jobs/:jobId', async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    const job = await Job.findOne({ jobId });
+    if (!job) {
+      return res.status(404).send('<h1>Job not found</h1>');
+    }
+
+    const title = job.jobTitle || job.title || 'Global Job Opportunity';
+    const summary =
+      job.jobSummary || job.description || 'Explore this opportunity on Bliss Connect.';
+    const images = [job.coverImage, ...(job.images || [])].filter(Boolean);
+    const previewImage = images[0] ||
+      'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?auto=format&fit=crop&w=1200&q=80';
+    const shareUrl = `${BACKEND_URL}/jobs/${job.jobId}`;
+
+    const imageMeta = images
+      .slice(0, 3)
+      .map((src) => `<meta property="og:image" content="${src}" />`)
+      .join('\n    ');
+
+    const html = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${title}</title>
+    <meta name="description" content="${summary.replace(/"/g, '&quot;')}" />
+    <meta property="og:title" content="${title}" />
+    <meta property="og:description" content="${summary.replace(/"/g, '&quot;')}" />
+    <meta property="og:type" content="website" />
+    ${imageMeta}
+    <meta property="og:url" content="${shareUrl}" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="${title}" />
+    <meta name="twitter:description" content="${summary.replace(/"/g, '&quot;')}" />
+    <meta name="twitter:image" content="${previewImage}" />
+    <meta name="robots" content="index,follow" />
+    <style>
+      body { font-family: Inter, system-ui, sans-serif; margin: 0; background: #050b1a; color: #f8fafc; }
+      .page { display: grid; place-items: center; padding: 24px; }
+      .preview-card { width: min(100%, 980px); border-radius: 30px; overflow: hidden; background: linear-gradient(180deg, rgba(10,25,63,0.95), rgba(7,17,31,0.98)); box-shadow: 0 30px 80px rgba(0,0,0,0.35); }
+      .hero { position: relative; min-height: 420px; background: #0b1227; }
+      .hero img { width: 100%; height: 420px; object-fit: cover; display: block; }
+      .hero::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 40%, rgba(7,17,31,0.92)); }
+      .hero-label { position: absolute; left: 24px; bottom: 24px; z-index: 2; background: rgba(15, 23, 42, 0.82); color: #e2e8f0; padding: 10px 14px; border-radius: 999px; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; }
+      .thumbnails { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 18px 24px 0; background: #07111f; }
+      .thumbnail { border-radius: 18px; overflow: hidden; background: #0a1221; aspect-ratio: 4/3; cursor: pointer; border: 2px solid transparent; }
+      .thumbnail img { width: 100%; height: 100%; object-fit: cover; display: block; }
+      .thumbnail.active { border-color: #3b82f6; }
+      .details { padding: 28px 32px 32px; display: grid; gap: 24px; }
+      .brand-pill { display: inline-flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 999px; background: rgba(255,255,255,0.08); color: #f8fafc; font-size: 12px; }
+      .brand-pill::before { content: '★'; display: inline-block; color: #38bdf8; }
+      .title { margin: 0; font-size: clamp(2rem, 2.5vw, 3rem); line-height: 1.05; }
+      .meta { display: flex; flex-wrap: wrap; gap: 10px; color: #cbd5e1; font-size: 0.95rem; }
+      .meta span { background: rgba(255,255,255,0.04); padding: 10px 14px; border-radius: 14px; }
+      .summary { margin: 0; color: #e2e8f0; line-height: 1.8; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+      .card { background: rgba(255,255,255,0.05); border: 1px solid rgba(148,163,184,0.12); border-radius: 22px; padding: 20px; }
+      .card h3 { margin: 0 0 12px; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.12em; color: #93c5fd; }
+      .card p, .card ul { margin: 0; color: #cbd5e1; font-size: 0.95rem; line-height: 1.7; }
+      .card ul { padding-left: 18px; }
+      .button-row { display: flex; flex-wrap: wrap; gap: 12px; }
+      .button { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 0 18px; border-radius: 14px; text-decoration: none; color: #fff; font-weight: 600; }
+      .button.primary { background: linear-gradient(135deg, #38bdf8, #3b82f6); }
+      .button.secondary { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.14); }
+      .footer { padding: 20px 32px 28px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; color: #94a3b8; font-size: 0.92rem; }
+      @media (max-width: 760px) { .hero { min-height: 280px; } .thumbnails { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <article class="preview-card">
+        <section class="hero">
+          <img id="heroImage" src="${previewImage}" alt="${title}" />
+          <div class="hero-label">Bliss Connect | Global Talent Marketplace</div>
+        </section>
+        <section class="thumbnails">
+          ${images
+            .slice(0, 3)
+            .map(
+              (src, index) => `
+              <button class="thumbnail${index === 0 ? ' active' : ''}" data-src="${src}" type="button">
+                <img src="${src}" alt="${title} photo ${index + 1}" />
+              </button>
+            `,
+            )
+            .join('')}
+        </section>
+        <div class="details">
+          <div>
+            <span class="brand-pill">Job preview</span>
+            <h1 class="title">${title}</h1>
+            <p class="meta">
+              <span>${job.employerName || 'Company listing'}</span>
+              <span>${job.city || job.location || 'Remote / Global'}</span>
+              <span>${job.country || 'International'}</span>
+              <span>${job.employmentType || 'Flexible'}</span>
+            </p>
+            <p class="summary">${summary}</p>
+          </div>
+          <div class="grid">
+            <div class="card">
+              <h3>Opportunity details</h3>
+              <p>Salary: ${job.currency || 'USD'} ${job.salary || 'Negotiable'}</p>
+              <p>Vacancies: ${job.numberOfVacancies || job.vacancies || 'Multiple'}</p>
+              <p>Deadline: ${job.applicationDeadline ? new Date(job.applicationDeadline).toLocaleDateString() : 'Open'}</p>
+            </div>
+            <div class="card">
+              <h3>What makes it strong</h3>
+              <ul>
+                <li>${job.jobSummary ? 'Clear role description' : 'High-demand global placement'}</li>
+                <li>${job.requiredSkills?.length ? job.requiredSkills.slice(0, 3).join(', ') : 'Flexible skill set'}</li>
+                <li>${job.workLocation || 'Flexible work mode'}</li>
+              </ul>
+            </div>
+          </div>
+          <div class="button-row">
+            <a class="button primary" href="${shareUrl}">View this job on Bliss Connect</a>
+            <a class="button secondary" href="mailto:?subject=${encodeURIComponent('Job opportunity: ' + title)}&body=${encodeURIComponent(summary + '\n\n View this role: ' + shareUrl)}">Email link</a>
+          </div>
+        </div>
+        <footer class="footer">
+          <span>Job ID: ${job.jobId}</span>
+          <span>Shared via Bliss Connect</span>
+        </footer>
+      </article>
+    </div>
+    <script>
+      const thumbnails = document.querySelectorAll('.thumbnail');
+      const hero = document.getElementById('heroImage');
+      thumbnails.forEach((button) => {
+        button.addEventListener('click', () => {
+          thumbnails.forEach((btn) => btn.classList.remove('active'));
+          button.classList.add('active');
+          hero.src = button.dataset.src;
+        });
+      });
+    </script>
+  </body>
+</html>`;
+
+    res.send(html);
+  } catch (error) {
+    console.error('Job page error:', error);
+    return res.status(500).send('<h1>Server error</h1>');
+  }
+});
+
 const candidateRoutes = require('./routes/candidateRoutes');
 const applyRoutes = require('./routes/applyRoutes');
 const registerRoutes = require('./routes/register');
@@ -484,7 +633,26 @@ app.post('/api/candidate/login', async (req, res) => {
       return res.status(400).json({ success: false, error: 'candidateId and password are required' });
     }
 
-    const candidate = await CandidateModel.findOne({ uniqueCode: candidateId });
+    const normalizedCandidateId = candidateId.toString().trim();
+    const normalizedPhone = normalizePhone(normalizedCandidateId);
+    const normalizedEmail = normalizedCandidateId.toLowerCase();
+    const lookupCriteria = [
+      { uniqueCode: normalizedCandidateId },
+      { email: normalizedEmail },
+    ];
+
+    if (mongoose.Types.ObjectId.isValid(normalizedCandidateId)) {
+      lookupCriteria.unshift({ _id: normalizedCandidateId });
+    }
+
+    if (normalizedPhone) {
+      lookupCriteria.push({ phone: normalizedPhone });
+      lookupCriteria.push({ phone: normalizedCandidateId });
+    } else {
+      lookupCriteria.push({ phone: normalizedCandidateId });
+    }
+
+    const candidate = await CandidateModel.findOne({ $or: lookupCriteria });
     if (!candidate) {
       return res.status(401).json({ success: false, error: 'Invalid ID or password' });
     }
