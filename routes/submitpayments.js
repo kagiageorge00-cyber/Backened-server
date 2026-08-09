@@ -5,6 +5,63 @@ const Payment = require("../models/Payment");
 const User = require("../models/User");
 const Candidate = require("../models/candidate");
 
+function normalizeEnumValue(value, map) {
+  if (!value || typeof value !== 'string') return value;
+  return map[value.trim().toLowerCase()] || value.trim();
+}
+
+const maritalStatusMap = {
+  single: 'Single',
+  married: 'Married',
+  divorced: 'Divorced',
+  widowed: 'Widowed',
+  separated: 'Separated',
+};
+
+const educationalLevelMap = {
+  primary: 'Primary',
+  secondary: 'Secondary',
+  vocational: 'Vocational/Technical',
+  'vocational/technical': 'Vocational/Technical',
+  technical: 'Vocational/Technical',
+  diploma: 'Diploma',
+  bachelor: "Bachelor's Degree",
+  bachelors: "Bachelor's Degree",
+  "bachelor's degree": "Bachelor's Degree",
+  'bachelors degree': "Bachelor's Degree",
+  master: "Master's Degree",
+  masters: "Master's Degree",
+  "master's degree": "Master's Degree",
+  'masters degree': "Master's Degree",
+  phd: 'PhD',
+  doctorate: 'PhD',
+  other: 'Other',
+};
+
+function normalizeMaritalStatus(value) {
+  return normalizeEnumValue(value, maritalStatusMap);
+}
+
+function normalizeEducationalLevel(value) {
+  return normalizeEnumValue(value, educationalLevelMap);
+}
+ 
+function normalizePaymentStatus(value) {
+  if (!value || typeof value !== 'string') return value;
+  const normalized = value.trim().toLowerCase();
+  switch (normalized) {
+    case 'pending':
+      return 'Pending';
+    case 'paid':
+      return 'Paid';
+    case 'failed':
+      return 'Failed';
+    case 'unpaid':
+      return 'Unpaid';
+    default:
+      return value.trim();
+  }
+}
 // ✅ SINGLE CLEAN EMAIL FUNCTION
 const { sendEmail } = require("../email");
 const { notifyPaymentSuccess } = require("../services/notificationservice");
@@ -170,13 +227,13 @@ async function handleSubmitPayment(req, res) {
             nationality,
             religion,
             education,
-            educationalLevel,
+            educationalLevel: normalizeEducationalLevel(educationalLevel),
             experience,
             skills: Array.isArray(skills) ? skills : toArrayField(skills),
             languages: Array.isArray(languages) ? languages : toArrayField(languages),
             gender,
             dateOfBirth,
-            maritalStatus,
+            maritalStatus: normalizeMaritalStatus(maritalStatus),
             numberOfChildren,
             jobPosition,
             jobType,
@@ -189,7 +246,7 @@ async function handleSubmitPayment(req, res) {
           phone: detectedPhone,
           uniqueCode: generateCandidateCode(),
           status: 'in_process',
-          paymentStatus: 'pending',
+          paymentStatus: normalizePaymentStatus('pending'),
           isVerified: false,
             photoUrl,
             videoUrl,
@@ -219,7 +276,7 @@ async function handleSubmitPayment(req, res) {
           candidate.nationality = nationality || candidate.nationality;
           candidate.religion = religion || candidate.religion;
           candidate.education = education || candidate.education;
-          candidate.educationalLevel = educationalLevel || candidate.educationalLevel;
+          candidate.educationalLevel = normalizeEducationalLevel(educationalLevel) || normalizeEducationalLevel(candidate.educationalLevel);
           candidate.experience = experience || candidate.experience;
           candidate.skills = Array.isArray(skills)
             ? skills
@@ -233,7 +290,7 @@ async function handleSubmitPayment(req, res) {
               : candidate.languages;
           candidate.gender = gender || candidate.gender;
           candidate.dateOfBirth = dateOfBirth || candidate.dateOfBirth;
-          candidate.maritalStatus = maritalStatus || candidate.maritalStatus;
+          candidate.maritalStatus = normalizeMaritalStatus(maritalStatus) || normalizeMaritalStatus(candidate.maritalStatus);
           candidate.numberOfChildren = numberOfChildren !== undefined ? numberOfChildren : candidate.numberOfChildren;
           candidate.jobPosition = jobPosition || candidate.jobPosition;
           candidate.jobType = jobType || candidate.jobType;
@@ -256,7 +313,7 @@ async function handleSubmitPayment(req, res) {
         candidate.status = ['available', 'deployed'].includes(candidate.status)
           ? candidate.status
           : 'in_process';
-        candidate.paymentStatus = 'pending';
+        candidate.paymentStatus = normalizePaymentStatus('pending');
         candidate.isVerified = candidate.isVerified || false;
         candidate.paymentId = payment._id;
           candidate.profileCompletion = calculateProfileCompletion(candidate);

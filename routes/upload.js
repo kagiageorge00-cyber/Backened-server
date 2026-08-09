@@ -24,11 +24,15 @@ const storage = new CloudinaryStorage({
     // Example: ?type=candidate_video&candidateId=CAND-2026-0045
     const qtype = (req.query && req.query.type) || (req.body && req.body.type);
     const candidateId = (req.query && req.query.candidateId) || (req.body && req.body.candidateId);
+    const explicitFolder = (req.query && req.query.folder) || (req.body && req.body.folder);
+
     let folder = 'bliss-connect';
-    if (qtype === 'candidate_video') {
+    if (explicitFolder) {
+      folder = explicitFolder;
+    } else if (qtype === 'candidate_video') {
       folder = candidateId ? `uploads/candidate_videos/${candidateId}` : 'uploads/candidate_videos';
-    } else if (req.query && req.query.folder) {
-      folder = req.query.folder;
+    } else if (qtype === 'marketplace_job') {
+      folder = 'uploads/marketplace_jobs';
     }
 
     return {
@@ -45,6 +49,26 @@ const upload = multer({
     fileSize: 100 * 1024 * 1024, // 100MB
   },
 });
+
+function getUploadFolder(req) {
+  const qtype = (req.query && req.query.type) || (req.body && req.body.type);
+  const candidateId = (req.query && req.query.candidateId) || (req.body && req.body.candidateId);
+  const explicitFolder = (req.query && req.query.folder) || (req.body && req.body.folder);
+
+  if (explicitFolder) {
+    return explicitFolder;
+  }
+
+  if (qtype === 'candidate_video') {
+    return candidateId ? `uploads/candidate_videos/${candidateId}` : 'uploads/candidate_videos';
+  }
+
+  if (qtype === 'marketplace_job') {
+    return 'uploads/marketplace_jobs';
+  }
+
+  return 'bliss-connect';
+}
 
 function buildCandidateSearchCriteria(candidateId) {
   if (!candidateId) return [];
@@ -157,3 +181,5 @@ router.post("/", upload.any(), async (req, res) => {
 });
 
 module.exports = router;
+module.exports.persistUploadToCandidate = persistUploadToCandidate;
+module.exports.getUploadFolder = getUploadFolder;

@@ -31,6 +31,47 @@ function generateCandidateCode() {
   return `CAND-${year}-${seq}`;
 }
 
+function normalizeEnumValue(value, map) {
+  if (!value || typeof value !== 'string') return value;
+  return map[value.trim().toLowerCase()] || value.trim();
+}
+
+const maritalStatusMap = {
+  single: 'Single',
+  married: 'Married',
+  divorced: 'Divorced',
+  widowed: 'Widowed',
+  separated: 'Separated',
+};
+
+const educationalLevelMap = {
+  primary: 'Primary',
+  secondary: 'Secondary',
+  vocational: 'Vocational/Technical',
+  'vocational/technical': 'Vocational/Technical',
+  technical: 'Vocational/Technical',
+  diploma: 'Diploma',
+  bachelor: "Bachelor's Degree",
+  bachelors: "Bachelor's Degree",
+  "bachelor's degree": "Bachelor's Degree",
+  'bachelors degree': "Bachelor's Degree",
+  master: "Master's Degree",
+  masters: "Master's Degree",
+  "master's degree": "Master's Degree",
+  'masters degree': "Master's Degree",
+  phd: 'PhD',
+  doctorate: 'PhD',
+  other: 'Other',
+};
+
+function normalizeMaritalStatus(value) {
+  return normalizeEnumValue(value, maritalStatusMap);
+}
+
+function normalizeEducationalLevel(value) {
+  return normalizeEnumValue(value, educationalLevelMap);
+}
+
 function toArrayField(value) {
   if (Array.isArray(value)) return value;
   if (value === undefined || value === null) return [];
@@ -220,7 +261,7 @@ router.post("/", async (req, res) => {
       candidate.nationality = nationality || candidate.nationality;
       candidate.religion = religion || candidate.religion;
       candidate.education = education || candidate.education;
-      candidate.educationalLevel = educationalLevel || candidate.educationalLevel;
+      candidate.educationalLevel = normalizeEducationalLevel(educationalLevel) || normalizeEducationalLevel(candidate.educationalLevel);
       candidate.experience = experience || candidate.experience;
       candidate.skills = Array.isArray(skills)
         ? skills
@@ -234,7 +275,7 @@ router.post("/", async (req, res) => {
           : candidate.languages;
       candidate.gender = gender || candidate.gender;
       candidate.dateOfBirth = dateOfBirth || candidate.dateOfBirth;
-      candidate.maritalStatus = maritalStatus || candidate.maritalStatus;
+      candidate.maritalStatus = normalizeMaritalStatus(maritalStatus) || normalizeMaritalStatus(candidate.maritalStatus);
       candidate.numberOfChildren = numberOfChildren !== undefined ? numberOfChildren : candidate.numberOfChildren;
       candidate.jobPosition = jobPosition || jobAppliedFor || candidate.jobPosition || candidate.jobAppliedFor;
       candidate.jobType = jobType || candidate.jobType;
@@ -259,7 +300,7 @@ router.post("/", async (req, res) => {
       candidate.appliedEmployerName = appliedEmployerName || candidate.appliedEmployerName;
       candidate.uniqueCode = candidate.uniqueCode || generateCandidateCode();
       candidate.isVerified = candidate.isVerified || false;
-      candidate.paymentStatus = candidate.paymentStatus === 'completed' ? 'completed' : 'pending';
+      candidate.paymentStatus = normalizePaymentStatus(candidate.paymentStatus) || 'Pending';
       candidate.status = ['available', 'deployed'].includes(candidate.status)
         ? candidate.status
         : 'in_process';

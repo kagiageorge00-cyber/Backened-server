@@ -114,6 +114,58 @@ function generateTemporaryPassword(length = 10) {
   return `BLISS${Math.floor(1000 + Math.random() * 9000)}`;
 }
 
+function normalizeEnumValue(value, map) {
+  if (!value || typeof value !== 'string') return value;
+  return map[value.trim().toLowerCase()] || value.trim();
+}
+
+const maritalStatusMap = {
+  single: 'Single',
+  married: 'Married',
+  divorced: 'Divorced',
+  widowed: 'Widowed',
+  separated: 'Separated',
+};
+
+const educationalLevelMap = {
+  primary: 'Primary',
+  secondary: 'Secondary',
+  vocational: 'Vocational/Technical',
+  'vocational/technical': 'Vocational/Technical',
+  technical: 'Vocational/Technical',
+  diploma: 'Diploma',
+  bachelor: "Bachelor's Degree",
+  bachelors: "Bachelor's Degree",
+  "bachelor's degree": "Bachelor's Degree",
+  'bachelors degree': "Bachelor's Degree",
+  master: "Master's Degree",
+  masters: "Master's Degree",
+  "master's degree": "Master's Degree",
+  'masters degree': "Master's Degree",
+  phd: 'PhD',
+  doctorate: 'PhD',
+  other: 'Other',
+};
+
+function normalizeMaritalStatus(value) {
+  return normalizeEnumValue(value, maritalStatusMap);
+}
+
+function normalizeEducationalLevel(value) {
+  return normalizeEnumValue(value, educationalLevelMap);
+}
+
+function normalizePaymentStatus(value) {
+  if (!value || typeof value !== 'string') return value;
+  const map = {
+    pending: 'Pending',
+    paid: 'Paid',
+    failed: 'Failed',
+    unpaid: 'Unpaid',
+  };
+  return map[value.trim().toLowerCase()] || value.trim();
+}
+
 function normalizeCandidate(candidate) {
   const candidateObj = candidate.toObject ? candidate.toObject() : { ...candidate };
   const birthDate = candidateObj.dateOfBirth ? new Date(candidateObj.dateOfBirth) : null;
@@ -606,7 +658,7 @@ router.post('/form/submit', async (req, res) => {
       candidate.status = ['available', 'deployed'].includes(candidate.status)
         ? candidate.status
         : 'in_process';
-      candidate.paymentStatus = candidate.paymentStatus === 'completed' ? 'completed' : 'pending';
+      candidate.paymentStatus = normalizePaymentStatus(candidate.paymentStatus) || 'Pending';
       
       // Calculate profile completion
       candidate.profileCompletion = calculateProfileCompletion(candidate);
@@ -997,15 +1049,14 @@ router.put('/:id', async (req, res) => {
       { email: id }
     );
 
-    const candidate = await Candidate.findOneAndUpdate(
-      { $or: searchCriteria },
-      { $set: validUpdates },
-      { new: true }
-    );
+    const candidate = await Candidate.findOne({ $or: searchCriteria });
 
     if (!candidate) {
       return res.status(404).json({ success: false, error: 'Candidate not found' });
     }
+
+    Object.assign(candidate, validUpdates);
+    await candidate.save();
 
     return res.json({ success: true, data: candidate });
   } catch (error) {

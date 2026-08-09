@@ -207,7 +207,7 @@ router.post(
       let portalCredentials = null;
       if (candidate) {
         candidate.isVerified = true;
-        candidate.paymentStatus = "completed";
+        candidate.paymentStatus = "Paid";
         candidate.status = "approved";
         candidate.candidateFormLink = formLinkTarget;
         candidate.applicationStatus = 'Payment Approved';

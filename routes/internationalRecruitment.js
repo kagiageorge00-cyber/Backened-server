@@ -246,7 +246,7 @@ router.post('/deployment/payment', employerAuth, async (req, res) => {
       interviewId,
       deploymentFee: totalDue,
       paymentStatus: 'pending',
-      paymentMethod: 'pending',
+      paymentMethod: 'bank_transfer',
       referenceNumber: `REF-${Date.now()}`,
       currentStage: 'Visa & Deployment Payment',
       progress: 20,

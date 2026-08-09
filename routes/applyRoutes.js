@@ -19,6 +19,76 @@ function resolveFieldValue(value, fallback) {
   return value;
 }
 
+function normalizeMaritalStatus(value) {
+  if (!value || typeof value !== 'string') return undefined;
+  const normalized = value.trim().toLowerCase();
+  switch (normalized) {
+    case 'single':
+      return 'Single';
+    case 'married':
+      return 'Married';
+    case 'divorced':
+      return 'Divorced';
+    case 'widowed':
+      return 'Widowed';
+    case 'separated':
+      return 'Separated';
+    default:
+      return value.trim();
+  }
+}
+
+function normalizeEducationalLevel(value) {
+  if (!value || typeof value !== 'string') return undefined;
+  const normalized = value.trim().toLowerCase();
+  switch (normalized) {
+    case 'primary':
+      return 'Primary';
+    case 'secondary':
+      return 'Secondary';
+    case 'vocational':
+    case 'vocational/technical':
+    case 'technical':
+      return 'Vocational/Technical';
+    case 'diploma':
+      return 'Diploma';
+    case 'bachelor':
+    case 'bachelors':
+    case "bachelor's degree":
+    case 'bachelors degree':
+      return "Bachelor's Degree";
+    case 'master':
+    case 'masters':
+    case "master's degree":
+    case 'masters degree':
+      return "Master's Degree";
+    case 'phd':
+    case 'doctorate':
+      return 'PhD';
+    case 'other':
+      return 'Other';
+    default:
+      return value.trim();
+  }
+}
+
+function normalizePaymentStatus(value) {
+  if (!value || typeof value !== 'string') return undefined;
+  const normalized = value.trim().toLowerCase();
+  switch (normalized) {
+    case 'pending':
+      return 'Pending';
+    case 'paid':
+      return 'Paid';
+    case 'failed':
+      return 'Failed';
+    case 'unpaid':
+      return 'Unpaid';
+    default:
+      return value.trim();
+  }
+}
+
 // Helper: calculate profile completion based on marketplace fields
 function calculateProfileCompletion(candidate) {
   const requiredForMarketplace = [
@@ -150,13 +220,13 @@ router.post('/', async (req, res) => {
       nationality: resolveFieldValue(nationality, candidate?.nationality || ''),
       religion: resolveFieldValue(religion, candidate?.religion || ''),
       education: resolveFieldValue(education, candidate?.education || ''),
-      educationalLevel: resolveFieldValue(educationalLevel, candidate?.educationalLevel || ''),
+      educationalLevel: resolveFieldValue(normalizeEducationalLevel(educationalLevel), normalizeEducationalLevel(candidate?.educationalLevel)),
       skills: Array.isArray(skills) ? skills : (skills ? [skills] : candidate?.skills || []),
       languages: Array.isArray(languages) ? languages : (languages ? [languages] : candidate?.languages || []),
       experience: resolveFieldValue(experience, candidate?.experience || ''),
       gender: resolveFieldValue(gender, candidate?.gender || ''),
       dateOfBirth: resolveFieldValue(dateOfBirth, candidate?.dateOfBirth || ''),
-      maritalStatus: resolveFieldValue(maritalStatus, candidate?.maritalStatus || ''),
+      maritalStatus: resolveFieldValue(normalizeMaritalStatus(maritalStatus), normalizeMaritalStatus(candidate?.maritalStatus)),
       numberOfChildren: numberOfChildren === undefined ? candidate?.numberOfChildren : numberOfChildren,
       jobPosition: normalizedJobPosition,
       jobAppliedFor: normalizedJobPosition,
@@ -183,7 +253,7 @@ router.post('/', async (req, res) => {
       documents: normalizedDocuments,
       isVerified: candidate?.isVerified ?? false,
       status: candidate?.status || 'in_process',
-      paymentStatus: candidate?.paymentStatus || 'pending',
+      paymentStatus: normalizePaymentStatus(candidate?.paymentStatus) || 'Pending',
     };
 
     if (hashedPassword) {
