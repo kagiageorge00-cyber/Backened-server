@@ -339,6 +339,9 @@ const { router: uploadRoutes } = require('./routes/upload');
 let adminRoutes;
 try {
   adminRoutes = require('./routes/admin');
+  if (!adminRoutes || typeof adminRoutes !== 'function') {
+    throw new Error('Admin routes did not export a valid router');
+  }
   console.log('✅ Admin routes loaded successfully');
 } catch (err) {
   console.error('❌ ERROR loading admin routes:', err.message);
@@ -377,13 +380,27 @@ const travelRoutes = require('./routes/travelRoutes');
 const staffPortalRoutes = require('./routes/staffPortal');
 // Admin WhatsApp routes (campaign management)
 let whatsappAdminRoutes;
+let whatsappAdminAuth;
 try {
   whatsappAdminRoutes = require('./routes/whatsappAdmin');
-  const { requireAdminAuth } = require('./middleware/adminAuth');
-  app.use('/api/admin/whatsapp', requireAdminAuth, whatsappAdminRoutes);
+  const adminAuthModule = require('./middleware/adminAuth');
+  whatsappAdminAuth = adminAuthModule.requireAdminAuth;
+
+  if (!whatsappAdminRoutes || typeof whatsappAdminRoutes !== 'function') {
+    throw new Error('WhatsApp admin routes did not export a valid router');
+  }
+  if (!whatsappAdminAuth || typeof whatsappAdminAuth !== 'function') {
+    throw new Error('requireAdminAuth middleware is not available');
+  }
+
+  app.use('/api/admin/whatsapp', whatsappAdminAuth, whatsappAdminRoutes);
   console.log('✅ WhatsApp admin routes mounted at /api/admin/whatsapp');
 } catch (err) {
   console.warn('⚠️ Whatsapp admin routes not mounted:', err.message);
+  whatsappAdminRoutes = (req, res, next) => {
+    res.status(500).json({ success: false, error: 'WhatsApp admin routes not available: ' + err.message });
+  };
+  whatsappAdminAuth = null;
 }
 
 // Gracefully handle flightSearch module (may not exist in all deployments)
