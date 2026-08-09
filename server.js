@@ -335,7 +335,7 @@ const applyRoutes = require('./routes/applyRoutes');
 const registerRoutes = require('./routes/register');
 const paymentRoutes = require('./routes/payment');
 const paymentRoutesV2 = require('./routes/paymentRoutes');
-const { router: uploadRoutes } = require('./routes/upload');
+const uploadRoutes = require('./routes/upload');
 let adminRoutes;
 try {
   adminRoutes = require('./routes/admin');
