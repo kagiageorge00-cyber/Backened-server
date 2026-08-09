@@ -90,4 +90,173 @@ describe('Apply flow end to end', () => {
       expect.any(String)
     );
   });
+
+  test('normalizes frontend job application fields for backend persistence', async () => {
+    Candidate.findOne.mockResolvedValue(null);
+    Candidate.create.mockResolvedValue({
+      _id: 'cand_456',
+      fullName: 'Jane Doe',
+      email: 'jane@example.com',
+      phone: '+254700000001',
+      country: 'Kenya',
+      status: 'in_process',
+      paymentStatus: 'pending',
+      isVerified: false,
+    });
+
+    const app = express();
+    app.use(express.json());
+    app.use('/api/apply', applyRoutes);
+
+    const res = await request(app)
+      .post('/api/apply')
+      .send({
+        fullName: 'Jane Doe',
+        email: 'jane@example.com',
+        phone: '+254700000001',
+        country: 'Kenya',
+        jobPosition: 'Housekeeper',
+        destinationCountry: 'Saudi Arabia',
+        expectedSalary: 120000,
+        skills: ['cleaning', 'cooking'],
+        languages: ['English', 'Arabic'],
+      });
+
+    expect(res.status).toBe(201);
+    const payload = Candidate.create.mock.calls[0][0];
+    expect(payload.jobPosition).toBe('Housekeeper');
+    expect(payload.jobAppliedFor).toBe('Housekeeper');
+    expect(payload.destinationCountry).toBe('Saudi Arabia');
+    expect(payload.destinationPreference).toEqual(['Saudi Arabia']);
+  });
+
+  test('preserves explicit zero values and maps frontend job fields to backend aliases', async () => {
+    Candidate.findOne.mockResolvedValue(null);
+    Candidate.create.mockResolvedValue({
+      _id: 'cand_789',
+      fullName: 'Noah Kim',
+      email: 'noah@example.com',
+      phone: '+254700000002',
+      country: 'Kenya',
+      status: 'in_process',
+      paymentStatus: 'pending',
+      isVerified: false,
+    });
+
+    const app = express();
+    app.use(express.json());
+    app.use('/api/apply', applyRoutes);
+
+    const res = await request(app)
+      .post('/api/apply')
+      .send({
+        fullName: 'Noah Kim',
+        email: 'noah@example.com',
+        phone: '+254700000002',
+        country: 'Kenya',
+        jobPosition: 'Cleaner',
+        destinationCountry: 'UAE',
+        expectedSalary: 0,
+        numberOfChildren: 0,
+        skills: ['cleaning'],
+        languages: ['English'],
+      });
+
+    expect(res.status).toBe(201);
+    const payload = Candidate.create.mock.calls[0][0];
+    expect(payload.jobPosition).toBe('Cleaner');
+    expect(payload.jobAppliedFor).toBe('Cleaner');
+    expect(payload.destinationCountry).toBe('UAE');
+    expect(payload.destinationPreference).toEqual(['UAE']);
+    expect(payload.expectedSalary).toBe(0);
+    expect(payload.numberOfChildren).toBe(0);
+  });
+
+  test('persists job application metadata for the saved candidate record', async () => {
+    Candidate.findOne.mockResolvedValue(null);
+    Candidate.create.mockResolvedValue({
+      _id: 'cand_999',
+      fullName: 'Amina Yusuf',
+      email: 'amina@example.com',
+      phone: '+254700000003',
+      country: 'Kenya',
+      status: 'in_process',
+      paymentStatus: 'pending',
+      isVerified: false,
+    });
+
+    const app = express();
+    app.use(express.json());
+    app.use('/api/apply', applyRoutes);
+
+    const res = await request(app)
+      .post('/api/apply')
+      .send({
+        fullName: 'Amina Yusuf',
+        email: 'amina@example.com',
+        phone: '+254700000003',
+        country: 'Kenya',
+        appliedJobId: 'JOB-123',
+        appliedJobTitle: 'Housekeeper',
+        appliedEmployerId: 'EMP-789',
+        appliedEmployerName: 'Bliss Connect',
+      });
+
+    expect(res.status).toBe(201);
+    const payload = Candidate.create.mock.calls[0][0];
+    expect(payload.appliedJobId).toBe('JOB-123');
+    expect(payload.appliedJobTitle).toBe('Housekeeper');
+    expect(payload.appliedEmployerId).toBe('EMP-789');
+    expect(payload.appliedEmployerName).toBe('Bliss Connect');
+  });
+
+  test('persists full document and good conduct data from the application payload', async () => {
+    Candidate.findOne.mockResolvedValue(null);
+    Candidate.create.mockResolvedValue({
+      _id: 'cand_1000',
+      fullName: 'Moses Otieno',
+      email: 'moses@example.com',
+      phone: '+254700000004',
+      country: 'Kenya',
+      status: 'in_process',
+      paymentStatus: 'pending',
+      isVerified: false,
+    });
+
+    const app = express();
+    app.use(express.json());
+    app.use('/api/apply', applyRoutes);
+
+    const res = await request(app)
+      .post('/api/apply')
+      .send({
+        fullName: 'Moses Otieno',
+        email: 'moses@example.com',
+        phone: '+254700000004',
+        country: 'Kenya',
+        gender: 'Male',
+        dateOfBirth: '1994-04-10',
+        maritalStatus: 'Single',
+        numberOfChildren: 0,
+        goodConductUrl: 'https://example.com/good-conduct.pdf',
+        documents: {
+          passportPhoto: 'https://example.com/passport.jpg',
+          cv: 'https://example.com/cv.pdf',
+          certificates: ['https://example.com/cert.pdf'],
+          coverLetter: 'https://example.com/cover.pdf',
+        },
+        candidateFormLink: 'https://example.com/form',
+      });
+
+    expect(res.status).toBe(201);
+    const payload = Candidate.create.mock.calls[0][0];
+    expect(payload.gender).toBe('Male');
+    expect(payload.maritalStatus).toBe('Single');
+    expect(payload.numberOfChildren).toBe(0);
+    expect(payload.goodConductUrl).toBe('https://example.com/good-conduct.pdf');
+    expect(payload.documents.passportPhoto).toBe('https://example.com/passport.jpg');
+    expect(payload.documents.cv).toBe('https://example.com/cv.pdf');
+    expect(payload.documents.certificates).toEqual(['https://example.com/cert.pdf']);
+    expect(payload.candidateFormLink).toBe('https://example.com/form');
+  });
 });

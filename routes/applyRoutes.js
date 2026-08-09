@@ -12,6 +12,13 @@ function generateCandidateCode() {
 
 const sendError = (res, status, error) => res.status(status).json({ success: false, error });
 
+function resolveFieldValue(value, fallback) {
+  if (value === undefined || value === null || value === '') {
+    return fallback;
+  }
+  return value;
+}
+
 // Helper: calculate profile completion based on marketplace fields
 function calculateProfileCompletion(candidate) {
   const requiredForMarketplace = [
@@ -64,7 +71,13 @@ router.post('/', async (req, res) => {
       jobType,
       destinationCountry,
       destinationPreference,
+      preferredDestination,
+      preferredDestinations,
       expectedSalary,
+      appliedJobId,
+      appliedJobTitle,
+      appliedEmployerId,
+      appliedEmployerName,
       photoUrl,
       videoUrl,
       passportUrl,
@@ -76,6 +89,8 @@ router.post('/', async (req, res) => {
       otherDocumentUrl,
       nationalIdFrontUrl,
       nationalIdBackUrl,
+      documents,
+      candidateFormLink,
     } = req.body || {};
 
     if (!email || !phone) {
@@ -95,40 +110,77 @@ router.post('/', async (req, res) => {
       hashedPassword = await bcrypt.hash(password, 10);
     }
 
+    const normalizedDestination = destinationCountry || preferredDestination || preferredDestinations || candidate?.destinationCountry || '';
+    const normalizedDestinationPreferences = Array.isArray(destinationPreference)
+      ? destinationPreference
+      : (Array.isArray(preferredDestinations)
+          ? preferredDestinations
+          : (Array.isArray(preferredDestination)
+              ? preferredDestination
+              : (preferredDestination
+                  ? [preferredDestination]
+                  : (destinationCountry
+                      ? [destinationCountry]
+                      : (candidate?.destinationPreference || (candidate?.destinationCountry ? [candidate.destinationCountry] : []))))));
+    const normalizedJobPosition = jobPosition || jobAppliedFor || candidate?.jobPosition || candidate?.jobAppliedFor || '';
+
+    const normalizedDocuments = {
+      passportPhoto: resolveFieldValue(
+        documents?.passportPhoto || passportUrl || photoUrl || candidate?.documents?.passportPhoto || candidate?.passportUrl || '',
+        candidate?.documents?.passportPhoto || candidate?.passportUrl || ''
+      ),
+      nationalId: resolveFieldValue(documents?.nationalId || candidate?.documents?.nationalId || '', candidate?.documents?.nationalId || ''),
+      cv: resolveFieldValue(documents?.cv || resumeUrl || candidate?.documents?.cv || candidate?.resumeUrl || '', candidate?.documents?.cv || candidate?.resumeUrl || ''),
+      certificates: Array.isArray(documents?.certificates)
+        ? documents.certificates
+        : (Array.isArray(candidate?.documents?.certificates) ? candidate.documents.certificates : []),
+      coverLetter: resolveFieldValue(documents?.coverLetter || additionalUrl || candidate?.documents?.coverLetter || candidate?.additionalUrl || '', candidate?.documents?.coverLetter || candidate?.additionalUrl || ''),
+      uploads: Array.isArray(documents?.uploads)
+        ? documents.uploads
+        : (Array.isArray(candidate?.documents?.uploads) ? candidate.documents.uploads : []),
+    };
+
     const payload = {
-      fullName: fullName || name || candidate?.fullName || '',
-      name: name || fullName || candidate?.name || '',
+      fullName: resolveFieldValue(fullName, resolveFieldValue(name, candidate?.fullName || '')),
+      name: resolveFieldValue(name, resolveFieldValue(fullName, candidate?.name || '')),
       email,
       phone,
       uniqueCode: candidate?.uniqueCode || candidateId || generateCandidateCode(),
-      country: country || candidate?.country || '',
-      nationality: nationality || candidate?.nationality || '',
-      religion: religion || candidate?.religion || '',
-      education: education || candidate?.education || '',
-      educationalLevel: educationalLevel || candidate?.educationalLevel || '',
+      country: resolveFieldValue(country, candidate?.country || ''),
+      nationality: resolveFieldValue(nationality, candidate?.nationality || ''),
+      religion: resolveFieldValue(religion, candidate?.religion || ''),
+      education: resolveFieldValue(education, candidate?.education || ''),
+      educationalLevel: resolveFieldValue(educationalLevel, candidate?.educationalLevel || ''),
       skills: Array.isArray(skills) ? skills : (skills ? [skills] : candidate?.skills || []),
       languages: Array.isArray(languages) ? languages : (languages ? [languages] : candidate?.languages || []),
-      experience: experience || candidate?.experience || '',
-      gender: gender || candidate?.gender || '',
-      dateOfBirth: dateOfBirth || candidate?.dateOfBirth || '',
-      maritalStatus: maritalStatus || candidate?.maritalStatus || '',
-      numberOfChildren: numberOfChildren !== undefined ? numberOfChildren : candidate?.numberOfChildren,
-      jobPosition: jobPosition || jobAppliedFor || candidate?.jobPosition || candidate?.jobAppliedFor || '',
-      jobType: jobType || candidate?.jobType || '',
-      destinationCountry: destinationCountry || candidate?.destinationCountry || '',
-      destinationPreference: destinationPreference || candidate?.destinationPreference || [],
-      expectedSalary: expectedSalary || candidate?.expectedSalary || '',
-      photoUrl: photoUrl || candidate?.photoUrl || '',
-      videoUrl: introductionVideoUrl || videoUrl || candidate?.videoUrl || '',
-      introductionVideoUrl: introductionVideoUrl || candidate?.introductionVideoUrl || '',
-      passportUrl: passportUrl || candidate?.passportUrl || '',
-      medicalUrl: medicalUrl || candidate?.medicalUrl || '',
-      resumeUrl: resumeUrl || candidate?.resumeUrl || '',
-      additionalUrl: additionalUrl || candidate?.additionalUrl || '',
-      goodConductUrl: goodConductUrl || candidate?.goodConductUrl || '',
-      otherDocumentUrl: otherDocumentUrl || candidate?.otherDocumentUrl || '',
-      nationalIdFrontUrl: nationalIdFrontUrl || candidate?.nationalIdFrontUrl || '',
-      nationalIdBackUrl: nationalIdBackUrl || candidate?.nationalIdBackUrl || '',
+      experience: resolveFieldValue(experience, candidate?.experience || ''),
+      gender: resolveFieldValue(gender, candidate?.gender || ''),
+      dateOfBirth: resolveFieldValue(dateOfBirth, candidate?.dateOfBirth || ''),
+      maritalStatus: resolveFieldValue(maritalStatus, candidate?.maritalStatus || ''),
+      numberOfChildren: numberOfChildren === undefined ? candidate?.numberOfChildren : numberOfChildren,
+      jobPosition: normalizedJobPosition,
+      jobAppliedFor: normalizedJobPosition,
+      jobType: resolveFieldValue(jobType, candidate?.jobType || ''),
+      destinationCountry: normalizedDestination,
+      destinationPreference: normalizedDestinationPreferences,
+      expectedSalary: resolveFieldValue(expectedSalary, candidate?.expectedSalary || ''),
+      appliedJobId: resolveFieldValue(appliedJobId, candidate?.appliedJobId || ''),
+      appliedJobTitle: resolveFieldValue(appliedJobTitle, candidate?.appliedJobTitle || ''),
+      appliedEmployerId: resolveFieldValue(appliedEmployerId, candidate?.appliedEmployerId || ''),
+      appliedEmployerName: resolveFieldValue(appliedEmployerName, candidate?.appliedEmployerName || ''),
+      photoUrl: resolveFieldValue(photoUrl, candidate?.photoUrl || ''),
+      videoUrl: resolveFieldValue(introductionVideoUrl, resolveFieldValue(videoUrl, candidate?.videoUrl || '')),
+      introductionVideoUrl: resolveFieldValue(introductionVideoUrl, candidate?.introductionVideoUrl || ''),
+      passportUrl: resolveFieldValue(passportUrl, candidate?.passportUrl || ''),
+      medicalUrl: resolveFieldValue(medicalUrl, candidate?.medicalUrl || ''),
+      resumeUrl: resolveFieldValue(resumeUrl, candidate?.resumeUrl || ''),
+      additionalUrl: resolveFieldValue(additionalUrl, candidate?.additionalUrl || ''),
+      goodConductUrl: resolveFieldValue(goodConductUrl, candidate?.goodConductUrl || ''),
+      otherDocumentUrl: resolveFieldValue(otherDocumentUrl, candidate?.otherDocumentUrl || ''),
+      nationalIdFrontUrl: resolveFieldValue(nationalIdFrontUrl, candidate?.nationalIdFrontUrl || ''),
+      nationalIdBackUrl: resolveFieldValue(nationalIdBackUrl, candidate?.nationalIdBackUrl || ''),
+      candidateFormLink: resolveFieldValue(candidateFormLink, candidate?.candidateFormLink || ''),
+      documents: normalizedDocuments,
       isVerified: candidate?.isVerified ?? false,
       status: candidate?.status || 'in_process',
       paymentStatus: candidate?.paymentStatus || 'pending',

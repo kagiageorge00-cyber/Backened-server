@@ -13,6 +13,7 @@ router.get('/accounts', staffController.listStaffAccounts);
 router.get('/dashboard', staffController.dashboard);
 router.get('/chats', staffController.listChats);
 router.get('/chats/:id', staffController.getChatById);
+router.post('/chats/app-inbound', staffController.receiveBlissAppMessage);
 router.post('/chats/send', staffController.sendMessage);
 router.post('/chats/upload', staffController.uploadFile);
 router.put('/chats/assign', staffController.assignConversation);
@@ -40,13 +41,23 @@ router.get('/assignments', staffController.listAssignments);
 router.post('/marketplace/jobs', staffController.postMarketplaceJob);
 router.get('/marketplace/jobs', staffController.listJobs);
 
+function escapeRegExp(value) {
+  return value.toString().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 router.get('/marketplace/search', authenticateStaff, async (req, res) => {
   try {
-    const { query, skills, country, status } = req.query;
+    const { query, candidateCode, skills, country, status } = req.query;
 
     const filter = {};
 
-    if (query) {
+    if (candidateCode) {
+      const codeValue = escapeRegExp(candidateCode.toString().trim());
+      filter.$or = [
+        { uniqueCode: { $regex: `^${codeValue}$`, $options: 'i' } },
+        { candidateId: { $regex: `^${codeValue}$`, $options: 'i' } },
+      ];
+    } else if (query) {
       filter.$or = [
         { fullName: { $regex: query, $options: 'i' } },
         { name: { $regex: query, $options: 'i' } },

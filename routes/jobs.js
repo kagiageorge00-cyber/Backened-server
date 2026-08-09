@@ -3,7 +3,10 @@ const router = express.Router();
 const Job = require('../models/Job');
 const JobApplication = require('../models/JobApplication');
 const Notification = require('../models/Notification');
+const Employer = require('../models/Employer');
 const employerAuth = require('../middleware/employerAuth');
+const jwt = require('jsonwebtoken');
+const { verifyEmployerToken } = require('../services/jwtService');
 
 // Generate Job ID
 function generateJobId() {
@@ -579,6 +582,64 @@ router.post('/applications/:applicationId/shortlist', employerAuth, async (req, 
       success: false,
       error: err.message,
     });
+  }
+});
+
+// Delete Job (employer owner or staff)
+router.delete('/:jobId', async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    const authHeader = req.headers.authorization || req.headers.Authorization || '';
+    if (!authHeader || !authHeader.toString().startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, error: 'Authorization required' });
+    }
+
+    const token = authHeader.toString().replace(/^Bearer\s+/i, '');
+
+    const job = await Job.findOne({ jobId });
+    if (!job) return res.status(404).json({ success: false, error: 'Job not found' });
+
+    let authorized = false;
+
+    // Try employer token
+    try {
+      const decoded = verifyEmployerToken(token);
+      if (decoded && decoded.employerId) {
+        const employer = await Employer.findOne({ employerId: decoded.employerId });
+        if (employer && employer.employerId === job.employerId) {
+          authorized = true;
+        }
+      }
+    } catch (err) {
+      // not employer token
+    }
+
+    // Try staff token
+    if (!authorized) {
+      try {
+        const staffJwtSecret = process.env.JWT_SECRET || 'bliss-staff-secret';
+        const staffDecoded = jwt.verify(token, staffJwtSecret);
+        if (staffDecoded) {
+          authorized = true;
+        }
+      } catch (err) {
+        // not staff token
+      }
+    }
+
+    if (!authorized) {
+      return res.status(403).json({ success: false, error: 'Unauthorized to delete this job' });
+    }
+
+    // Remove job and related resources
+    await Job.deleteOne({ jobId });
+    await JobApplication.deleteMany({ jobId });
+    await Notification.deleteMany({ entityType: 'job', entityId: jobId });
+
+    return res.json({ success: true, message: 'Job deleted successfully', jobId });
+  } catch (err) {
+    console.error('Job delete error:', err);
+    return res.status(500).json({ success: false, error: err.message });
   }
 });
 

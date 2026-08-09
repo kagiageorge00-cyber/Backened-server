@@ -6,6 +6,7 @@ const router = express.Router();
 const User = require("../models/User");
 const Candidate = require("../models/candidate");
 const Employer = require("../models/Employer");
+const Agent = require("../models/Agent");
 const EmployerNotification = require("../models/EmployerNotification");
 const Payment = require("../models/Payment");
 const Notification = require("../models/Notification");
@@ -720,6 +721,19 @@ router.get('/notifications/search/query', requireAdminAuth, async (req, res) => 
       .limit(100);
 
     return res.json({ success: true, data: notifications, count: notifications.length });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.get('/agents', requireAdminAuth, async (req, res) => {
+  try {
+    const agents = await Agent.find({}).sort({ createdAt: -1 }).limit(250);
+    return res.json({
+      success: true,
+      data: agents,
+      count: agents.length,
+    });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });
   }

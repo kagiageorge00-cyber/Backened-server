@@ -335,7 +335,7 @@ const applyRoutes = require('./routes/applyRoutes');
 const registerRoutes = require('./routes/register');
 const paymentRoutes = require('./routes/payment');
 const paymentRoutesV2 = require('./routes/paymentRoutes');
-const uploadRoutes = require('./routes/upload');
+const { router: uploadRoutes } = require('./routes/upload');
 let adminRoutes;
 try {
   adminRoutes = require('./routes/admin');
@@ -796,6 +796,23 @@ app.post('/api/medical/book', async (req, res) => {
 // OFFICE VISIT BOOKINGS
 // ======================
 app.post('/api/office-visit-bookings', async (req, res) => {
+  try {
+    const booking = await createOfficeVisitBooking(req.body);
+    res.status(201).json({
+      success: true,
+      booking,
+      id: booking._id.toString(),
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// Alias for legacy or alternate client endpoints
+app.post('/api/office/apply', async (req, res) => {
   try {
     const booking = await createOfficeVisitBooking(req.body);
     res.status(201).json({

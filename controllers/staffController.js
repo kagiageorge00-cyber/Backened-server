@@ -4,6 +4,12 @@ const Staff = require('../models/Staff');
 const StaffConversation = require('../models/StaffConversation');
 const StaffMessage = require('../models/StaffMessage');
 const StaffNotification = require('../models/StaffNotification');
+const Candidate = require('../models/candidate');
+const { ingestIncomingBlissAppMessage } = require('../services/staffOperationsBridge');
+const Interview = require('../models/Interview');
+const JobApplication = require('../models/JobApplication');
+const Payment = require('../models/Payment');
+const Deployment = require('../models/Deployment');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'bliss-staff-secret';
 
@@ -92,7 +98,7 @@ async function seedStaffDirectory() {
       }
     }
 
-    return Staff.find({ email: { $in: staffSeedProfiles.map((profile) => profile.email) } }).sort({ createdAt: 1 }).lean();
+    return Staff.find({}).sort({ createdAt: 1 }).lean();
   }
 
   const existingStaff = memoryState.staff.filter((item) => staffSeedProfiles.some((profile) => profile.email === item.email));
@@ -108,7 +114,7 @@ async function seedStaffDirectory() {
     }
   }
 
-  return memoryState.staff.filter((item) => staffSeedProfiles.some((profile) => profile.email === item.email));
+  return memoryState.staff;
 }
 
 async function seedStaff() {
@@ -163,53 +169,8 @@ async function ensureDemoConversations() {
     });
     return;
   }
-
-  if (memoryState.conversations.length === 0) {
-    memoryState.conversations.push({
-      conversationId: 'conv-demo-1',
-      customerName: 'Amina Yusuf',
-      customerEmail: 'amina@example.com',
-      customerPhone: '+254712345678',
-      blissId: 'BC-2026-000002',
-      userType: 'Candidate',
-      country: 'Kenya',
-      status: 'Open',
-      priority: 'High',
-      assignedTo: 'Hannah Maina',
-      department: 'Customer Care',
-      unreadCount: 2,
-      lastMessage: 'Passport upload received',
-      lastActive: '2 mins ago',
-      online: true,
-      notes: ['Candidate missing passport'],
-    });
-
-    memoryState.messages.push({
-      conversationId: 'conv-demo-1',
-      sender: 'customer',
-      text: 'Hello, I uploaded my passport.',
-      type: 'text',
-      read: true,
-      createdAt: new Date().toISOString(),
-    });
-
-    memoryState.messages.push({
-      conversationId: 'conv-demo-1',
-      sender: 'staff',
-      text: 'Thank you, I have noted it.',
-      type: 'text',
-      read: false,
-      createdAt: new Date().toISOString(),
-    });
-
-    memoryState.notifications.push({
-      title: 'New chat received',
-      body: 'Amina Yusuf sent a new message',
-      type: 'chat',
-      read: false,
-      createdAt: new Date().toISOString(),
-    });
-  }
+  // When the DB is not connected we intentionally avoid seeding in-memory demo
+  // conversations so that staff operations rely on persisted data only.
 }
 
 async function ensureDemoData() {
@@ -432,13 +393,79 @@ async function completeCandidate(req, res) {
   try {
     await ensureDemoData();
     const { id } = req.params;
-    const candidate = memoryState.pendingCandidates.find((item) => item.candidateId === id || item._id === id);
-    if (!candidate) {
-      return res.status(404).json({ success: false, error: 'Candidate not found' });
+    const updates = req.body || {};
+    const searchIdentifier = updates.candidateId || updates.candidateCode || id;
+
+    let candidate = null;
+    if (mongoose.connection.readyState === 1) {
+      candidate = await Candidate.findOne({
+        $or: [
+          { _id: searchIdentifier },
+          { uniqueCode: searchIdentifier },
+          { candidateId: searchIdentifier },
+          { email: updates.email },
+          { phone: updates.phone },
+          { fullName: updates.candidateName || updates.name },
+          { name: updates.candidateName || updates.name },
+        ].filter(Boolean),
+      });
     }
-    candidate.outstanding = [];
-    candidate.completedAt = new Date().toISOString();
-    candidate.status = 'Completed';
+
+    if (!candidate) {
+      const memoryCandidate = memoryState.pendingCandidates.find((item) => item.candidateId === id || item._id === id);
+      if (!memoryCandidate) {
+        return res.status(404).json({ success: false, error: 'Candidate not found' });
+      }
+      Object.assign(memoryCandidate, {
+        ...updates,
+        outstanding: [],
+        completedAt: new Date().toISOString(),
+        status: 'Completed',
+      });
+      return res.json({ success: true, data: memoryCandidate });
+    }
+
+    const nextCandidate = {
+      ...candidate.toObject ? candidate.toObject() : candidate,
+      fullName: updates.candidateName || updates.fullName || updates.name || candidate.fullName || candidate.name || '',
+      name: updates.name || updates.candidateName || updates.fullName || candidate.name || candidate.fullName || '',
+      email: updates.email || candidate.email || '',
+      phone: updates.phone || candidate.phone || '',
+      country: updates.country || candidate.country || '',
+      nationality: updates.nationality || candidate.nationality || '',
+      gender: updates.gender || candidate.gender || '',
+      dateOfBirth: updates.dateOfBirth || candidate.dateOfBirth || '',
+      maritalStatus: updates.maritalStatus || candidate.maritalStatus || '',
+      numberOfChildren: updates.numberOfChildren ?? candidate.numberOfChildren,
+      jobPosition: updates.jobPosition || candidate.jobPosition || '',
+      jobType: updates.jobType || candidate.jobType || '',
+      destinationCountry: updates.destinationCountry || candidate.destinationCountry || '',
+      expectedSalary: updates.expectedSalary || candidate.expectedSalary || '',
+      photoUrl: updates.photoUrl || candidate.photoUrl || '',
+      passportUrl: updates.passportUrl || candidate.passportUrl || '',
+      medicalUrl: updates.medicalUrl || candidate.medicalUrl || '',
+      videoUrl: updates.videoUrl || updates.introductionVideoUrl || candidate.videoUrl || candidate.introductionVideoUrl || '',
+      introductionVideoUrl: updates.introductionVideoUrl || updates.videoUrl || candidate.introductionVideoUrl || candidate.videoUrl || '',
+      resumeUrl: updates.resumeUrl || candidate.resumeUrl || '',
+      goodConductUrl: updates.goodConductUrl || candidate.goodConductUrl || '',
+      candidateFormLink: updates.candidateFormLink || candidate.candidateFormLink || '',
+      uniqueCode: updates.candidateCode || candidate.uniqueCode || candidate.candidateId || id,
+      candidateId: updates.candidateId || candidate.candidateId || candidate.uniqueCode || id,
+      documents: {
+        ...(candidate.documents || {}),
+        ...(updates.documents || {}),
+        passportPhoto: updates.documents?.passportPhoto || updates.passportPhoto || updates.photoUrl || candidate.documents?.passportPhoto || candidate.passportUrl || candidate.photoUrl || '',
+        cv: updates.documents?.cv || updates.resumeUrl || candidate.documents?.cv || candidate.resumeUrl || '',
+        certificates: updates.documents?.certificates || candidate.documents?.certificates || [],
+        coverLetter: updates.documents?.coverLetter || updates.additionalUrl || candidate.documents?.coverLetter || candidate.additionalUrl || '',
+      },
+      outstanding: [],
+      completedAt: new Date().toISOString(),
+      status: 'approved',
+    };
+
+    Object.assign(candidate, nextCandidate);
+    await candidate.save();
     return res.json({ success: true, data: candidate });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
@@ -568,13 +595,22 @@ async function listAssignments(req, res) {
 async function postMarketplaceJob(req, res) {
   try {
     await ensureDemoData();
+    const baseUrl = process.env.BACKEND_URL || `${req.protocol}://${req.get('host')}`;
     const job = {
       jobId: `JOB-2026-${String(memoryState.jobs.length + 1).padStart(4, '0')}`,
       title: req.body.title ?? 'Untitled job',
+      position: req.body.position ?? req.body.title ?? 'Open Position',
+      country: req.body.country ?? 'Global',
       location: req.body.location ?? 'Unknown',
+      salary: req.body.salary ?? 'Negotiable',
+      duration: req.body.duration ?? 'Flexible',
+      contractType: req.body.contractType ?? 'Full Time',
+      requirements: req.body.requirements ?? '',
       description: req.body.description ?? '',
+      images: Array.isArray(req.body.images) ? req.body.images : [],
       status: 'Published',
       postedAt: new Date().toISOString(),
+      shareUrl: `${baseUrl}/jobs/JOB-2026-${String(memoryState.jobs.length + 1).padStart(4, '0')}`,
     };
     memoryState.jobs.unshift(job);
     return res.status(201).json({ success: true, data: job });
@@ -719,23 +755,82 @@ async function dashboard(req, res) {
       : memoryState.conversations;
 
     const unreadMessages = conversations.reduce((total, item) => total + (item.unreadCount || 0), 0);
+
+    if (mongoose.connection.readyState === 1) {
+      try {
+        const totalOnlineUsers = await Staff.countDocuments({ online: true });
+        const activeChats = conversations.length;
+
+        // Safe queries with fallbacks
+        const pendingInterviews = await Interview.countDocuments({ meetingStatus: 'scheduled' }).catch(() => 0);
+        const pendingVisaApplications = await JobApplication.countDocuments({ visaStatus: { $in: ['Pending', 'In Progress'] } }).catch(() => 0);
+        const pendingDeployments = await JobApplication.countDocuments({ deploymentStatus: 'Pending' }).catch(() => 0);
+        const pendingContracts = 0;
+        const pendingEmployerApprovals = 0;
+        const pendingAgentApprovals = 0;
+        const pendingPayments = await Payment.countDocuments({ status: 'pending' }).catch(() => 0);
+
+        // Today's registrations
+        const startOfDay = new Date();
+        startOfDay.setHours(0, 0, 0, 0);
+        const todaysRegistrations = await Candidate.countDocuments({ createdAt: { $gte: startOfDay } }).catch(() => 0);
+
+        const todaysDeployments = await Deployment.countDocuments({ createdAt: { $gte: startOfDay }, deploymentStatus: { $in: ['Pending', 'Active'] } }).catch(() => 0);
+
+        // Revenue summary - total paid payments
+        const revenueAgg = await Payment.aggregate([
+          { $match: { status: 'paid' } },
+          { $group: { _id: null, total: { $sum: '$amount' } } },
+        ]).catch(() => []);
+        const revenueSummary = (Array.isArray(revenueAgg) && revenueAgg[0] && revenueAgg[0].total) ? revenueAgg[0].total : 0;
+
+        const announcementsDocs = await StaffNotification.find().sort({ createdAt: -1 }).limit(5).lean().catch(() => []);
+        const announcements = Array.isArray(announcementsDocs) ? announcementsDocs.map(a => a.title || a.body).filter(Boolean) : [];
+
+        const payload = {
+          success: true,
+          data: {
+            totalOnlineUsers,
+            activeChats,
+            unreadMessages,
+            pendingInterviews,
+            pendingVisaApplications,
+            pendingDeployments,
+            pendingContracts,
+            pendingEmployerApprovals,
+            pendingAgentApprovals,
+            pendingPayments,
+            todaysRegistrations,
+            todaysDeployments,
+            revenueSummary,
+            announcements,
+          },
+        };
+        return res.json(payload);
+      } catch (err) {
+        // If any DB aggregation fails, fall back to memory state below
+        console.warn('Dashboard DB aggregation failed, falling back to demo values:', err.message);
+      }
+    }
+
+    // Fallback for non-connected mode or when DB aggregation fails
     const payload = {
       success: true,
       data: {
-        totalOnlineUsers: 128,
+        totalOnlineUsers: memoryState.staff.length || 0,
         activeChats: conversations.length,
         unreadMessages,
-        pendingInterviews: 9,
-        pendingVisaApplications: 5,
-        pendingDeployments: 3,
-        pendingContracts: 4,
-        pendingEmployerApprovals: 2,
-        pendingAgentApprovals: 1,
-        pendingPayments: 6,
-        todaysRegistrations: 18,
-        todaysDeployments: 4,
-        revenueSummary: 2450000,
-        announcements: ['Bliss Chat is now live for all staff.', 'Visa approvals are being processed faster.'],
+        pendingInterviews: memoryState.supportTickets.length || 0,
+        pendingVisaApplications: memoryState.applications.length || 0,
+        pendingDeployments: memoryState.jobs.length || 0,
+        pendingContracts: 0,
+        pendingEmployerApprovals: 0,
+        pendingAgentApprovals: 0,
+        pendingPayments: 0,
+        todaysRegistrations: memoryState.applications.length || 0,
+        todaysDeployments: 0,
+        revenueSummary: 0,
+        announcements: memoryState.notifications.map(n => n.title || n.body).filter(Boolean),
       },
     };
     return res.json(payload);
@@ -747,9 +842,10 @@ async function dashboard(req, res) {
 async function listChats(req, res) {
   try {
     await ensureDemoConversations();
-    const conversations = mongoose.connection.readyState === 1
-      ? await StaffConversation.find().sort({ updatedAt: -1 }).lean()
-      : memoryState.conversations;
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({ success: false, error: 'Database not connected' });
+    }
+    const conversations = await StaffConversation.find().sort({ updatedAt: -1 }).lean();
     return res.json({ success: true, data: conversations });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
@@ -759,16 +855,28 @@ async function listChats(req, res) {
 async function getChatById(req, res) {
   try {
     const { id } = req.params;
-    const conversation = mongoose.connection.readyState === 1
-      ? await StaffConversation.findOne({ conversationId: id }).lean()
-      : memoryState.conversations.find((item) => item.conversationId === id);
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({ success: false, error: 'Database not connected' });
+    }
+    const conversation = await StaffConversation.findOne({ conversationId: id }).lean();
     if (!conversation) return res.status(404).json({ success: false, error: 'Conversation not found' });
-    const messages = mongoose.connection.readyState === 1
-      ? await StaffMessage.find({ conversationId: id }).sort({ createdAt: 1 }).lean()
-      : memoryState.messages.filter((item) => item.conversationId === id);
+    const messages = await StaffMessage.find({ conversationId: id }).sort({ createdAt: 1 }).lean();
     return res.json({ success: true, data: { conversation, messages } });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
+  }
+}
+
+async function receiveBlissAppMessage(req, res) {
+  try {
+    const payload = req.body || {};
+    const result = await ingestIncomingBlissAppMessage(payload);
+    return res.status(201).json({ success: true, data: result });
+  } catch (error) {
+    if (error && error.message && error.message.toLowerCase().includes('database not connected')) {
+      return res.status(503).json({ success: false, error: 'Database not connected - message not persisted' });
+    }
+    return res.status(400).json({ success: false, error: error.message });
   }
 }
 
@@ -779,31 +887,17 @@ async function sendMessage(req, res) {
       return res.status(400).json({ success: false, error: 'conversationId, sender and text are required' });
     }
 
-    const message = mongoose.connection.readyState === 1
-      ? await StaffMessage.create({ conversationId, sender: senderName || sender, text, type: 'text' })
-      : { conversationId, sender: senderName || sender, text, type: 'text', read: false, createdAt: new Date().toISOString() };
-
     if (mongoose.connection.readyState !== 1) {
-      memoryState.messages.push(message);
-      const conversation = memoryState.conversations.find((item) => item.conversationId === conversationId);
-      if (conversation) {
-        conversation.lastMessage = text;
-        conversation.lastActive = 'Just now';
-        conversation.status = 'Replied';
-      }
-    } else {
-      await StaffConversation.findOneAndUpdate(
-        { conversationId },
-        { lastMessage: text, lastActive: 'Just now', status: 'Replied' },
-        { new: true }
-      );
+      return res.status(503).json({ success: false, error: 'Database not connected' });
     }
 
-    if (mongoose.connection.readyState === 1) {
-      await StaffNotification.create({ title: 'Staff reply sent', body: `${senderName || sender} replied to ${conversationId}`, type: 'chat' });
-    } else {
-      memoryState.notifications.push({ title: 'Staff reply sent', body: `${senderName || sender} replied to ${conversationId}`, type: 'chat', read: false, createdAt: new Date().toISOString() });
-    }
+    const message = await StaffMessage.create({ conversationId, sender: senderName || sender, text, type: 'text' });
+    await StaffConversation.findOneAndUpdate(
+      { conversationId },
+      { lastMessage: text, lastActive: 'Just now', status: 'Replied' },
+      { new: true }
+    );
+    await StaffNotification.create({ title: 'Staff reply sent', body: `${senderName || sender} replied to ${conversationId}`, type: 'chat' });
 
     return res.status(201).json({ success: true, data: message });
   } catch (error) {
@@ -828,21 +922,14 @@ async function assignConversation(req, res) {
   try {
     const { conversationId, assignedTo, department } = req.body;
     if (!conversationId || !assignedTo) return res.status(400).json({ success: false, error: 'conversationId and assignedTo are required' });
+    if (mongoose.connection.readyState !== 1) return res.status(503).json({ success: false, error: 'Database not connected' });
 
-    if (mongoose.connection.readyState === 1) {
-      const updated = await StaffConversation.findOneAndUpdate(
-        { conversationId },
-        { assignedTo, department: department || 'Customer Care' },
-        { new: true }
-      );
-      return res.json({ success: true, data: updated });
-    }
-
-    const conversation = memoryState.conversations.find((item) => item.conversationId === conversationId);
-    if (!conversation) return res.status(404).json({ success: false, error: 'Conversation not found' });
-    conversation.assignedTo = assignedTo;
-    conversation.department = department || conversation.department;
-    return res.json({ success: true, data: conversation });
+    const updated = await StaffConversation.findOneAndUpdate(
+      { conversationId },
+      { assignedTo, department: department || 'Customer Care' },
+      { new: true }
+    );
+    return res.json({ success: true, data: updated });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
   }
@@ -852,17 +939,10 @@ async function transferConversation(req, res) {
   try {
     const { conversationId, department, assignedTo } = req.body;
     if (!conversationId || !department) return res.status(400).json({ success: false, error: 'conversationId and department are required' });
+    if (mongoose.connection.readyState !== 1) return res.status(503).json({ success: false, error: 'Database not connected' });
 
-    if (mongoose.connection.readyState === 1) {
-      const updated = await StaffConversation.findOneAndUpdate({ conversationId }, { department, assignedTo }, { new: true });
-      return res.json({ success: true, data: updated });
-    }
-
-    const conversation = memoryState.conversations.find((item) => item.conversationId === conversationId);
-    if (!conversation) return res.status(404).json({ success: false, error: 'Conversation not found' });
-    conversation.department = department;
-    if (assignedTo) conversation.assignedTo = assignedTo;
-    return res.json({ success: true, data: conversation });
+    const updated = await StaffConversation.findOneAndUpdate({ conversationId }, { department, assignedTo }, { new: true });
+    return res.json({ success: true, data: updated });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
   }
@@ -872,20 +952,14 @@ async function addInternalNote(req, res) {
   try {
     const { conversationId, note } = req.body;
     if (!conversationId || !note) return res.status(400).json({ success: false, error: 'conversationId and note are required' });
+    if (mongoose.connection.readyState !== 1) return res.status(503).json({ success: false, error: 'Database not connected' });
 
-    if (mongoose.connection.readyState === 1) {
-      const updated = await StaffConversation.findOneAndUpdate(
-        { conversationId },
-        { $push: { notes: note } },
-        { new: true }
-      );
-      return res.json({ success: true, data: updated });
-    }
-
-    const conversation = memoryState.conversations.find((item) => item.conversationId === conversationId);
-    if (!conversation) return res.status(404).json({ success: false, error: 'Conversation not found' });
-    conversation.notes.push(note);
-    return res.json({ success: true, data: conversation });
+    const updated = await StaffConversation.findOneAndUpdate(
+      { conversationId },
+      { $push: { notes: note } },
+      { new: true }
+    );
+    return res.json({ success: true, data: updated });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
   }
@@ -911,9 +985,10 @@ async function broadcast(req, res) {
 
 async function fetchNotifications(req, res) {
   try {
-    const notifications = mongoose.connection.readyState === 1
-      ? await StaffNotification.find().sort({ createdAt: -1 }).lean()
-      : memoryState.notifications;
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({ success: false, error: 'Database not connected' });
+    }
+    const notifications = await StaffNotification.find().sort({ createdAt: -1 }).lean();
     return res.json({ success: true, data: notifications });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
@@ -947,6 +1022,7 @@ module.exports = {
   dashboard,
   listChats,
   getChatById,
+  receiveBlissAppMessage,
   sendMessage,
   uploadFile,
   assignConversation,
