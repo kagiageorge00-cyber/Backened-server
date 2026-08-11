@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
 const Staff = require('../models/Staff');
+const Job = require('../models/Job');
 const StaffConversation = require('../models/StaffConversation');
 const StaffMessage = require('../models/StaffMessage');
 const StaffNotification = require('../models/StaffNotification');
@@ -568,33 +569,95 @@ async function listAssignments(req, res) {
 
 async function postMarketplaceJob(req, res) {
   try {
-    await ensureDemoData();
     const baseUrl = process.env.BACKEND_URL || `${req.protocol}://${req.get('host')}`;
+    const now = new Date();
+    const jobId = `JOB-${now.getFullYear()}-${String(Date.now()).slice(-6)}`;
+    const salaryValue = Number(req.body.salary) || 0;
+    const requirements = typeof req.body.requirements === 'string'
+      ? req.body.requirements
+      : '';
+    const images = Array.isArray(req.body.images)
+      ? req.body.images
+      : req.body.images ? [req.body.images] : [];
+
+    const jobPayload = {
+      jobId,
+      jobTitle: req.body.title || req.body.position || 'Untitled job',
+      title: req.body.title || req.body.position || 'Untitled job',
+      position: req.body.position || req.body.title || 'Open Position',
+      jobCategory: req.body.jobCategory || req.body.category || 'General',
+      employmentType: req.body.contractType || req.body.employmentType || 'Full Time',
+      industry: req.body.industry || 'General',
+      country: req.body.country || 'Global',
+      city: req.body.city || '',
+      location: req.body.location || req.body.city || '',
+      workLocation: req.body.workLocation || 'Remote',
+      numberOfVacancies: Number(req.body.numberOfVacancies) || 1,
+      applicationDeadline: req.body.applicationDeadline ? new Date(req.body.applicationDeadline) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      expectedStartDate: req.body.expectedStartDate ? new Date(req.body.expectedStartDate) : now,
+      jobSummary: req.body.jobSummary || req.body.summary || '',
+      description: req.body.description || '',
+      images,
+      coverImage: req.body.coverImage || images[0] || '',
+      requiredSkills: Array.isArray(req.body.requiredSkills)
+        ? req.body.requiredSkills
+        : req.body.requiredSkills ? [req.body.requiredSkills] : [],
+      qualifications: req.body.qualifications || '',
+      yearsOfExperience: Number(req.body.yearsOfExperience) || 0,
+      languagesRequired: Array.isArray(req.body.languagesRequired)
+        ? req.body.languagesRequired
+        : req.body.languagesRequired ? [req.body.languagesRequired] : [],
+      preferredNationalities: Array.isArray(req.body.preferredNationalities)
+        ? req.body.preferredNationalities
+        : req.body.preferredNationalities ? [req.body.preferredNationalities] : [],
+      preferredGender: req.body.preferredGender || 'Any',
+      ageRange: req.body.ageRange || { min: 18, max: 65 },
+      salary: salaryValue,
+      salaryType: req.body.salaryType || 'Monthly',
+      currency: req.body.currency || 'USD',
+      benefits: req.body.benefits || {},
+      requirements: { ...(req.body.requirements || {}) },
+      employerId: req.body.employerId || 'staff-marketplace',
+      employerName: req.body.employerName || 'Bliss Global Marketplace',
+      employerLogo: req.body.employerLogo || '',
+      employerRating: req.body.employerRating ? Number(req.body.employerRating) : 4.5,
+      employerVerified: true,
+      status: 'Active',
+      featured: req.body.featured === true,
+      postedDate: now,
+      publishedAt: now,
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    };
+
+    if (mongoose.connection.readyState === 1) {
+      const createdJob = await Job.create(jobPayload);
+      const responseJob = createdJob.toObject();
+      responseJob.shareUrl = `${baseUrl}/jobs/${createdJob.jobId}`;
+      return res.status(201).json({ success: true, data: responseJob });
+    }
+
+    await ensureDemoData();
     const job = {
-      jobId: `JOB-2026-${String(memoryState.jobs.length + 1).padStart(4, '0')}`,
-      title: req.body.title ?? 'Untitled job',
-      position: req.body.position ?? req.body.title ?? 'Open Position',
-      country: req.body.country ?? 'Global',
-      location: req.body.location ?? 'Unknown',
-      salary: req.body.salary ?? 'Negotiable',
-      duration: req.body.duration ?? 'Flexible',
-      contractType: req.body.contractType ?? 'Full Time',
-      requirements: req.body.requirements ?? '',
-      description: req.body.description ?? '',
-      images: Array.isArray(req.body.images) ? req.body.images : [],
-      status: 'Published',
-      postedAt: new Date().toISOString(),
-      shareUrl: `${baseUrl}/jobs/JOB-2026-${String(memoryState.jobs.length + 1).padStart(4, '0')}`,
+      ...jobPayload,
+      shareUrl: `${baseUrl}/jobs/${jobId}`,
     };
     memoryState.jobs.unshift(job);
     return res.status(201).json({ success: true, data: job });
   } catch (error) {
+    console.error('Staff marketplace post error:', error);
     return res.status(500).json({ success: false, error: error.message });
   }
 }
 
 async function listJobs(req, res) {
   try {
+    if (mongoose.connection.readyState === 1) {
+      const jobs = await Job.find({ status: 'Active' })
+        .sort({ publishedAt: -1 })
+        .limit(100);
+      return res.json({ success: true, data: jobs });
+    }
+
     await ensureDemoData();
     return res.json({ success: true, data: memoryState.jobs });
   } catch (error) {

@@ -446,6 +446,7 @@ app.use('/api/notifications', notificationsRoutes);
 app.use('/api/contracts', contractsRoutes);
 app.use('/api/messages', messagesRoutes);
 app.use('/api/jobs', jobsRoutes);
+app.use('/api/featured', jobsRoutes);
 app.use('/api/local-recruitment', localRecruitmentRoutes);
 app.use('/api/international-recruitment', internationalRecruitmentRoutes);
 app.use('/api/admin/stats', adminStatsRoutes);

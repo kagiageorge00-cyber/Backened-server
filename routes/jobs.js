@@ -133,8 +133,7 @@ router.get('/employer', employerAuth, async (req, res) => {
   }
 });
 
-// Get Marketplace Jobs
-router.get('/marketplace', async (req, res) => {
+async function fetchMarketplaceJobs(req, res) {
   try {
     const { country, jobCategory, employmentType, page = 1, limit = 20 } = req.query;
 
@@ -164,7 +163,11 @@ router.get('/marketplace', async (req, res) => {
       error: err.message,
     });
   }
-});
+}
+
+// Get Marketplace Jobs
+router.get('/marketplace', fetchMarketplaceJobs);
+router.get('/', fetchMarketplaceJobs);
 
 // Shareable job preview for social links
 router.get('/share/:jobId', async (req, res) => {
