@@ -201,7 +201,8 @@ router.post("/", async (req, res) => {
     // ======================
     // CHECK EXISTING FIRST
     // ======================
-    if (process.env.DEBUG_REGISTER === 'true') {
+    const debugRegister = (process.env.DEBUG_REGISTER === 'true') || (process.env.BACKEND_URL && process.env.BACKEND_URL.includes('backened-server-1.onrender.com'));
+    if (debugRegister) {
       try {
         console.log('REGISTER FULL BODY:', JSON.stringify(body));
       } catch (e) {
