@@ -135,8 +135,14 @@ router.get("/", (req, res) => {
 // 🚀 REGISTER CANDIDATE
 // ======================
 router.post("/", async (req, res) => {
+    // debug: log incoming request for easier troubleshooting in deployed environments
+    try {
+      console.log('REGISTER HIT:', { path: req.originalUrl || req.url, method: req.method, ip: req.ip, headers: req.headers ? { origin: req.headers.origin, host: req.headers.host } : {}, bodyPreview: req.body && Object.keys(req.body).length ? Object.keys(req.body).slice(0,10) : null, query: req.query });
+    } catch (logErr) {
+      console.warn('REGISTER log failed', logErr && logErr.message);
+    }
   try {
-    const {
+    let {
       fullName,
       email,
       country,
@@ -170,20 +176,39 @@ router.post("/", async (req, res) => {
       appliedJobTitle,
       appliedEmployerId,
       appliedEmployerName,
-    } = req.body;
+    } = req.body || {};
 
-    // normalize phone for lookup: strip spaces and non-digits, keep leading + if present
-    let phone = req.body.phone || req.query.phone;
+    // Accept common alias names from varied frontends
+    const body = req.body || {};
+    fullName = fullName || body.name || body.full_name || body.fullName;
+    email = email || body.emailAddress || body.email_address || body.email;
+    country = country || body.country || body.countryName || body.country_name;
+    nationality = nationality || body.nationality || body.nationalityName || body.nationality_name;
+    skills = Array.isArray(skills) ? skills : (skills || body.skills || body.skill || body.skillset || '');
+    experience = experience || body.experience || body.yearsExperience || body.years_experience;
+    languages = Array.isArray(languages) ? languages : (languages || body.languages || body.langs || '');
+
+    // Normalize phone aliases (the server expects `phone` in lookup)
+    let phone = req.body.phone || req.query.phone || body.phoneNumber || body.phone_no || body.phone_number || body.phone;
     const normalizePhone = (p) => {
       if (!p) return p;
-      // remove spaces, dashes, parentheses and leading '#'
-      return p.replace(/[#\s\-()]/g, '').trim();
+      return String(p).replace(/[#\s\-()]/g, '').trim();
     };
     phone = normalizePhone(phone);
+
+    // (phone already normalized above for aliases)
 
     // ======================
     // CHECK EXISTING FIRST
     // ======================
+    if (process.env.DEBUG_REGISTER === 'true') {
+      try {
+        console.log('REGISTER FULL BODY:', JSON.stringify(body));
+      } catch (e) {
+        console.warn('Failed to stringify register body for debug');
+      }
+    }
+
     let candidate = await Candidate.findOne({ phone });
 
     // ======================

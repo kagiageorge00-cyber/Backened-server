@@ -421,7 +421,7 @@ app.use('/api/candidates', candidateRoutes);
 app.use('/api/candidates', marketplaceRoutes);
 app.use('/api/candidate', candidateRoutes);
 app.use('/api/apply', applyRoutes);
-app.use(['/api/register', '/api/candidate/register'], registerRoutes);
+app.use(['/api/register', '/api/candidate/register', '/api/register/register'], registerRoutes);
 app.use('/api/employers', employerRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/payments', paymentRoutesV2);

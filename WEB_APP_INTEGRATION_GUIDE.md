@@ -249,7 +249,12 @@ GET /api/payments/{paymentId}/validate
 ```javascript
 // ====== REGISTER CANDIDATE ======
 async function registerCandidate(formData) {
-  const response = await fetch('https://backened-server-1.onrender.com/api/register/register', {
+  // Prefer using a relative API path when frontend is served from the same origin
+  const apiUrl = (window && window.location && window.location.origin)
+    ? `${window.location.origin}/api/register/register`
+    : 'https://backened-server-1.onrender.com/api/register/register';
+
+  const response = await fetch(apiUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -371,8 +376,8 @@ function RegistrationForm() {
     setError(null);
 
     try {
-      const response = await fetch(
-        'https://backened-server-1.onrender.com/api/register/register',
+      const apiUrl = `${window.location.origin || 'https://backened-server-1.onrender.com'}/api/register/register`;
+      const response = await fetch(apiUrl,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
