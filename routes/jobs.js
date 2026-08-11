@@ -151,6 +151,7 @@ async function fetchMarketplaceJobs(req, res) {
 
     return res.json({
       success: true,
+      data: jobs,
       jobs,
       total,
       page: parseInt(page),
