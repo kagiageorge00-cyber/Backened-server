@@ -437,6 +437,22 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/inbox', inboxRoutes);
 app.use('/api/agents', agentsRoutes);
 app.use('/api/agent-portal', agentPortalRoutes);
+app.get('/api/marketplace/:jobId', async (req, res, next) => {
+  const { jobId } = req.params;
+  const reservedSegments = new Set(['candidates', 'search', 'profile', 'jobs', 'auth', 'messages', 'contracts', 'notifications']);
+  if (reservedSegments.has(jobId.toLowerCase())) {
+    return next();
+  }
+  try {
+    const job = await Job.findOne({ jobId });
+    if (!job) {
+      return next();
+    }
+    return res.json({ success: true, data: job });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
 app.use('/api/marketplace', marketplaceRoutes);
 app.use('/api/interviews', interviewsRoutes);
 app.use('/api/shortlist', shortlistRoutes);
