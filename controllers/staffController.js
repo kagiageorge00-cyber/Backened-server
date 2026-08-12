@@ -1065,12 +1065,25 @@ async function addInternalNote(req, res) {
   }
 }
 
+  async function fetchNotifications(req, res) {
+    try {
+      await ensureDemoConversations();
+      const notifications = mongoose.connection.readyState === 1
+        ? await StaffNotification.find().sort({ createdAt: -1 }).limit(200)
+        : memoryState.notifications;
+      return res.json({ success: true, data: notifications });
+    } catch (error) {
+      return res.status(500).json({ success: false, error: error.message });
+    }
+  }
+
 module.exports = {
   login,
   listStaffAccounts,
   createStaffAccount,
   dashboard,
   performance,
+  fetchNotifications,
   listChats,
   getChatById,
   receiveBlissAppMessage,
