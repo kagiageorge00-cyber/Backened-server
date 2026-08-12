@@ -947,6 +947,17 @@ async function sendMessage(req, res) {
   }
 }
 
+async function broadcast(req, res) {
+  try {
+    return res.status(501).json({
+      success: false,
+      error: 'Broadcast endpoint is not implemented yet. Please contact the API maintainer.'
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+}
+
 async function uploadFile(req, res) {
   try {
     const { conversationId, fileName, sender } = req.body;
@@ -1056,4 +1067,5 @@ module.exports = {
   listAssignments,
   postMarketplaceJob,
   listJobs,
+  broadcast,
 };

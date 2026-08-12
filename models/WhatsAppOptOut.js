@@ -6,7 +6,7 @@ const mongoose = require('mongoose');
  */
 const whatsappOptOutSchema = new mongoose.Schema({
   contactId: { type: mongoose.Schema.Types.ObjectId, ref: 'WhatsAppContact', default: null },
-  phoneNumber: { type: String, required: true, trim: true, unique: true, index: true },
+  phoneNumber: { type: String, required: true, trim: true, unique: true },
   fullName: { type: String, trim: true, default: '' },
   
   // Opt-out details

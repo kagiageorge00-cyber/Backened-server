@@ -10,7 +10,6 @@ const whatsappImportHistorySchema = new mongoose.Schema({
     type: String,
     enum: ['processing', 'completed', 'failed', 'partial'],
     default: 'processing',
-    index: true,
   },
   
   // File information
@@ -46,7 +45,7 @@ const whatsappImportHistorySchema = new mongoose.Schema({
   completedAt: { type: Date, default: null },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
-}, { timestamps: true });
+}, { timestamps: true, suppressReservedKeysWarning: true });
 
 // Indexes
 whatsappImportHistorySchema.index({ status: 1 });

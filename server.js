@@ -20,6 +20,7 @@ try {
 }
 
 const app = express();
+app.set('trust proxy', 1);
 
 const { FRONTEND_URL, BACKEND_URL } = require('./config');
 
