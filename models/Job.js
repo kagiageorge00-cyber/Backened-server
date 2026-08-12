@@ -27,7 +27,6 @@ const jobSchema = new mongoose.Schema(
     },
     employmentType: {
       type: String,
-      enum: ['Full Time', 'Part Time', 'Contract', 'Temporary', 'Internship'],
       required: true,
       index: true,
     },
@@ -56,7 +55,6 @@ const jobSchema = new mongoose.Schema(
     },
     workLocation: {
       type: String,
-      enum: ['On-site', 'Remote', 'Hybrid'],
       required: true,
     },
     numberOfVacancies: {
@@ -100,13 +98,11 @@ const jobSchema = new mongoose.Schema(
     },
     educationLevel: {
       type: String,
-      enum: ['High School', 'Bachelor\'s', 'Master\'s', 'PhD', 'Diploma', 'Certificate'],
     },
     languagesRequired: [String],
     preferredNationalities: [String],
     preferredGender: {
       type: String,
-      enum: ['Any', 'Male', 'Female'],
       default: 'Any',
     },
     ageRange: {
@@ -122,7 +118,6 @@ const jobSchema = new mongoose.Schema(
     },
     salaryType: {
       type: String,
-      enum: ['Monthly', 'Weekly', 'Hourly', 'Annual'],
       required: true,
     },
     currency: {
@@ -179,7 +174,6 @@ const jobSchema = new mongoose.Schema(
     // Job Status & Analytics
     status: {
       type: String,
-      enum: ['Active', 'Paused', 'Closed', 'Expired', 'Draft', 'open', 'closed', 'paused'],
       default: 'Draft',
       index: true,
     },

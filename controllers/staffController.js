@@ -84,6 +84,49 @@ function createToken(staff) {
   );
 }
 
+function normalizeWorkLocation(value) {
+  if (value == null) return '';
+  const normalized = value.toString().trim();
+  const lowercased = normalized.toLowerCase();
+  if (lowercased === 'remote') return 'Remote';
+  if (lowercased === 'hybrid') return 'Hybrid';
+  if (lowercased === 'on-site' || lowercased === 'onsite' || lowercased === 'on site') return 'On-site';
+  return normalized;
+}
+
+function normalizePreferredGender(value) {
+  if (value == null) return '';
+  const normalized = value.toString().trim();
+  const lowercased = normalized.toLowerCase();
+  if (lowercased === 'male' || lowercased === 'm') return 'Male';
+  if (lowercased === 'female' || lowercased === 'f') return 'Female';
+  return normalized;
+}
+
+function normalizeEmploymentType(value) {
+  if (value == null) return '';
+  const normalized = value.toString().trim();
+  const lowercased = normalized.toLowerCase();
+  if (lowercased === 'full time' || lowercased === 'full-time' || lowercased === 'fulltime') return 'Full Time';
+  if (lowercased === 'part time' || lowercased === 'part-time' || lowercased === 'parttime') return 'Part Time';
+  if (lowercased === 'contract') return 'Contract';
+  if (lowercased === 'temporary') return 'Temporary';
+  if (lowercased === 'internship') return 'Internship';
+  return normalized;
+}
+
+function normalizeSalaryType(value) {
+  if (value == null) return '';
+  return value.toString().trim();
+}
+
+function parseDateOrDefault(value, fallback) {
+  if (!value) return fallback;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return fallback;
+  return date;
+}
+
 async function seedStaffDirectory() {
   if (mongoose.connection.readyState === 1) {
     const existingEmails = new Set((await Staff.find({}, 'email').lean()).map((item) => item.email));
@@ -580,21 +623,27 @@ async function postMarketplaceJob(req, res) {
       ? req.body.images
       : req.body.images ? [req.body.images] : [];
 
+    const normalizedEmploymentType = normalizeEmploymentType(req.body.contractType || req.body.employmentType || '');
+    const normalizedSalaryType = normalizeSalaryType(req.body.salaryType || '');
+
     const jobPayload = {
       jobId,
       jobTitle: req.body.title || req.body.position || 'Untitled job',
       title: req.body.title || req.body.position || 'Untitled job',
       position: req.body.position || req.body.title || 'Open Position',
       jobCategory: req.body.jobCategory || req.body.category || 'General',
-      employmentType: req.body.contractType || req.body.employmentType || 'Full Time',
+      employmentType: normalizedEmploymentType,
       industry: req.body.industry || 'General',
       country: req.body.country || 'Global',
       city: req.body.city || '',
       location: req.body.location || req.body.city || '',
-      workLocation: req.body.workLocation || 'Remote',
+      workLocation: normalizeWorkLocation(req.body.workLocation),
       numberOfVacancies: Number(req.body.numberOfVacancies) || 1,
-      applicationDeadline: req.body.applicationDeadline ? new Date(req.body.applicationDeadline) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-      expectedStartDate: req.body.expectedStartDate ? new Date(req.body.expectedStartDate) : now,
+      applicationDeadline: parseDateOrDefault(
+        req.body.applicationDeadline,
+        new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      ),
+      expectedStartDate: parseDateOrDefault(req.body.expectedStartDate, now),
       jobSummary: req.body.jobSummary || req.body.summary || '',
       description: req.body.description || '',
       images,
@@ -610,10 +659,10 @@ async function postMarketplaceJob(req, res) {
       preferredNationalities: Array.isArray(req.body.preferredNationalities)
         ? req.body.preferredNationalities
         : req.body.preferredNationalities ? [req.body.preferredNationalities] : [],
-      preferredGender: req.body.preferredGender || 'Any',
+      preferredGender: normalizePreferredGender(req.body.preferredGender),
       ageRange: req.body.ageRange || { min: 18, max: 65 },
       salary: salaryValue,
-      salaryType: req.body.salaryType || 'Monthly',
+      salaryType: normalizedSalaryType,
       currency: req.body.currency || 'USD',
       benefits: req.body.benefits || {},
       requirements: { ...(req.body.requirements || {}) },
@@ -645,8 +694,10 @@ async function postMarketplaceJob(req, res) {
     return res.status(201).json({ success: true, data: job });
   } catch (error) {
     console.error('Staff marketplace post error:', error);
-    return res.status(500).json({ success: false, error: error.message });
-  }
+    if (error.name === 'ValidationError') {
+      const details = Object.values(error.errors || {}).map((err) => err.message).join('; ');
+      return res.status(400).json({ success: false, error: details || error.message });
+    }
 }
 
 async function listJobs(req, res) {
