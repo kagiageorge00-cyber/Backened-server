@@ -7,14 +7,20 @@ const path = require('path');
 const fs = require('fs');
 const Candidate = require("../models/candidate");
 
+const CLOUDINARY_URL = process.env.CLOUDINARY_URL;
+
 // ========================
 // CLOUDINARY CONFIG
 // ========================
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
+if (CLOUDINARY_URL) {
+  cloudinary.config({ secure: true });
+} else {
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+  });
+}
 
 // ========================
 // STORAGE (Cloudinary when configured, otherwise local disk fallback)
@@ -68,9 +74,10 @@ function createDiskStorage() {
 
 function isCloudinaryConfigured() {
   return Boolean(
-    process.env.CLOUDINARY_CLOUD_NAME &&
-    process.env.CLOUDINARY_API_KEY &&
-    process.env.CLOUDINARY_API_SECRET
+    CLOUDINARY_URL ||
+    (process.env.CLOUDINARY_CLOUD_NAME &&
+      process.env.CLOUDINARY_API_KEY &&
+      process.env.CLOUDINARY_API_SECRET)
   );
 }
 
@@ -216,7 +223,7 @@ async function handleUploadRequest(req, res) {
   const field = (req.body && (req.body.field || req.body.documentType || req.body.type)) || (req.query && (req.query.field || req.query.documentType || req.query.type));
 
   const backendBaseUrl = process.env.BACKEND_URL || `${req.protocol}://${req.get('host')}`;
-  let fileUrl = file.path || file.location || file.url || '';
+  let fileUrl = file.path || file.location || file.url || file.secure_url || '';
 
   if (!/^https?:\/\//i.test(fileUrl)) {
     const filename = file.filename || path.basename(file.path || file.originalname || 'file');
