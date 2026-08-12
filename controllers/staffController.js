@@ -698,6 +698,8 @@ async function postMarketplaceJob(req, res) {
       const details = Object.values(error.errors || {}).map((err) => err.message).join('; ');
       return res.status(400).json({ success: false, error: details || error.message });
     }
+    return res.status(500).json({ success: false, error: error.message });
+  }
 }
 
 async function listJobs(req, res) {
@@ -1018,57 +1020,9 @@ async function addInternalNote(req, res) {
 
     const conversation = memoryState.conversations.find((item) => item.conversationId === conversationId);
     if (!conversation) return res.status(404).json({ success: false, error: 'Conversation not found' });
+    if (!conversation.notes) conversation.notes = [];
     conversation.notes.push(note);
     return res.json({ success: true, data: conversation });
-  } catch (error) {
-    return res.status(500).json({ success: false, error: error.message });
-  }
-}
-
-async function broadcast(req, res) {
-  try {
-    const { message, targetGroup } = req.body;
-    if (!message) return res.status(400).json({ success: false, error: 'message is required' });
-
-    const payload = { title: 'Broadcast message', body: message, type: 'broadcast', targetGroup: targetGroup || 'All', read: false };
-    if (mongoose.connection.readyState === 1) {
-      await StaffNotification.create(payload);
-    } else {
-      memoryState.notifications.push(payload);
-    }
-
-    return res.json({ success: true, data: payload });
-  } catch (error) {
-    return res.status(500).json({ success: false, error: error.message });
-  }
-}
-
-async function fetchNotifications(req, res) {
-  try {
-    const notifications = mongoose.connection.readyState === 1
-      ? await StaffNotification.find().sort({ createdAt: -1 }).lean()
-      : memoryState.notifications;
-    return res.json({ success: true, data: notifications });
-  } catch (error) {
-    return res.status(500).json({ success: false, error: error.message });
-  }
-}
-
-async function performance(req, res) {
-  try {
-    return res.json({
-      success: true,
-      data: {
-        openChats: 12,
-        closedChats: 48,
-        averageResponseTime: '2m 15s',
-        averageResolutionTime: '15m',
-        customerSatisfaction: '4.8/5',
-        casesResolved: 36,
-        dailyPerformance: 92,
-        monthlyPerformance: 88,
-      },
-    });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
   }
@@ -1087,9 +1041,6 @@ module.exports = {
   assignConversation,
   transferConversation,
   addInternalNote,
-  broadcast,
-  fetchNotifications,
-  performance,
   listApplications,
   updateApplication,
   listPendingCandidates,
