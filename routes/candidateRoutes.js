@@ -934,6 +934,7 @@ router.get('/:id', async (req, res) => {
 
     searchCriteria.push(
       { uniqueCode: id },
+      { candidateId: id },
       { phone: id },
       { email: id }
     );

@@ -199,6 +199,7 @@ async function handleSubmitPayment(req, res) {
     // ==========================
     const payment = await Payment.create({
       intentId: "intent_" + Date.now(),
+      candidateId: candidateId || candidate_id || userId,
       userId,
       amount: finalAmount,
       title: "Application Payment",

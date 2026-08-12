@@ -90,7 +90,12 @@ app.use(express.urlencoded({ extended: true, verify: rawBodySaver }));
 // ======================
 // STATIC FILES
 // ======================
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads', (req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  next();
+}, express.static(path.join(__dirname, 'uploads')));
 const downloadsDir = path.join(__dirname, 'downloads');
 fs.mkdirSync(downloadsDir, { recursive: true });
 

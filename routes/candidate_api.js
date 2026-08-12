@@ -371,7 +371,23 @@ router.post('/reset-password', handleResetPassword);
 // -------------------------
 router.get('/applications', jwtAuth, async (req, res) => {
   try {
-    const candidate = req.candidate;
+    const requestedCandidateCode = (req.query.candidateCode || req.query.candidateId || '').toString().trim();
+    let candidate = req.candidate;
+
+    if (requestedCandidateCode) {
+      const resolvedCandidate = await Candidate.findOne({
+        $or: [
+          { uniqueCode: requestedCandidateCode },
+          { candidateId: requestedCandidateCode },
+          { phone: requestedCandidateCode },
+          { email: requestedCandidateCode },
+        ],
+      });
+      if (resolvedCandidate) {
+        candidate = resolvedCandidate;
+      }
+    }
+
     const identifiers = getCandidateIdentifiers(candidate);
     let apps = await Application.find({ candidateId: { $in: identifiers } }).sort({ createdAt: -1 }).lean();
 
@@ -685,14 +701,23 @@ router.post('/conversations/:id/messages', jwtAuth, async (req, res) => {
 router.get('/notifications', jwtAuth, async (req, res) => {
   try {
     const candidate = req.candidate;
-    const identifiers = [
-      candidate._id?.toString(),
-      candidate.phone,
-      candidate.email,
-      candidate.uniqueCode,
-      candidate.candidateId,
-    ].filter((id) => id != null && id.toString().trim().length > 0).map((id) => id.toString());
-    const notes = await Notification.find({ userId: { $in: identifiers } }).sort({ createdAt: -1 });
+    const identifiers = Array.from(
+      new Set([
+        candidate._id?.toString(),
+        candidate.phone,
+        candidate.email,
+        candidate.uniqueCode,
+        candidate.candidateId,
+      ]
+          .filter((id) => id != null && id.toString().trim().length > 0)
+          .map((id) => id.toString())),
+    );
+    const notes = await Notification.find({
+      userType: 'candidate',
+      userId: { $in: identifiers },
+    })
+      .sort({ createdAt: -1 })
+      .lean();
     return res.json({ success: true, data: notes });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });
