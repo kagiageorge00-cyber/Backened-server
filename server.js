@@ -385,6 +385,7 @@ const agentPortalRoutes = require('./routes/agentPortal');
 const SocketManager = require('./inbox/socket/socketManager');
 const travelRoutes = require('./routes/travelRoutes');
 const staffPortalRoutes = require('./routes/staffPortal');
+const medicalRoutes = require('./routes/medical');
 // Admin WhatsApp routes (campaign management)
 let whatsappAdminRoutes;
 let whatsappAdminAuth;
@@ -444,6 +445,7 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/inbox', inboxRoutes);
 app.use('/api/agents', agentsRoutes);
 app.use('/api/agent-portal', agentPortalRoutes);
+app.use('/api/medical', medicalRoutes);
 app.get('/api/marketplace/:jobId', async (req, res, next) => {
   const { jobId } = req.params;
   const reservedSegments = new Set(['candidates', 'search', 'profile', 'jobs', 'auth', 'messages', 'contracts', 'notifications']);
