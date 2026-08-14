@@ -50,7 +50,7 @@ async function register(req, res) {
       email,
       phone,
       country: req.body.country.trim(),
-      passwordHash,
+      password: passwordHash,
       emailVerified: false,
       phoneVerified: false,
       status: 'active',
@@ -118,7 +118,7 @@ async function login(req, res) {
           email: candidate.email || '',
           phone: candidate.phone || '',
           country: candidate.country || 'Unknown',
-          passwordHash: await hashPassword(password),
+          password: await hashPassword(password),
           emailVerified: Boolean(candidate.isVerified),
           phoneVerified: Boolean(candidate.isVerified),
           status: 'active',
@@ -128,7 +128,7 @@ async function login(req, res) {
         user = linkedUser;
       }
     } else {
-      const passwordMatch = await comparePassword(password, user.passwordHash || '');
+      const passwordMatch = await comparePassword(password, user.password || '');
       if (!passwordMatch) {
         return res.status(401).json({ success: false, message: 'Incorrect password.' });
       }
