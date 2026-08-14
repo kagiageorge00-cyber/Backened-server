@@ -1,6 +1,6 @@
 const MedicalBooking = require('../models/MedicalBooking');
 const Candidate = require('../models/candidate');
-const { sendEmail } = require('../services/emailService');
+const { sendEmail } = require('../email');
 const { sendWhatsAppNotification } = require('../services/whatsappService');
 
 // Submit medical booking
@@ -86,10 +86,11 @@ exports.submitMedicalBooking = async (req, res) => {
 
       // Email notification
       if (email) {
-        await sendEmail({
-          to: email,
-          subject: 'Medical Booking Submitted - Bliss Connect',
-          html: `
+        await sendEmail(
+          email,
+          'Medical Booking Submitted - Bliss Connect',
+          `Dear ${fullName},\n\nThank you for submitting your medical booking request.\n\nBooking Details:\n- Amount: KES 7,500\n- Location: ${location === 'nairobi' ? 'Nairobi' : 'Eldoret'}\n- Medical Type: ${medicalType === 'employer_request' ? "Employer's Request" : 'Before Travel'}\n- M-PESA Reference: ${mpesaReference}\n\nOur admin team will verify your payment and contact you within 24 hours.\n\nBest regards,\nBliss Connect Team`,
+          `
             <h2>Medical Booking Submitted</h2>
             <p>Dear ${fullName},</p>
             <p>Thank you for submitting your medical booking request!</p>
@@ -102,8 +103,8 @@ exports.submitMedicalBooking = async (req, res) => {
             </ul>
             <p>Our admin team will verify your payment and contact you within 24 hours.</p>
             <p>Best regards,<br/>Bliss Connect Team</p>
-          `,
-        }).catch(err => console.error('Email notification failed:', err));
+          `
+        ).catch(err => console.error('Email notification failed:', err));
       }
     } catch (notificationError) {
       console.error('Error sending notifications:', notificationError);
@@ -114,10 +115,11 @@ exports.submitMedicalBooking = async (req, res) => {
     try {
       const adminEmails = [process.env.ADMIN_EMAIL, process.env.SUPPORT_EMAIL].filter(Boolean);
       for (const adminEmail of adminEmails) {
-        await sendEmail({
-          to: adminEmail,
-          subject: `NEW: Medical Booking Payment Pending Verification - ${fullName}`,
-          html: `
+        await sendEmail(
+          adminEmail,
+          `NEW: Medical Booking Payment Pending Verification - ${fullName}`,
+          `Candidate: ${fullName}\nPhone: ${phoneNumber}\nEmail: ${email || 'N/A'}\nM-PESA Reference: ${mpesaReference}\nAmount: KES 7,500\nLocation: ${location === 'nairobi' ? 'Nairobi' : 'Eldoret'}\nMedical Type: ${medicalType === 'employer_request' ? "Employer's Request" : 'Before Travel'}\nStatus: Pending Approval\nPlease verify the M-PESA payment and approve or reject the booking.`,
+          `
             <h2>Medical Booking Payment Received - Pending Verification</h2>
             <p><strong>Candidate:</strong> ${fullName}</p>
             <p><strong>Phone:</strong> ${phoneNumber}</p>
@@ -129,8 +131,8 @@ exports.submitMedicalBooking = async (req, res) => {
             <p><strong>Status:</strong> <span style="color: orange;">Pending Approval</span></p>
             <p>Please verify the M-PESA payment and approve or reject the booking.</p>
             <p><strong>Action Required:</strong> Review M-PESA reference and confirm payment</p>
-          `,
-        }).catch(err => console.error('Admin email notification failed:', err));
+          `
+        ).catch(err => console.error('Admin email notification failed:', err));
       }
     } catch (adminNotificationError) {
       console.error('Error sending admin notifications:', adminNotificationError);
@@ -252,10 +254,11 @@ exports.approveMedicalBooking = async (req, res) => {
 
       // Email notification
       if (booking.email) {
-        await sendEmail({
-          to: booking.email,
-          subject: 'Medical Booking Approved - Bliss Connect',
-          html: `
+        await sendEmail(
+          booking.email,
+          'Medical Booking Approved - Bliss Connect',
+          `Dear ${booking.fullName},\n\nGreat news! Your medical booking has been approved.\n\nAppointment Details:\n- Medical Center: ${medicalCenter}\n- Medical Type: ${booking.medicalType === 'employer_request' ? "Employer's Request" : 'Before Travel'}${scheduledDate ? `\n- Scheduled Date: ${new Date(scheduledDate).toLocaleDateString()}` : ''}\n\nPlease visit the medical center during business hours with a valid ID.\n\nIf you have any questions, please contact our support team.\n\nBest regards,\nBliss Connect Team`,
+          `
             <h2>Medical Booking Approved!</h2>
             <p>Dear ${booking.fullName},</p>
             <p>Great news! Your medical booking has been approved.</p>
@@ -268,8 +271,8 @@ exports.approveMedicalBooking = async (req, res) => {
             <p>Please visit the medical center during business hours with a valid ID.</p>
             <p>If you have any questions, please contact our support team.</p>
             <p>Best regards,<br/>Bliss Connect Team</p>
-          `,
-        }).catch(err => console.error('Email approval notification failed:', err));
+          `
+        ).catch(err => console.error('Email approval notification failed:', err));
       }
     } catch (notificationError) {
       console.error('Error sending approval notifications:', notificationError);
@@ -329,18 +332,19 @@ exports.rejectMedicalBooking = async (req, res) => {
       }).catch(err => console.error('WhatsApp rejection notification failed:', err));
 
       if (booking.email) {
-        await sendEmail({
-          to: booking.email,
-          subject: 'Medical Booking Status Update - Bliss Connect',
-          html: `
+        await sendEmail(
+          booking.email,
+          'Medical Booking Status Update - Bliss Connect',
+          `Dear ${booking.fullName},\n\nYour medical booking request could not be approved.\n\nReason: ${reason || 'Please verify your payment details and contact support'}\n\nPlease contact our support team for assistance.\n\nBest regards,\nBliss Connect Team`,
+          `
             <h2>Medical Booking Status</h2>
             <p>Dear ${booking.fullName},</p>
             <p>Your medical booking request could not be approved.</p>
             <p><strong>Reason:</strong> ${reason || 'Please verify your payment details and contact support'}</p>
             <p>Please contact our support team for assistance.</p>
             <p>Best regards,<br/>Bliss Connect Team</p>
-          `,
-        }).catch(err => console.error('Email rejection notification failed:', err));
+          `
+        ).catch(err => console.error('Email rejection notification failed:', err));
       }
     } catch (notificationError) {
       console.error('Error sending rejection notifications:', notificationError);

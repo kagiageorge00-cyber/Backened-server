@@ -9,7 +9,7 @@ const { searchFlights, priceFlightOffer, createFlightBooking, getMarginBreakdown
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const nodemailer = require('nodemailer');
+const { sendEmail } = require('../email');
 
 const uploadDir = path.join(__dirname, '..', 'tmp', 'visa_uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
@@ -136,21 +136,15 @@ router.post('/visa/:id/upload', upload.single('file'), async (req, res) => {
     appRecord.status = 'document_uploaded';
     await appRecord.save();
 
-    // Send notification (email) if SMTP configured, otherwise log
+    // Send notification email via the shared server-side Resend service
     const to = appRecord.email || appRecord.contactEmail || null;
-    if (to && process.env.SMTP_HOST) {
+    if (to) {
       try {
-        const transporter = nodemailer.createTransport({
-          host: process.env.SMTP_HOST,
-          port: Number(process.env.SMTP_PORT || 587),
-          secure: (process.env.SMTP_SECURE === 'true'),
-          auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } : undefined,
-        });
-        await transporter.sendMail({
-          from: process.env.SMTP_FROM || 'no-reply@blissconnect.com',
+        await sendEmail({
           to,
           subject: 'Visa Document Received',
           text: `We have received your document for application ${appRecord.applicationNumber || id}.`,
+          html: `<p>We have received your document for application <strong>${appRecord.applicationNumber || id}</strong>.</p>`,
         });
       } catch (e) {
         console.error('Notification email failed', e);
