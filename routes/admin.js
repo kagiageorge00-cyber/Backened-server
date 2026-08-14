@@ -185,7 +185,7 @@ router.post(
           .json({ success: false, error: "Payment not found" });
       }
 
-      payment.status = "approved";
+      payment.status = "completed";
       payment.approvedAt = new Date();
 
       const candidate = await Candidate.findOne({
