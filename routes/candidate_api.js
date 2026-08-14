@@ -593,8 +593,86 @@ router.post('/documents/upload', jwtAuth, upload.single('file'), async (req, res
 router.get('/documents', jwtAuth, async (req, res) => {
   try {
     const candidate = req.candidate;
-    const docs = await Document.find({ candidateId: candidate._id.toString() }).sort({ createdAt: -1 });
-    return res.json({ success: true, data: docs });
+    
+    // Fetch uploaded documents
+    const uploadedDocs = await Document.find({ 
+      candidateId: candidate._id.toString() 
+    }).sort({ createdAt: -1 }).lean();
+
+    // Build profile documents from candidate model
+    const profileDocs = [];
+    
+    // Photo document
+    if (candidate.photoUrl) {
+      profileDocs.push({
+        _id: `PROFILE-PHOTO-${candidate._id}`,
+        candidateId: candidate._id.toString(),
+        documentType: 'photo',
+        fileUrl: candidate.photoUrl,
+        status: 'Verified',
+        createdAt: candidate.createdAt || new Date(),
+        source: 'profile'
+      });
+    }
+    
+    // Passport document
+    if (candidate.passportUrl) {
+      profileDocs.push({
+        _id: `PROFILE-PASSPORT-${candidate._id}`,
+        candidateId: candidate._id.toString(),
+        documentType: 'passport',
+        fileUrl: candidate.passportUrl,
+        status: 'Verified',
+        createdAt: candidate.createdAt || new Date(),
+        source: 'profile'
+      });
+    }
+    
+    // Medical document
+    if (candidate.medicalUrl) {
+      profileDocs.push({
+        _id: `PROFILE-MEDICAL-${candidate._id}`,
+        candidateId: candidate._id.toString(),
+        documentType: 'medical',
+        fileUrl: candidate.medicalUrl,
+        status: 'Verified',
+        createdAt: candidate.createdAt || new Date(),
+        source: 'profile'
+      });
+    }
+    
+    // Video/Introduction document
+    if (candidate.videoUrl) {
+      profileDocs.push({
+        _id: `PROFILE-VIDEO-${candidate._id}`,
+        candidateId: candidate._id.toString(),
+        documentType: 'video',
+        fileUrl: candidate.videoUrl,
+        status: 'Verified',
+        createdAt: candidate.createdAt || new Date(),
+        source: 'profile'
+      });
+    }
+    
+    // Resume
+    if (candidate.resumeUrl) {
+      profileDocs.push({
+        _id: `PROFILE-RESUME-${candidate._id}`,
+        candidateId: candidate._id.toString(),
+        documentType: 'resume',
+        fileUrl: candidate.resumeUrl,
+        status: 'Verified',
+        createdAt: candidate.createdAt || new Date(),
+        source: 'profile'
+      });
+    }
+    
+    // Merge: profile docs first (existing), then uploaded docs (new)
+    const allDocs = [...profileDocs, ...uploadedDocs].sort((a, b) => {
+      return new Date(b.createdAt) - new Date(a.createdAt);
+    });
+    
+    return res.json({ success: true, data: allDocs, count: allDocs.length });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });
   }

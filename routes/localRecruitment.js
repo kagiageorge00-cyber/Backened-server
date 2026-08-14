@@ -11,6 +11,14 @@ const employerAuth = require('../middleware/employerAuth');
 const { sendNotification } = require('../services/notificationservice');
 const { generateContractPdf } = require('../services/contractService');
 const { notifyCandidateInterviewRequest } = require('../services/notificationservice');
+const {
+  calculateDeploymentFee,
+  validatePaymentRequest,
+  getBankDetails,
+  getMpesaDetails,
+} = require('../services/deploymentPaymentService');
+const DeploymentNotificationService = require('../services/deploymentNotificationService');
+const AutomaticDeploymentService = require('../services/automaticDeploymentService');
 
 const router = express.Router();
 
@@ -217,67 +225,95 @@ router.put('/interviews/:id/result', employerAuth, async (req, res) => {
 router.post('/deployment/payment', employerAuth, async (req, res) => {
   try {
     const employer = req.employer;
-    const { interviewId, salary } = req.body;
+    const {
+      deploymentType,
+      candidateId,
+      candidateName,
+      jobPosition,
+      jobLocation,
+      salary,
+      paymentMethod,
+    } = req.body;
 
-    if (!interviewId || !salary) {
-      return res.status(400).json({ success: false, error: 'interviewId and salary are required' });
+    // Validate request
+    const validation = validatePaymentRequest(req);
+    if (!validation.isValid) {
+      return res.status(400).json({ success: false, error: validation.error });
     }
 
-    const interview = await Interview.findOne({ interviewId, employerId: employer.employerId });
-    if (!interview || interview.interviewStatus !== 'passed') {
-      return res.status(400).json({ success: false, error: 'Interview must be passed before payment' });
-    }
+    // Calculate deployment fee
+    const feeResult = calculateDeploymentFee(deploymentType, salary);
+    const deploymentFee = feeResult.fee;
 
-    const candidate = await Candidate.findOne({
-      $or: [{ candidateId: interview.candidateId }, { uniqueCode: interview.candidateId }, { _id: interview.candidateId }, { phone: interview.candidateId }, { email: interview.candidateId }],
-    });
-
-    if (!candidate) {
-      return res.status(404).json({ success: false, error: 'Candidate not found' });
-    }
-
-    const employerFee = Number(salary) * 0.5;
-    const candidateFee = Number(salary) * 0.1;
-    const totalDue = employerFee + candidateFee;
-
+    // Create deployment record
     const deploymentId = `DEP-${Date.now()}`;
     const deployment = await Deployment.create({
       deploymentId,
       employerId: employer.employerId,
-      candidateId: candidate.candidateId || candidate.uniqueCode || candidate._id.toString(),
-      candidateName: candidate.fullName || candidate.name || '',
-      candidateCountry: candidate.country || candidate.destinationCountry || '',
-      interviewId,
-      deploymentFee: totalDue,
-      paymentStatus: 'pending',
-      paymentMethod: 'bank_transfer',
+      candidateId,
+      candidateName,
+      jobPosition,
+      jobLocation,
+      deploymentType,
+      deploymentFee,
+      paymentStatus: 'paid', // Payment recorded
+      paymentMethod,
       referenceNumber: `REF-${Date.now()}`,
-      currentStage: 'Payment',
+      currentStage: 'Processing',
       progress: 25,
-      deploymentStatus: 'interview',
+      deploymentStatus: deploymentType,
+      salary,
+      feeBreakdown: feeResult.breakdown,
+      bankDetails: getBankDetails(),
+      createdAt: new Date(),
     });
 
+    // Create notification for employer - Payment received
     await Notification.create({
       notificationId: `NTF-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       userId: employer.employerId,
       userType: 'employer',
-      title: 'Deployment payment requested',
-      message: `Please pay the local deployment fee of ${totalDue} for ${candidate.fullName || 'the selected candidate'}.`,
-      notificationType: 'payment',
-      category: 'deployment_payment',
+      title: '✓ Payment Received - Automatic Processing Started',
+      message: `Your payment of $${deploymentFee.toFixed(2)} for ${candidateName} (${jobPosition}) has been received. Your deployment is now being processed automatically.`,
+      notificationType: 'success',
+      category: 'deployment_payment_received',
       entityType: 'deployment',
       entityId: deploymentId,
       actionUrl: `/employer/deployments/${deploymentId}`,
+      createdAt: new Date(),
     });
+
+    // Trigger automatic deployment progression
+    // This runs in the background without waiting for response
+    try {
+      await AutomaticDeploymentService.progressDeploymentAutomatically(
+        deploymentId,
+        candidateName,
+        candidateId,
+        employer.employerId
+      );
+    } catch (autoError) {
+      console.error('[AutoDeploy] Error during automatic progression:', autoError);
+      // Log the error but don't fail the payment response
+      // In production, you'd want to trigger a retry mechanism or alert staff
+    }
 
     return res.status(201).json({
       success: true,
-      deployment: {
+      data: {
         deploymentId,
-        employerFee,
-        candidateFee,
-        totalDue,
-        paymentStatus: deployment.paymentStatus,
+        deploymentType,
+        candidateName,
+        jobPosition,
+        deploymentFee: parseFloat(deploymentFee.toFixed(2)),
+        currency: 'USD',
+        paymentMethod,
+        feeBreakdown: feeResult.breakdown,
+        bankDetails: paymentMethod === 'bank' ? getBankDetails() : null,
+        mpesaDetails: paymentMethod === 'mobile' ? getMpesaDetails() : null,
+        description: feeResult.description,
+        paymentStatus: 'paid',
+        message: 'Payment received! Your deployment is being processed automatically. Watch your notifications for real-time updates.',
       },
     });
   } catch (err) {

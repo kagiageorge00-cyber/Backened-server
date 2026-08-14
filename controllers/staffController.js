@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
 const Staff = require('../models/Staff');
 const Job = require('../models/Job');
 const StaffConversation = require('../models/StaffConversation');
@@ -502,18 +503,106 @@ async function listEmployers(req, res) {
 async function registerEmployer(req, res) {
   try {
     await ensureDemoData();
-    const employer = {
+    const { employerType, password, termsAccepted } = req.body;
+
+    // Validate employer type
+    if (!employerType || !['company', 'individual'].includes(employerType)) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Invalid or missing employerType. Must be "company" or "individual".' 
+      });
+    }
+
+    // Validate terms acceptance
+    if (!termsAccepted) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Terms and conditions must be accepted.' 
+      });
+    }
+
+    // Validate password
+    if (!password) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Password is required.' 
+      });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Password must be at least 6 characters long.' 
+      });
+    }
+
+    // Validate based on employer type
+    let requiredFields = ['email', 'phone', 'country', 'city'];
+    
+    if (employerType === 'company') {
+      requiredFields.push('companyName', 'businessType', 'contactPerson', 'position', 'address');
+    } else {
+      requiredFields.push('fullName', 'nationality', 'nationalIdPassport', 'occupation');
+    }
+
+    // Check for missing required fields
+    const missingFields = requiredFields.filter(field => !req.body[field]);
+    if (missingFields.length > 0) {
+      return res.status(400).json({ 
+        success: false, 
+        error: `Missing required fields: ${missingFields.join(', ')}` 
+      });
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Build employer object based on type
+    let employer = {
       employerId: `EMP-2026-${String(memoryState.employers.length + 1).padStart(4, '0')}`,
-      name: req.body.companyName ?? req.body.name ?? 'Unnamed employer',
-      contactEmail: req.body.email ?? 'unknown@example.com',
-      contactPhone: req.body.phone ?? '',
-      country: req.body.country ?? 'Unknown',
+      employerType,
+      email: req.body.email,
+      phone: req.body.phone,
+      country: req.body.country,
+      city: req.body.city,
+      password: hashedPassword,
+      termsAccepted: true,
       status: 'Pending approval',
       createdAt: new Date().toISOString(),
-      ...req.body,
     };
+
+    if (employerType === 'company') {
+      employer = {
+        ...employer,
+        companyName: req.body.companyName,
+        businessType: req.body.businessType,
+        contactPerson: req.body.contactPerson,
+        position: req.body.position,
+        address: req.body.address,
+        companyRegistrationNumber: req.body.companyRegistrationNumber || null,
+        website: req.body.website || null,
+        companyLogo: req.body.companyLogo || null,
+      };
+    } else {
+      employer = {
+        ...employer,
+        fullName: req.body.fullName,
+        nationality: req.body.nationality,
+        nationalIdPassport: req.body.nationalIdPassport,
+        occupation: req.body.occupation,
+      };
+    }
+
     memoryState.employers.unshift(employer);
-    return res.status(201).json({ success: true, data: employer });
+
+    // Return employer data without password
+    const { password: _, ...employerWithoutPassword } = employer;
+    
+    return res.status(201).json({ 
+      success: true, 
+      data: employerWithoutPassword,
+      message: 'Employer registered successfully. Awaiting approval.'
+    });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
   }

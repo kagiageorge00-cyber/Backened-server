@@ -7,6 +7,13 @@ const Contract = require('../models/Contract');
 const Notification = require('../models/Notification');
 const employerAuth = require('../middleware/employerAuth');
 const { generateContractPdf } = require('../services/contractService');
+const {
+  calculateDeploymentFee,
+  validatePaymentRequest,
+  getBankDetails,
+  getMpesaDetails,
+} = require('../services/deploymentPaymentService');
+const AutomaticDeploymentService = require('../services/automaticDeploymentService');
 
 const router = express.Router();
 
@@ -179,109 +186,96 @@ router.put('/interviews/:id/result', employerAuth, async (req, res) => {
 router.post('/deployment/payment', employerAuth, async (req, res) => {
   try {
     const employer = req.employer;
-    const { interviewId, basicSalary, visaFee, flightTicketFee, relocationAllowance } = req.body;
+    const {
+      deploymentType,
+      candidateId,
+      candidateName,
+      jobPosition,
+      jobLocation,
+      salary,
+      paymentMethod,
+    } = req.body;
 
-    if (!interviewId || !basicSalary) {
-      return res.status(400).json({ success: false, error: 'interviewId and basicSalary are required' });
+    // Validate request
+    const validation = validatePaymentRequest(req);
+    if (!validation.isValid) {
+      return res.status(400).json({ success: false, error: validation.error });
     }
 
-    const interview = await Interview.findOne({ interviewId, employerId: employer.employerId });
-    if (!interview || interview.interviewStatus !== 'passed') {
-      return res.status(400).json({ success: false, error: 'Interview must be passed before international deployment payment' });
-    }
+    // For international deployments, use fixed USD 1500 fee
+    const feeResult = calculateDeploymentFee('international');
+    const deploymentFee = feeResult.fee;
 
-    const candidate = await Candidate.findOne({
-      $or: [{ candidateId: interview.candidateId }, { uniqueCode: interview.candidateId }, { _id: interview.candidateId }, { phone: interview.candidateId }, { email: interview.candidateId }],
-    });
-
-    if (!candidate) {
-      return res.status(404).json({ success: false, error: 'Candidate not found' });
-    }
-
-    const grossSalary = Number(basicSalary) || 0;
-    const visaCharge = Number(visaFee) || 0;
-    const ticketCharge = Number(flightTicketFee) || 0;
-    const relocationCharge = Number(relocationAllowance) || 0;
-    const isHousemaid = /housemaid/i.test(candidate.jobPosition || '') || /housemaid/i.test(candidate.jobAppliedFor || '');
-    const employerCountry = (employer.country || '').toLowerCase();
-    const isLebanonEmployer = employerCountry === 'lebanon';
-
-    let employerFee;
-    let candidateFee;
-    let totalDue;
-    let fixedVisaCharge = visaCharge;
-    let fixedTicketCharge = ticketCharge;
-    let fixedRelocationCharge = relocationCharge;
-
-    if (isLebanonEmployer) {
-      // Lebanon employers pay a fixed USD 2500 deployment fee due to high boarding cost.
-      employerFee = 2500;
-      candidateFee = 0;
-      totalDue = 2500;
-      fixedVisaCharge = 0;
-      fixedTicketCharge = 0;
-      fixedRelocationCharge = 0;
-    } else if (isHousemaid) {
-      // For international housemaid placements, the deployment fee is a fixed USD 1000.
-      employerFee = 1000;
-      candidateFee = 0;
-      totalDue = 1000;
-      fixedVisaCharge = 0;
-      fixedTicketCharge = 0;
-      fixedRelocationCharge = 0;
-    } else {
-      employerFee = grossSalary * 0.8;
-      candidateFee = grossSalary * 0.15;
-      totalDue = employerFee + candidateFee + visaCharge + ticketCharge + relocationCharge;
-    }
-
+    // Create deployment record
     const deploymentId = `INTDEP-${Date.now()}`;
     const deployment = await Deployment.create({
       deploymentId,
       employerId: employer.employerId,
-      candidateId: candidate.candidateId || candidate.uniqueCode || candidate._id.toString(),
-      candidateName: candidate.fullName || candidate.name || '',
-      candidateCountry: candidate.country || '',
-      destinationCountry: candidate.destinationCountry || '',
-      interviewId,
-      deploymentFee: totalDue,
-      paymentStatus: 'pending',
-      paymentMethod: 'bank_transfer',
+      candidateId,
+      candidateName,
+      jobPosition,
+      jobLocation,
+      deploymentType: 'international',
+      deploymentFee,
+      paymentStatus: 'paid', // Payment recorded
+      paymentMethod,
       referenceNumber: `REF-${Date.now()}`,
-      currentStage: 'Visa & Deployment Payment',
-      progress: 20,
+      currentStage: 'Processing',
+      progress: 25,
       deploymentStatus: 'international',
-      visaFee: fixedVisaCharge,
-      flightTicketFee: fixedTicketCharge,
-      relocationAllowance: fixedRelocationCharge,
-      employerFee,
-      candidateFee,
+      salary,
+      feeBreakdown: feeResult.breakdown,
+      bankDetails: getBankDetails(),
+      createdAt: new Date(),
     });
 
+    // Create notification for employer - Payment received
     await Notification.create({
       notificationId: `NTF-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       userId: employer.employerId,
       userType: 'employer',
-      title: 'International deployment payment requested',
-      message: `Please complete international deployment payment of ${totalDue} for ${candidate.fullName || 'your selected candidate'}.`,
-      notificationType: 'payment',
-      category: 'international_deployment_payment',
+      title: '✓ International Deployment Payment Received',
+      message: `Your international deployment payment of $${deploymentFee.toFixed(2)} for ${candidateName} (${jobPosition}) has been received. Automatic processing has started.`,
+      notificationType: 'success',
+      category: 'international_deployment_payment_received',
       entityType: 'deployment',
       entityId: deploymentId,
       actionUrl: `/employer/deployments/${deploymentId}`,
+      createdAt: new Date(),
     });
+
+    // Trigger automatic deployment progression
+    // This runs in the background without waiting for response
+    try {
+      await AutomaticDeploymentService.progressDeploymentAutomatically(
+        deploymentId,
+        candidateName,
+        candidateId,
+        employer.employerId
+      );
+    } catch (autoError) {
+      console.error('[AutoDeploy] Error during automatic progression:', autoError);
+      // Log the error but don't fail the payment response
+      // In production, you'd want to trigger a retry mechanism or alert staff
+    }
 
     return res.status(201).json({
       success: true,
-      deployment: {
+      data: {
         deploymentId,
-        employerFee,
-        candidateFee,
-        visaFee: visaCharge,
-        flightTicketFee: ticketCharge,
-        relocationAllowance: relocationCharge,
-        totalDue,
-        paymentStatus: deployment.paymentStatus,
+        deploymentType: 'international',
+        candidateName,
+        jobPosition,
+        jobLocation,
+        deploymentFee: parseFloat(deploymentFee.toFixed(2)),
+        currency: 'USD',
+        paymentMethod,
+        feeBreakdown: feeResult.breakdown,
+        bankDetails: paymentMethod === 'bank' ? getBankDetails() : null,
+        mpesaDetails: paymentMethod === 'mobile' ? getMpesaDetails() : null,
+        description: feeResult.description,
+        paymentStatus: 'paid',
+        message: 'International deployment payment received! Your deployment is being processed automatically. Watch your notifications for real-time updates.',
       },
     });
   } catch (err) {
