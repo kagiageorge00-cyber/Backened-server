@@ -1,7 +1,10 @@
 const bcrypt = require('bcryptjs');
 const { createNotification } = require('./notificationHelper');
 const { FRONTEND_URL } = require('../config');
-const { generateCandidateReferenceId } = require('./candidateIdentity');
+const {
+  generateCandidateReferenceId,
+  ensureCandidateReference,
+} = require('./candidateIdentity');
 
 function generateCandidateCode(year = new Date().getFullYear()) {
   const seq = Math.floor(1000 + Math.random() * 9000);
@@ -24,8 +27,10 @@ async function ensureCandidatePortalCredentials(candidate) {
   let changed = false;
 
   if (!candidate.candidateId) {
-    candidate.candidateId = generateCandidateReferenceId();
-    changed = true;
+    const generatedReference = ensureCandidateReference(candidate);
+    if (generatedReference) {
+      changed = true;
+    }
   }
 
   if (!candidate.password) {

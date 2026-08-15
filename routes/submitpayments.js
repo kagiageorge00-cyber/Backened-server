@@ -4,7 +4,10 @@ const router = express.Router();
 const Payment = require("../models/Payment");
 const User = require("../models/User");
 const Candidate = require("../models/candidate");
-const { generateCandidateReferenceId } = require('../utils/candidateIdentity');
+const {
+  generateCandidateReferenceId,
+  ensureCandidateReference,
+} = require('../utils/candidateIdentity');
 
 function normalizeEnumValue(value, map) {
   if (!value || typeof value !== 'string') return value;
@@ -223,6 +226,11 @@ async function handleSubmitPayment(req, res) {
       lookupCriteria.push({ candidateId: userId });
 
       let candidate = await Candidate.findOne({ $or: lookupCriteria });
+      const ensuredReference = ensureCandidateReference(candidate);
+      if (candidate && ensuredReference && !candidate.candidateId) {
+        candidate.candidateId = ensuredReference;
+      }
+
       if (!candidate) {
         candidate = await Candidate.create({
           candidateId: generateCandidateReferenceId(),
@@ -312,7 +320,7 @@ async function handleSubmitPayment(req, res) {
           candidate.additionalUrl = additionalUrl || candidate.additionalUrl;
         candidate.email = candidate.email || detectedEmail;
         candidate.phone = candidate.phone || detectedPhone;
-        candidate.candidateId = candidate.candidateId || generateCandidateReferenceId();
+        candidate.candidateId = ensureCandidateReference(candidate) || candidate.candidateId || generateCandidateReferenceId();
         candidate.status = ['available', 'deployed'].includes(candidate.status)
           ? candidate.status
           : 'in_process';

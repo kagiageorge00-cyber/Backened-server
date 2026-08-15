@@ -10,7 +10,21 @@ function generateCandidatePortalCode() {
   return `CAND-${year}-${seq}`;
 }
 
+function ensureCandidateReference(candidate) {
+  if (!candidate) return null;
+
+  const nextValue = candidate.candidateId?.toString().trim();
+  if (nextValue) {
+    return nextValue;
+  }
+
+  const generated = generateCandidateReferenceId();
+  candidate.candidateId = generated;
+  return generated;
+}
+
 module.exports = {
   generateCandidateReferenceId,
   generateCandidatePortalCode,
+  ensureCandidateReference,
 };
