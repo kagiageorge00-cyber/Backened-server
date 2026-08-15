@@ -190,15 +190,15 @@ router.post(
 
       const candidate = await Candidate.findOne({
         $or: [
-          { phone: payment.userId },
-          { email: payment.userId },
-          { uniqueCode: payment.userId },
+          { phone: payment.candidateId },
+          { email: payment.candidateId },
+          { uniqueCode: payment.candidateId },
         ],
       });
 
       const formLinkTarget = candidate?.uniqueCode
         ? `${FRONTEND_URL}/candidate-form?candidateId=${encodeURIComponent(candidate.uniqueCode)}`
-        : `${FRONTEND_URL}/candidate-form?phone=${encodeURIComponent(candidate?.phone || payment.userId)}`;
+        : `${FRONTEND_URL}/candidate-form?phone=${encodeURIComponent(candidate?.phone || payment.candidateId)}`;
 
       payment.formLink = formLinkTarget;
       payment.linkGeneratedAt = new Date();
@@ -217,7 +217,7 @@ router.post(
       }
 
       await createNotification({
-        userId: candidate?.phone || candidate?.email || candidate?.uniqueCode || payment.userId,
+        userId: candidate?.phone || candidate?.email || candidate?.uniqueCode || payment.candidateId,
         title: 'Payment Approved',
         message: 'Your payment has been approved. Upload your photo and resume using the candidate form link.',
         type: 'payment',
@@ -230,7 +230,7 @@ router.post(
       if (candidate) {
         await notifyCandidatePortalReady({
           candidate,
-          userId: candidate.phone || candidate.email || candidate.uniqueCode || payment.userId,
+          userId: candidate.phone || candidate.email || candidate.uniqueCode || payment.candidateId,
           title: 'Registration Can Continue',
           message: `Your payment is approved. Your candidate portal account is ready. Candidate ID: ${portalCredentials?.uniqueCode || candidate.uniqueCode}. Use the link below to continue registration.`,
           actionUrl: formLinkTarget,
@@ -272,7 +272,7 @@ router.post(
 
       const email = candidate?.email || payment.metadata?.email;
       const name = getCandidateDisplayName(candidate || payment.metadata || {});
-      const phoneParam = candidate?.phone || payment.userId;
+      const phoneParam = candidate?.phone || payment.candidateId;
       const link = candidate?.uniqueCode
         ? `${FRONTEND_URL}/candidate-form?candidateId=${encodeURIComponent(candidate.uniqueCode)}`
         : `${FRONTEND_URL}/candidate-form?phone=${encodeURIComponent(phoneParam)}`;
@@ -364,12 +364,12 @@ router.get('/payments/:paymentId/form-link', requireAdminAuth, async (req, res) 
     const payment = await Payment.findById(paymentId);
     if (!payment) return res.status(404).json({ success: false, error: 'Payment not found' });
 
-    const candidate = await Candidate.findOne({ $or: [ { phone: payment.userId }, { email: payment.userId }, { uniqueCode: payment.userId } ] });
+    const candidate = await Candidate.findOne({ $or: [ { phone: payment.candidateId }, { email: payment.candidateId }, { uniqueCode: payment.candidateId } ] });
 
     return res.json({
       success: true,
       paymentId: payment._id,
-      phone: payment.userId,
+      phone: payment.candidateId,
       candidateName: candidate ? (candidate.fullName || candidate.name) : null,
       formLink: payment.formLink || null,
     });
@@ -465,9 +465,9 @@ router.post("/payments/:paymentId/reject", requireAdminAuth, async (req, res) =>
 
     const candidate = await Candidate.findOne({
       $or: [
-        { phone: payment.userId },
-        { email: payment.userId },
-        { uniqueCode: payment.userId },
+        { phone: payment.candidateId },
+        { email: payment.candidateId },
+        { uniqueCode: payment.candidateId },
       ],
     });
 
@@ -475,7 +475,7 @@ router.post("/payments/:paymentId/reject", requireAdminAuth, async (req, res) =>
     await payment.save();
 
     await createNotification({
-      userId: payment.userId,
+      userId: payment.candidateId,
       title: 'Payment Rejected',
       message: 'Your payment could not be verified.',
       type: 'rejection',
