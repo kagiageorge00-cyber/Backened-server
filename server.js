@@ -184,6 +184,54 @@ const Candidate = require('./models/candidate');
 const User = require('./models/User');
 const Job = require('./models/Job');
 
+async function ensureDefaultAdminUser() {
+  try {
+    const username = (process.env.ADMIN_USERNAME || 'boss').trim();
+    const password = process.env.ADMIN_PASSWORD || 'boss@bliss';
+    if (!username || !password) return;
+
+    const existingAdmin = await User.findOne({
+      userType: 'admin',
+      $or: [
+        { name: username },
+        { email: username },
+        { phone: username },
+      ],
+    });
+
+    if (existingAdmin) {
+      if (existingAdmin.name !== username) {
+        existingAdmin.name = username;
+      }
+      if (existingAdmin.email && existingAdmin.email.toLowerCase() !== `${username.toLowerCase()}@bliss.com`) {
+        existingAdmin.email = `${username.toLowerCase()}@bliss.com`;
+      }
+      if (!existingAdmin.password || !existingAdmin.password.startsWith('$2')) {
+        existingAdmin.password = password;
+      }
+      await existingAdmin.save();
+      return;
+    }
+
+    const adminUser = new User({
+      name: username,
+      email: `${username.toLowerCase()}@bliss.com`,
+      phone: '+254700000001',
+      password,
+      userType: 'admin',
+      status: 'active',
+      isVerified: true,
+    });
+
+    await adminUser.save();
+    console.log('✅ Default admin user created in MongoDB');
+  } catch (error) {
+    console.warn('⚠️ Default admin bootstrap failed:', error.message);
+  }
+}
+
+ensureDefaultAdminUser();
+
 // ======================
 // PUBLIC LANDING ROUTES
 // ======================

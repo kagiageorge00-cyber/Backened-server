@@ -129,7 +129,8 @@ router.post("/login", async (req, res) => {
       return res.status(400).json({ success: false, error: 'Invalid admin role' });
     }
 
-    if (!compareAdminCredentials(username, password)) {
+    const credentialsValid = await compareAdminCredentials(username, password);
+    if (!credentialsValid) {
       return res
         .status(401)
         .json({ success: false, error: "Invalid credentials" });

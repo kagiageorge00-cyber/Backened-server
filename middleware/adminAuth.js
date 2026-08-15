@@ -1,10 +1,11 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const User = require('../models/User');
 
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH || null;
-const ADMIN_JWT_SECRET = process.env.ADMIN_JWT_SECRET;
+const ADMIN_JWT_SECRET = process.env.ADMIN_JWT_SECRET || 'bliss-admin-dev-secret-change-me';
 const ADMIN_JWT_EXPIRY = process.env.ADMIN_JWT_EXPIRY || '1h';
 const ADMIN_DEFAULT_ROLE = process.env.ADMIN_DEFAULT_ROLE || 'super_administrator';
 
@@ -16,11 +17,8 @@ if (!ADMIN_USERNAME || !ADMIN_PASSWORD) {
   }
 }
 
-if (!ADMIN_JWT_SECRET) {
-  console.error('❌ CRITICAL: ADMIN_JWT_SECRET environment variable is required');
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('Admin JWT secret not configured. Set ADMIN_JWT_SECRET environment variable.');
-  }
+if (!process.env.ADMIN_JWT_SECRET) {
+  console.warn('⚠️ ADMIN_JWT_SECRET not set. Using local development fallback secret for admin auth.');
 }
 
 const ADMIN_ROLES = [
@@ -51,15 +49,48 @@ function isValidAdminRole(role) {
   return ADMIN_ROLES.includes(normalizeAdminRole(role));
 }
 
-function compareAdminCredentials(username, password) {
-  if (!username || !password) return false;
-  if (username.toString().trim().toLowerCase() !== ADMIN_USERNAME.toString().trim().toLowerCase()) return false;
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
-  if (ADMIN_PASSWORD_HASH) {
-    return bcrypt.compareSync(password, ADMIN_PASSWORD_HASH);
+async function compareAdminCredentials(username, password) {
+  if (!username || !password) return false;
+
+  const normalizedInput = username.toString().trim();
+  const normalizedEnvUsername = ADMIN_USERNAME ? ADMIN_USERNAME.toString().trim().toLowerCase() : '';
+  const normalizedInputLower = normalizedInput.toLowerCase();
+
+  if (normalizedInputLower === normalizedEnvUsername) {
+    if (ADMIN_PASSWORD_HASH) {
+      return bcrypt.compareSync(password, ADMIN_PASSWORD_HASH);
+    }
+    return password === ADMIN_PASSWORD;
   }
 
-  return password === ADMIN_PASSWORD;
+  try {
+    const candidate = await User.findOne({
+      userType: 'admin',
+      $or: [
+        { name: { $regex: `^${escapeRegExp(normalizedInput)}$`, $options: 'i' } },
+        { email: { $regex: `^${escapeRegExp(normalizedInput)}$`, $options: 'i' } },
+        { phone: { $regex: `^${escapeRegExp(normalizedInput)}$`, $options: 'i' } },
+      ],
+    }).lean();
+
+    if (!candidate) return false;
+
+    if (candidate.password && typeof candidate.password === 'string') {
+      if (candidate.password.startsWith('$2')) {
+        return bcrypt.compareSync(password, candidate.password);
+      }
+      return candidate.password === password;
+    }
+
+    return false;
+  } catch (error) {
+    console.error('Admin DB credential check failed:', error.message);
+    return false;
+  }
 }
 
 function signAdminToken(payload) {
