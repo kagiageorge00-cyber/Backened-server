@@ -150,8 +150,16 @@ exports.verifyPayment = async (req, res, next) => {
       return res.status(404).json({ success: false, error: 'Payment record not found.' });
     }
 
-    if (payment.status === 'paid') {
-      return res.status(200).json({ success: true, message: 'Payment already verified.', payment });
+    if (payment.status === 'paid' || payment.status === 'completed') {
+      const candidate = await Candidate.findOne({ candidateId: payment.candidateId });
+      return res.status(200).json({ 
+        success: true, 
+        message: 'Payment already verified.', 
+        payment: {
+          ...payment.toObject ? payment.toObject() : payment,
+          candidateId: candidate?.uniqueCode || payment.candidateId
+        }
+      });
     }
 
     const remoteVerification = await verifyTransaction(payment.transactionId || transactionId);
@@ -177,10 +185,24 @@ exports.verifyPayment = async (req, res, next) => {
         await Candidate.findByIdAndUpdate(candidate._id, { $set: updatePayload }, { new: true });
       }
 
-      return res.status(200).json({ success: true, message: 'Payment verified successfully.', payment });
+      return res.status(200).json({ 
+        success: true, 
+        message: 'Payment verified successfully.', 
+        payment: {
+          ...payment.toObject ? payment.toObject() : payment,
+          candidateId: candidate?.uniqueCode || payment.candidateId
+        }
+      });
     }
 
-    return res.status(200).json({ success: false, message: 'Payment is still pending or could not be verified yet.', payment });
+    return res.status(200).json({ 
+      success: false, 
+      message: 'Payment is still pending or could not be verified yet.', 
+      payment: {
+        ...payment.toObject ? payment.toObject() : payment,
+        candidateId: payment.candidateId
+      }
+    });
   } catch (error) {
     logger.error('Payment verification failed', { message: error.message });
     return next(error);

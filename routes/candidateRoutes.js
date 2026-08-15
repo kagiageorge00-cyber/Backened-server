@@ -62,7 +62,7 @@ router.post('/', async (req, res) => {
       experience,
       photoUrl,
       videoUrl,
-      uniqueCode: generateCandidateCode(),
+      uniqueCode: generateCandidateId(),
       isVerified: false,
       status: 'in_process',
       paymentStatus: 'pending',
@@ -103,7 +103,7 @@ router.post('/login-id', async (req, res) => {
   }
 });
 
-function generateCandidateCode() {
+function generateCandidateId() {
   const year = new Date().getFullYear();
   const seq = Math.floor(1000 + Math.random() * 9000);
   return `CAND-${year}-${seq}`;
@@ -586,7 +586,7 @@ router.post('/form/submit', async (req, res) => {
         medicalUrl,
         resumeUrl,
         additionalUrl,
-        uniqueCode: generateCandidateCode(),
+        uniqueCode: generateCandidateId(),
         password: hashedPassword,
         isVerified: false,
         status: 'in_process',
@@ -608,7 +608,7 @@ router.post('/form/submit', async (req, res) => {
       candidate.profileCompletion = calculateProfileCompletion(candidate);
       await candidate.save();
     } else {
-      candidate.uniqueCode = candidate.uniqueCode || generateCandidateCode();
+      candidate.uniqueCode = candidate.uniqueCode || generateCandidateId();
 
       if (!candidate.password) {
         passwordPlain = generateTemporaryPassword();

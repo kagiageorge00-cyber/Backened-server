@@ -185,19 +185,21 @@ router.post(
           .json({ success: false, error: "Payment not found" });
       }
 
-      payment.status = "completed";
+      payment.status = "paid";
       payment.approvedAt = new Date();
 
       const candidate = await Candidate.findOne({
         $or: [
+          { candidateId: payment.candidateId },
           { phone: payment.candidateId },
           { email: payment.candidateId },
           { uniqueCode: payment.candidateId },
         ],
       });
 
-      const formLinkTarget = candidate?.uniqueCode
-        ? `${FRONTEND_URL}/candidate-form?candidateId=${encodeURIComponent(candidate.uniqueCode)}`
+      const candidateReference = candidate?.candidateId || candidate?.uniqueCode || payment.candidateId;
+      const formLinkTarget = candidateReference
+        ? `${FRONTEND_URL}/candidate-form?candidateId=${encodeURIComponent(candidateReference)}`
         : `${FRONTEND_URL}/candidate-form?phone=${encodeURIComponent(candidate?.phone || payment.candidateId)}`;
 
       payment.formLink = formLinkTarget;
@@ -232,7 +234,7 @@ router.post(
           candidate,
           userId: candidate.phone || candidate.email || candidate.uniqueCode || payment.candidateId,
           title: 'Registration Can Continue',
-          message: `Your payment is approved. Your candidate portal account is ready. Candidate ID: ${portalCredentials?.uniqueCode || candidate.uniqueCode}. Use the link below to continue registration.`,
+          message: `Your payment is approved. Your candidate portal account is ready. Candidate code: ${portalCredentials?.uniqueCode || candidate.uniqueCode || candidate.candidateId}. Use the link below to continue registration.`,
           actionUrl: formLinkTarget,
           email: candidate.email,
           phoneNumber: candidate.phone,
@@ -240,7 +242,8 @@ router.post(
             <div style="font-family: Arial, sans-serif; padding: 24px; background: #f8fafc; border-radius: 10px;">
               <h2 style="color: #0f172a; margin-top: 0;">Your registration can continue</h2>
               <p>Your payment has been approved.</p>
-              <p><strong>Candidate ID:</strong> ${portalCredentials?.uniqueCode || candidate.uniqueCode || 'N/A'}</p>
+              <p><strong>Candidate reference ID:</strong> ${candidate.candidateId || payment.candidateId || 'N/A'}</p>
+              <p><strong>Candidate portal code:</strong> ${portalCredentials?.uniqueCode || candidate.uniqueCode || 'N/A'}</p>
               <p><strong>Password:</strong> ${portalCredentials?.password || 'Contact support'}</p>
               <p><a href="${formLinkTarget}" style="display:inline-block;padding:12px 20px;background:#2563eb;color:white;text-decoration:none;border-radius:6px;">Continue Registration</a></p>
             </div>
@@ -273,10 +276,10 @@ router.post(
       const email = candidate?.email || payment.metadata?.email;
       const name = getCandidateDisplayName(candidate || payment.metadata || {});
       const phoneParam = candidate?.phone || payment.candidateId;
-      const link = candidate?.uniqueCode
-        ? `${FRONTEND_URL}/candidate-form?candidateId=${encodeURIComponent(candidate.uniqueCode)}`
+      const link = candidateReference
+        ? `${FRONTEND_URL}/candidate-form?candidateId=${encodeURIComponent(candidateReference)}`
         : `${FRONTEND_URL}/candidate-form?phone=${encodeURIComponent(phoneParam)}`;
-      const portalId = portalCredentials?.uniqueCode || candidate?.uniqueCode || null;
+      const portalId = portalCredentials?.uniqueCode || candidate?.uniqueCode || candidate?.candidateId || null;
       const portalPassword = portalCredentials?.password || null;
 
       if (email) {
@@ -300,7 +303,8 @@ router.post(
                 <p style="font-size: 16px; line-height: 1.6; margin: 0 0 16px;">Your payment has been reviewed and approved successfully. Thank you for completing this step.</p>
                 <p style="font-size: 16px; line-height: 1.6; margin: 0 0 16px;">Please proceed to complete your candidate form using the link below:</p>
                 <p style="margin: 0 0 16px;"><a href="${link}" style="display: inline-block; padding: 12px 20px; background-color: #0056d6; color: #ffffff; text-decoration: none; border-radius: 4px;">Complete Candidate Form</a></p>
-                ${portalId ? `<p style="font-size: 16px; line-height: 1.6; margin: 0 0 8px;"><strong>Candidate ID:</strong> ${portalId}</p>` : ''}
+                ${portalId ? `<p style="font-size: 16px; line-height: 1.6; margin: 0 0 8px;"><strong>Candidate reference:</strong> ${candidate?.candidateId || payment.candidateId || 'N/A'}</p>` : ''}
+                ${portalId ? `<p style="font-size: 16px; line-height: 1.6; margin: 0 0 8px;"><strong>Candidate portal code:</strong> ${portalCredentials?.uniqueCode || candidate?.uniqueCode || 'N/A'}</p>` : ''}
                 ${portalPassword ? `<p style="font-size: 16px; line-height: 1.6; margin: 0 0 16px;"><strong>Password:</strong> ${portalPassword}</p>` : ''}
                 <p style="font-size: 16px; line-height: 1.6; margin: 0 0 16px;">If you need assistance, reply to this email and our support team will be happy to help.</p>
                 <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #e0e0e0; color: #777; font-size: 14px;">
