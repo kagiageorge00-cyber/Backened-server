@@ -51,6 +51,8 @@ exports.createPayment = async (req, res, next) => {
       metadata = {},
     } = req.body;
 
+    const normalizedPhone = (phoneNumber || (candidateId && typeof candidateId === 'string' ? candidateId : '')).toString().trim();
+
     if (!candidateId) {
       return res.status(400).json({ success: false, error: 'candidateId is required.' });
     }
@@ -78,6 +80,7 @@ exports.createPayment = async (req, res, next) => {
 
     const payment = await Payment.create({
       candidateId: candidate._id.toString(),
+      phone: phoneNumber || candidate.phone || normalizedPhone || null,
       transactionId: checkoutSession.transactionId || `BLISS-${Date.now()}`,
       invoiceId: checkoutSession.invoiceId || null,
       checkoutId: checkoutSession.checkoutId || null,
@@ -87,6 +90,7 @@ exports.createPayment = async (req, res, next) => {
       status: 'pending',
       metadata: {
         checkoutUrl: checkoutSession.checkoutUrl,
+        phone: phoneNumber || candidate.phone || normalizedPhone || null,
         ...metadata,
       },
     });

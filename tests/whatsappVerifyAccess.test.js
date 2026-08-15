@@ -50,7 +50,8 @@ describe('GET /api/admin/whatsapp/verify-access', () => {
     const app = express();
     app.use('/api/admin', adminRouter);
 
-    const token = signAdminToken({ username: 'boss', role: 'admin' });
+    // Use generic test token payload
+    const token = signAdminToken({ username: 'test_admin', role: 'admin' });
     const response = await request(app)
       .get('/api/admin/whatsapp/verify-access')
       .set('Authorization', `Bearer ${token}`);

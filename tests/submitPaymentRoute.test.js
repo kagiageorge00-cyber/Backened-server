@@ -95,4 +95,28 @@ describe('Apply-flow payment submission route', () => {
       email: 'test@applicant.com',
     }));
   });
+
+  test('stores successful payments as paid and preserves the payer phone number', async () => {
+    const app = express();
+    app.use(express.json());
+    app.use('/api', submitPayments);
+
+    await request(app)
+      .post('/api/submitPayment')
+      .send({
+        name: 'Test Applicant',
+        phone: '+254700000000',
+        email: 'test@applicant.com',
+        transactionCode: 'RK7WXYZ9AB',
+        paymentMethod: 'mpesa',
+        amount: 1300,
+      });
+
+    expect(require('../models/Payment').create).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'paid',
+      phone: '+254700000000',
+      amount: 1300,
+      transactionId: 'RK7WXYZ9AB',
+    }));
+  });
 });

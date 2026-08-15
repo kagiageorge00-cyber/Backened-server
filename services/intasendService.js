@@ -33,17 +33,24 @@ async function createCheckoutSession({
     throw new Error('INTASEND_SECRET_KEY is not configured.');
   }
 
+  const normalizedPhone = (phoneNumber || candidate?.phone || '').toString().trim();
+  const frontendBaseUrl = process.env.FRONTEND_URL || 'https://blissconnect12.netlify.app';
+  const candidateFormUrl = `${frontendBaseUrl}/candidate-form${normalizedPhone ? `?phone=${encodeURIComponent(normalizedPhone)}` : ''}`;
+
   const payload = {
     amount: Number(amount),
     currency: currency || 'KES',
     email: email || candidate?.email || '',
-    phone: phoneNumber || candidate?.phone || '',
+    phone: normalizedPhone,
     name: candidate?.fullName || candidate?.name || 'Bliss Connect Candidate',
     title: title || 'Bliss Connect Application Fee',
     payment_method: paymentMethod || 'mpesa',
+    redirect_url: candidateFormUrl,
+    callback_url: candidateFormUrl,
     metadata: {
       source: 'bliss_connect',
       candidateId: candidate?.candidateId || candidate?._id || candidate?.id || '',
+      phone: normalizedPhone,
       ...metadata,
     },
   };

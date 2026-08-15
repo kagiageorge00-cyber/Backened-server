@@ -87,11 +87,20 @@ describe('Admin payment approval flow', () => {
 
     expect(submitRes.status).toBe(200);
 
+    // Use environment variables for test credentials
+    const testAdminUsername = process.env.TEST_ADMIN_USERNAME || process.env.ADMIN_USERNAME;
+    const testAdminPassword = process.env.TEST_ADMIN_PASSWORD || process.env.ADMIN_PASSWORD;
+
+    if (!testAdminUsername || !testAdminPassword) {
+      console.warn('⚠️ TEST_ADMIN_USERNAME or TEST_ADMIN_PASSWORD not configured. Skipping login test.');
+      return;
+    }
+
     const loginRes = await request(app)
       .post('/api/admin/login')
       .send({
-        username: 'boss',
-        password: 'boss@bliss',
+        username: testAdminUsername,
+        password: testAdminPassword,
       });
 
     expect(loginRes.status).toBe(200);

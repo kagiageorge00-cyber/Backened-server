@@ -7,7 +7,6 @@ const bcrypt = require("bcryptjs");
 
 const Candidate = require("../models/candidate");
 const { FRONTEND_URL } = require("../config");
-const { generateCandidateReferenceId } = require('../utils/candidateIdentity');
 const {
   notifyRegistrationSuccess,
   notifyMarketplaceListing,
@@ -277,9 +276,8 @@ router.post("/", async (req, res) => {
       });
     }
     let passwordPlain;
-    let uniqueCode = candidate?.uniqueCode || null;
-    let candidateReferenceId = candidate?.candidateId || null;
-
+    let uniqueCode;
+    
     if (candidate) {
       // Update only the uploaded documents and preserve existing profile data
       candidate.fullName = fullName || candidate.fullName;
@@ -326,10 +324,7 @@ router.post("/", async (req, res) => {
       candidate.appliedJobTitle = appliedJobTitle || candidate.appliedJobTitle;
       candidate.appliedEmployerId = appliedEmployerId || candidate.appliedEmployerId;
       candidate.appliedEmployerName = appliedEmployerName || candidate.appliedEmployerName;
-      candidate.candidateId = candidate.candidateId || generateCandidateReferenceId();
       candidate.uniqueCode = candidate.uniqueCode || generateCandidateCode();
-      uniqueCode = candidate.uniqueCode;
-      candidateReferenceId = candidate.candidateId;
       candidate.isVerified = candidate.isVerified || false;
       candidate.paymentStatus = normalizePaymentStatus(candidate.paymentStatus) || 'Pending';
       candidate.status = ['available', 'deployed'].includes(candidate.status)
@@ -369,7 +364,6 @@ router.post("/", async (req, res) => {
       // Temporary password format: BLISS####
       passwordPlain = `BLISS${Math.floor(1000 + Math.random() * 9000)}`;
       const hashedPassword = await bcrypt.hash(passwordPlain, 10);
-      candidateReferenceId = generateCandidateReferenceId();
       uniqueCode = generateCandidateCode();
 
       const profileCompletionValue = calculateProfileCompletion({
@@ -449,8 +443,7 @@ router.post("/", async (req, res) => {
         appliedJobTitle,
         appliedEmployerId,
         appliedEmployerName,
-        candidateId: candidateReferenceId,
-        uniqueCode,
+        uniqueCode, // ✅ correct field (not candidateId)
         password: hashedPassword,
         profileCompletion: profileCompletionValue,
         documents: {
@@ -470,8 +463,7 @@ router.post("/", async (req, res) => {
       }
     }
 
-    const candidateCode = candidate.uniqueCode || null;
-    const candidateReference = candidate.candidateId || candidateReferenceId || null;
+    const candidateCode = candidate.uniqueCode || uniqueCode;
     const baseFrontendUrl = FRONTEND_URL || '';
     const candidatePortalLink = `${baseFrontendUrl}/candidate-portal`;
     const marketplaceProfileLink = candidate.isVerified
@@ -531,8 +523,7 @@ router.post("/", async (req, res) => {
     const resp = {
       success: true,
       message: 'Candidate registration submitted successfully. Complete payment to finish verification.',
-      candidateId: candidateReference,
-      candidateCode,
+      candidateId: candidateCode,
       data: candidate,
       candidatePortalLink,
     };

@@ -120,6 +120,12 @@ function isEmailLike(value) {
   return typeof value === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
 
+function normalizePhoneValue(value) {
+  if (!value || typeof value !== 'string') return null;
+  const normalized = value.trim();
+  return normalized ? normalized.replace(/[^+0-9]/g, '') : null;
+}
+
 // ==========================
 // SUBMIT PAYMENT HANDLER
 // ==========================
@@ -166,7 +172,7 @@ async function handleSubmitPayment(req, res) {
     const transactionKey = transactionCode || transactionId || transaction_id;
     const parsedAmount = typeof amount === 'string' ? amount.trim() : amount;
 
-    const detectedPhone = phone || (userId && isPhoneLike(userId) ? userId : null);
+    const detectedPhone = normalizePhoneValue(phone || (userId && isPhoneLike(userId) ? userId : null));
     const detectedEmail = email || (userId && isEmailLike(userId) ? userId : null);
 
     if (!userId || parsedAmount == null || !transactionKey) {
@@ -204,13 +210,14 @@ async function handleSubmitPayment(req, res) {
     const payment = await Payment.create({
       intentId: "intent_" + Date.now(),
       candidateId: candidateId || candidate_id || userId,
+      phone: detectedPhone,
       userId,
       amount: finalAmount,
       title: "Application Payment",
       method: paymentMethod || "mpesa",
-      status: "pending",
+      status: "paid",
       transactionId: transactionKey,
-      metadata: { name, email },
+      metadata: { name, email, phone: detectedPhone, candidateId: candidateId || candidate_id || userId },
     });
 
     console.log("✅ Payment saved:", payment._id);
@@ -324,7 +331,7 @@ async function handleSubmitPayment(req, res) {
         candidate.status = ['available', 'deployed'].includes(candidate.status)
           ? candidate.status
           : 'in_process';
-        candidate.paymentStatus = normalizePaymentStatus('pending');
+        candidate.paymentStatus = normalizePaymentStatus('paid');
         candidate.isVerified = candidate.isVerified || false;
         candidate.paymentId = payment._id;
           candidate.profileCompletion = calculateProfileCompletion(candidate);

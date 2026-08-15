@@ -20,6 +20,12 @@ function toArrayField(value) {
     .filter(Boolean);
 }
 
+function normalizePhoneValue(value) {
+  if (!value || typeof value !== 'string') return null;
+  const normalized = value.trim();
+  return normalized ? normalized.replace(/[^+0-9]/g, '') : null;
+}
+
 function calculateProfileCompletion(candidate) {
   const requiredFields = [
     'photoUrl',
@@ -90,7 +96,7 @@ async function handleSubmitPayment(req, res) {
     const userId = userIdFromBody || user_id || phone || candidateId || candidate_id || email;
     const transactionKey = transactionCode || transactionId || transaction_id;
     const parsedAmount = typeof amount === 'string' ? amount.trim() : amount;
-    const detectedPhone = phone || (userId && isPhoneLike(userId) ? userId : null);
+    const detectedPhone = normalizePhoneValue(phone || (userId && isPhoneLike(userId) ? userId : null));
     const detectedEmail = email || (userId && isEmailLike(userId) ? userId : null);
 
     // ======================
@@ -130,13 +136,15 @@ async function handleSubmitPayment(req, res) {
     // ======================
     const payment = await Payment.create({
       intentId: "INT_" + Date.now(),
+      candidateId: candidateId || candidate_id || userId,
+      phone: detectedPhone,
       userId,
       amount: finalAmount,
       title: "Application Payment",
       method: paymentMethod || "mpesa",
-      status: "pending",
+      status: "paid",
       transactionId: transactionKey,
-      metadata: { name, email, candidateId },
+      metadata: { name, email, phone: detectedPhone, candidateId: candidateId || candidate_id || userId },
     });
 
     console.log("✅ Payment saved:", payment._id);

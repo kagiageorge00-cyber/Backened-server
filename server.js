@@ -361,6 +361,7 @@ const employerRoutes = require('./routes/employers');
 const localRecruitmentRoutes = require('./routes/localRecruitment');
 const internationalRecruitmentRoutes = require('./routes/internationalRecruitment');
 const CandidateModel = require('./models/candidate');
+const PaymentModel = require('./models/Payment');
 const bcrypt = require('bcryptjs');
 const marketplaceRoutes = require('./routes/marketplace');
 const interviewsRoutes = require('./routes/interviews');
@@ -595,17 +596,48 @@ app.get('/api/candidate-form/data', async (req, res) => {
     const lookupSource = phone ? 'phone' : 'candidateId';
     const lookupValue = phone || candidateId;
 
-    // ✅ RETURN SUCCESS EVEN IF CANDIDATE NOT FOUND
+    const paymentLookupPhone = normalizedPhone || (candidate && candidate.phone ? normalizePhone(candidate.phone) : null);
+    const validPayment = paymentLookupPhone
+      ? await PaymentModel.findOne({
+          status: 'paid',
+          $or: [
+            { phone: paymentLookupPhone },
+            { phone: normalizedPhone },
+            { 'metadata.phone': paymentLookupPhone },
+            { candidateId: candidate ? candidate._id.toString() : null },
+          ],
+        }).sort({ createdAt: -1 })
+      : null;
+
+    const paymentIsValid = Boolean(validPayment || (candidate && candidate.paymentStatus && candidate.paymentStatus.toLowerCase() === 'paid'));
+
+    if (!paymentIsValid) {
+      return res.status(200).json({
+        success: false,
+        paymentValid: false,
+        message: 'No valid payment found. Please complete your payment first.',
+        candidateExists: Boolean(candidate),
+        lookup: {
+          by: lookupSource,
+          value: lookupValue,
+        },
+        candidateId: candidate ? candidate.uniqueCode : null,
+        phone: normalizedPhone || candidate?.phone || '',
+        data: null,
+      });
+    }
+
     if (!candidate) {
       return res.status(200).json({
         success: true,
+        paymentValid: true,
         candidateExists: false,
         lookup: {
           by: lookupSource,
           value: lookupValue
         },
         candidateId: null,
-        phone: phone || candidateId || '',
+        phone: normalizedPhone || phone || '',
         data: null
       });
     }
@@ -616,6 +648,7 @@ app.get('/api/candidate-form/data', async (req, res) => {
 
     return res.status(200).json({
       success: true,
+      paymentValid: true,
       candidateExists: true,
       lookup: {
         by: lookupSource,

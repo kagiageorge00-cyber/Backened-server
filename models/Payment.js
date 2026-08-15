@@ -4,9 +4,15 @@ const paymentSchema = new mongoose.Schema(
   {
     candidateId: {
       type: String,
-      required: true,
       index: true,
       trim: true,
+      default: null,
+    },
+    phone: {
+      type: String,
+      trim: true,
+      index: true,
+      default: null,
     },
     transactionId: {
       type: String,
@@ -68,6 +74,7 @@ const paymentSchema = new mongoose.Schema(
 );
 
 paymentSchema.index({ candidateId: 1, status: 1 });
+paymentSchema.index({ phone: 1, status: 1 });
 
 const Payment = mongoose.models.Payment || mongoose.model('Payment', paymentSchema);
 

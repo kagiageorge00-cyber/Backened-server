@@ -7,20 +7,14 @@ const path = require('path');
 const fs = require('fs');
 const Candidate = require("../models/candidate");
 
-const CLOUDINARY_URL = process.env.CLOUDINARY_URL;
-
 // ========================
 // CLOUDINARY CONFIG
 // ========================
-if (CLOUDINARY_URL) {
-  cloudinary.config({ secure: true });
-} else {
-  cloudinary.config({
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-    api_key: process.env.CLOUDINARY_API_KEY,
-    api_secret: process.env.CLOUDINARY_API_SECRET,
-  });
-}
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
 // ========================
 // STORAGE (Cloudinary when configured, otherwise local disk fallback)
@@ -74,10 +68,9 @@ function createDiskStorage() {
 
 function isCloudinaryConfigured() {
   return Boolean(
-    CLOUDINARY_URL ||
-    (process.env.CLOUDINARY_CLOUD_NAME &&
-      process.env.CLOUDINARY_API_KEY &&
-      process.env.CLOUDINARY_API_SECRET)
+    process.env.CLOUDINARY_CLOUD_NAME &&
+    process.env.CLOUDINARY_API_KEY &&
+    process.env.CLOUDINARY_API_SECRET
   );
 }
 
@@ -222,9 +215,7 @@ async function handleUploadRequest(req, res) {
   const candidateId = (req.body && (req.body.candidateId || req.body.id)) || (req.query && (req.query.candidateId || req.query.id));
   const field = (req.body && (req.body.field || req.body.documentType || req.body.type)) || (req.query && (req.query.field || req.query.documentType || req.query.type));
 
-  const backendBaseUrl = process.env.BACKEND_URL || `${req.protocol}://${req.get('host')}`;
-  let fileUrl = file.path || file.location || file.url || file.secure_url || '';
-
+  let fileUrl = file.path || file.location || file.url || '';
   if (!/^https?:\/\//i.test(fileUrl)) {
     const filename = file.filename || path.basename(file.path || file.originalname || 'file');
     let relFolder = '';
@@ -234,11 +225,7 @@ async function handleUploadRequest(req, res) {
       relFolder = getUploadFolder(req).replace(/^uploads\/?/, '');
     }
     const folderSegment = relFolder ? `uploads/${relFolder}` : 'uploads';
-    fileUrl = `${backendBaseUrl.replace(/\/$/, '')}/${folderSegment}/${filename}`;
-  }
-
-  if (/^http:\/\//i.test(fileUrl) && backendBaseUrl.startsWith('https://')) {
-    fileUrl = fileUrl.replace(/^http:\/\//i, 'https://');
+    fileUrl = `${req.protocol}://${req.get('host')}/${folderSegment}/${filename}`;
   }
 
   let persistedCandidate = null;

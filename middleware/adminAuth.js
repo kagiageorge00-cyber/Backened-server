@@ -1,12 +1,27 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
-const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'boss';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'boss@bliss';
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH || null;
-const ADMIN_JWT_SECRET = process.env.ADMIN_JWT_SECRET || 'admin_secret_key';
+const ADMIN_JWT_SECRET = process.env.ADMIN_JWT_SECRET;
 const ADMIN_JWT_EXPIRY = process.env.ADMIN_JWT_EXPIRY || '1h';
 const ADMIN_DEFAULT_ROLE = process.env.ADMIN_DEFAULT_ROLE || 'super_administrator';
+
+// Validate required environment variables
+if (!ADMIN_USERNAME || !ADMIN_PASSWORD) {
+  console.error('❌ CRITICAL: ADMIN_USERNAME and ADMIN_PASSWORD environment variables are required');
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('Admin credentials not configured. Set ADMIN_USERNAME and ADMIN_PASSWORD environment variables.');
+  }
+}
+
+if (!ADMIN_JWT_SECRET) {
+  console.error('❌ CRITICAL: ADMIN_JWT_SECRET environment variable is required');
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('Admin JWT secret not configured. Set ADMIN_JWT_SECRET environment variable.');
+  }
+}
 
 const ADMIN_ROLES = [
   'super_administrator',
