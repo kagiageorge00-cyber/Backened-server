@@ -1,4 +1,5 @@
 const express = require('express');
+const jwt = require('jsonwebtoken');
 const Candidate = require('../models/candidate');
 const Bookmark = require('../models/Bookmark');
 const Notification = require('../models/Notification');
@@ -6,6 +7,18 @@ const employerAuth = require('../middleware/employerAuth');
 const { getCandidateNameValue } = require('../utils/candidateDisplayName');
 const { buildCandidateMarketplaceProfile } = require('../services/candidateMarketplaceService');
 const router = express.Router();
+
+function isAuthenticatedStaff(req) {
+  const authHeader = req.headers.authorization || '';
+  if (!authHeader.startsWith('Bearer ')) return false;
+
+  try {
+    const decoded = jwt.verify(authHeader.slice(7), process.env.JWT_SECRET || 'bliss-staff-secret');
+    return decoded && (decoded.staffId || decoded.role === 'staff' || decoded.userType === 'staff');
+  } catch (error) {
+    return false;
+  }
+}
 
 function executeQuery(queryBuilder, options = {}) {
   let query = queryBuilder;
@@ -204,9 +217,11 @@ router.get('/candidates/:candidateId', async (req, res) => {
         { phone: candidateId },
         { email: candidateId },
       ],
-      isVerified: true,
-      status: { $in: ['available', 'in_process', 'approved'] },
     };
+    if (!isAuthenticatedStaff(req)) {
+      query.isVerified = true;
+      query.status = { $in: ['available', 'in_process', 'approved'] };
+    }
 
     const candidate = await Candidate.findOne(query).select('-password');
     if (!candidate) {
