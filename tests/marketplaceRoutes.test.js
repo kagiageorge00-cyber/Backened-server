@@ -91,5 +91,13 @@ describe('Marketplace routes', () => {
       nationality: 'Kenyan',
       religion: 'Christian',
     });
+    expect(Candidate.findOne).toHaveBeenCalledWith({
+      $or: [
+        { candidateId: 'CAND-2026-0102' },
+        { uniqueCode: 'CAND-2026-0102' },
+        { phone: 'CAND-2026-0102' },
+        { email: 'CAND-2026-0102' },
+      ],
+    });
   });
 });
