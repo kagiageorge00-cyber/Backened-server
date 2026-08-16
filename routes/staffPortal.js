@@ -55,7 +55,6 @@ router.get('/marketplace/search', authenticateStaff, async (req, res) => {
       const codeValue = escapeRegExp(candidateCode.toString().trim());
       filter.$or = [
         { uniqueCode: { $regex: `^${codeValue}$`, $options: 'i' } },
-        { candidateId: { $regex: `^${codeValue}$`, $options: 'i' } },
       ];
     } else if (query) {
       filter.$or = [

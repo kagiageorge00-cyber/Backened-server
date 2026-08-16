@@ -596,6 +596,28 @@ function normalizePhone(rawPhone) {
   return rawPhone.toString().replace(/[^+0-9]/g, '').trim();
 }
 
+function getPhoneVariants(rawPhone) {
+  const normalized = normalizePhone(rawPhone);
+  if (!normalized) return [];
+
+  const digits = normalized.replace(/\D/g, '');
+  const variants = new Set([normalized, digits]);
+
+  if (digits.startsWith('0')) {
+    variants.add(`254${digits.slice(1)}`);
+    variants.add(`+254${digits.slice(1)}`);
+  } else if (digits.startsWith('254')) {
+    variants.add(`0${digits.slice(3)}`);
+    variants.add(`+${digits}`);
+  }
+
+  return [...variants].filter(Boolean);
+}
+
+function escapeRegExp(value) {
+  return value.toString().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function cleanupCandidateId(rawCandidateId) {
   if (!rawCandidateId) return rawCandidateId;
   let value = rawCandidateId.toString();
@@ -607,22 +629,26 @@ function cleanupCandidateId(rawCandidateId) {
 
 app.get('/api/candidate-form/data', async (req, res) => {
   try {
-    const { candidateId, phone } = req.query;
-    if (!candidateId && !phone) {
-      return res.status(400).json({ success: false, error: 'candidateId or phone query parameter required' });
+    const { candidateId, phone, fullName } = req.query;
+    if (!candidateId && !phone && !fullName) {
+      return res.status(400).json({ success: false, error: 'candidateId, phone, or fullName query parameter required' });
     }
 
-    const normalizedPhone = normalizePhone(phone);
+    const phoneVariants = getPhoneVariants(phone);
+    const normalizedPhone = phoneVariants[0] || null;
     const cleanedCandidateId = cleanupCandidateId(candidateId);
 
     let candidate;
     if (phone) {
       candidate = await CandidateModel.findOne({
         $or: [
-          { phone },
-          { phone: normalizedPhone },
+          ...phoneVariants.map((value) => ({ phone: value })),
           { uniqueCode: phone },
-          { email: phone }
+          { email: phone },
+          ...(fullName ? [
+            { fullName: { $regex: `^${escapeRegExp(fullName.toString().trim())}$`, $options: 'i' } },
+            { name: { $regex: `^${escapeRegExp(fullName.toString().trim())}$`, $options: 'i' } },
+          ] : []),
         ]
       });
     } else {
@@ -645,15 +671,22 @@ app.get('/api/candidate-form/data', async (req, res) => {
     const lookupSource = phone ? 'phone' : 'candidateId';
     const lookupValue = phone || candidateId;
 
-    const paymentLookupPhone = normalizedPhone || (candidate && candidate.phone ? normalizePhone(candidate.phone) : null);
-    const validPayment = paymentLookupPhone
+    const candidatePhoneVariants = getPhoneVariants(candidate?.phone);
+    const paymentIdentifiers = [
+      candidate?._id?.toString(),
+      candidate?.candidateId,
+      candidate?.uniqueCode,
+      ...phoneVariants,
+      ...candidatePhoneVariants,
+    ].filter(Boolean);
+    const validPayment = paymentIdentifiers.length
       ? await PaymentModel.findOne({
-          status: 'paid',
+          status: { $in: ['paid', 'completed'] },
           $or: [
-            { phone: paymentLookupPhone },
-            { phone: normalizedPhone },
-            { 'metadata.phone': paymentLookupPhone },
-            { candidateId: candidate ? candidate._id.toString() : null },
+            { candidateId: { $in: paymentIdentifiers } },
+            { phone: { $in: paymentIdentifiers } },
+            { 'metadata.candidateId': { $in: paymentIdentifiers } },
+            { 'metadata.phone': { $in: paymentIdentifiers } },
           ],
         }).sort({ createdAt: -1 })
       : null;
