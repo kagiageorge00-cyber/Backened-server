@@ -1,11 +1,25 @@
 const express = require('express');
 const router = express.Router();
 const Candidate = require('../models/candidate');
+const mongoose = require('mongoose');
 const authenticateStaff = require('../middleware/staffAuth');
 const staffController = require('../controllers/staffController');
 
 function sanitizeValue(value) {
   return typeof value === 'string' ? value.trim() : value;
+}
+
+function candidateIdentifierQuery(id) {
+  const identifiers = [
+    { candidateId: id },
+    { uniqueCode: id },
+    { phone: id },
+    { email: id },
+  ];
+  if (mongoose.Types.ObjectId.isValid(id)) {
+    identifiers.unshift({ _id: id });
+  }
+  return { $or: identifiers };
 }
 
 router.post('/login', staffController.login);
@@ -55,6 +69,7 @@ router.get('/marketplace/search', authenticateStaff, async (req, res) => {
       const codeValue = escapeRegExp(candidateCode.toString().trim());
       filter.$or = [
         { uniqueCode: { $regex: `^${codeValue}$`, $options: 'i' } },
+        { candidateId: { $regex: `^${codeValue}$`, $options: 'i' } },
       ];
     } else if (query) {
       filter.$or = [
@@ -82,6 +97,21 @@ router.get('/marketplace/search', authenticateStaff, async (req, res) => {
     const candidates = await Candidate.find(filter).limit(50).sort({ createdAt: -1 });
 
     return res.json({ success: true, data: candidates, total: candidates.length });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.get('/marketplace/candidates/:id', authenticateStaff, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const candidate = await Candidate.findOne(candidateIdentifierQuery(id)).select('-password');
+
+    if (!candidate) {
+      return res.status(404).json({ success: false, error: 'Candidate not found' });
+    }
+
+    return res.json({ success: true, data: candidate });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });
   }
@@ -126,14 +156,7 @@ router.patch('/marketplace/candidates/:id', authenticateStaff, async (req, res) 
     }
 
     const candidate = await Candidate.findOneAndUpdate(
-      {
-        $or: [
-          { _id: id },
-          { uniqueCode: id },
-          { phone: id },
-          { email: id },
-        ],
-      },
+      candidateIdentifierQuery(id),
       { $set: updates },
       { new: true }
     );
