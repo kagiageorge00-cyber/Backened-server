@@ -627,6 +627,7 @@ app.get('/api/candidate-form/data', async (req, res) => {
       });
     } else {
       const searchCriteria = [
+        { candidateId },
         { uniqueCode: candidateId },
         { phone: candidateId },
         { email: candidateId }
@@ -691,8 +692,8 @@ app.get('/api/candidate-form/data', async (req, res) => {
     }
 
     const candidateData = candidate.toObject ? candidate.toObject() : candidate;
-    candidateData.candidateId = candidate.uniqueCode;
-    candidateData.id = candidate.uniqueCode;
+    candidateData.candidateId = candidate.candidateId;
+    candidateData.id = candidate.candidateId;
 
     return res.status(200).json({
       success: true,
@@ -702,7 +703,8 @@ app.get('/api/candidate-form/data', async (req, res) => {
         by: lookupSource,
         value: lookupValue
       },
-      candidateId: candidate.uniqueCode,
+      candidateId: candidate.candidateId,
+      uniqueCode: candidate.uniqueCode || null,
       phone: candidate.phone,
       data: candidateData,
       isVerified: candidate.isVerified,

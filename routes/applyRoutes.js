@@ -4,10 +4,16 @@ const Candidate = require('../models/candidate');
 
 const router = express.Router();
 
-function generateCandidateCode() {
+function generateCandidatePortalCode() {
   const year = new Date().getFullYear();
   const seq = Math.floor(1000 + Math.random() * 9000);
   return `CAND-${year}-${seq}`;
+}
+
+function generateCandidateReferenceId() {
+  const year = new Date().getFullYear();
+  const seq = Math.floor(1000 + Math.random() * 9000);
+  return `CND-${year}-${seq}`;
 }
 
 const sendError = (res, status, error) => res.status(status).json({ success: false, error });
@@ -171,6 +177,7 @@ router.post('/', async (req, res) => {
       $or: [
         { email },
         { phone },
+        { candidateId },
         { uniqueCode: candidateId },
       ],
     });
@@ -215,7 +222,8 @@ router.post('/', async (req, res) => {
       name: resolveFieldValue(name, resolveFieldValue(fullName, candidate?.name || '')),
       email,
       phone,
-      uniqueCode: candidate?.uniqueCode || candidateId || generateCandidateCode(),
+      candidateId: candidate?.candidateId || candidateId || generateCandidateReferenceId(),
+      uniqueCode: candidate?.uniqueCode || (password ? generateCandidatePortalCode() : undefined),
       country: resolveFieldValue(country, candidate?.country || ''),
       nationality: resolveFieldValue(nationality, candidate?.nationality || ''),
       religion: resolveFieldValue(religion, candidate?.religion || ''),

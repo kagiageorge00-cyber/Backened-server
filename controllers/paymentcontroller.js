@@ -161,7 +161,8 @@ exports.verifyPayment = async (req, res, next) => {
         message: 'Payment already verified.', 
         payment: {
           ...payment.toObject ? payment.toObject() : payment,
-          candidateId: candidate?.uniqueCode || payment.candidateId
+          candidateId: candidate?.candidateId || payment.candidateId,
+          uniqueCode: candidate?.uniqueCode || null
         }
       });
     }
@@ -194,7 +195,8 @@ exports.verifyPayment = async (req, res, next) => {
         message: 'Payment verified successfully.', 
         payment: {
           ...payment.toObject ? payment.toObject() : payment,
-          candidateId: candidate?.uniqueCode || payment.candidateId
+          candidateId: candidate?.candidateId || payment.candidateId,
+          uniqueCode: candidate?.uniqueCode || null
         }
       });
     }

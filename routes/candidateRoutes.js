@@ -403,6 +403,7 @@ router.get('/form/data', async (req, res) => {
     }
 
     searchCriteria.push(
+      { candidateId: lookupValue },
       { uniqueCode: lookupValue },
       { phone: lookupValue },
       { email: lookupValue }
@@ -415,8 +416,8 @@ router.get('/form/data', async (req, res) => {
     }
 
     const candidateData = candidate.toObject ? candidate.toObject() : candidate;
-    candidateData.candidateId = candidate.uniqueCode;
-    candidateData.id = candidate.uniqueCode;
+    candidateData.candidateId = candidate.candidateId;
+    candidateData.id = candidate.candidateId;
 
     return res.json({
       success: true,
@@ -424,7 +425,8 @@ router.get('/form/data', async (req, res) => {
         by: candidateId ? 'candidateId' : 'phone',
         value: lookupValue
       },
-      candidateId: candidate.uniqueCode,
+      candidateId: candidate.candidateId,
+      uniqueCode: candidate.uniqueCode || null,
       data: candidateData,
       formLink: `${FRONTEND_URL}/candidate-form?phone=${candidate.phone}`,
     });
