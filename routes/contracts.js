@@ -36,11 +36,13 @@ router.post('/generate', async (req, res) => {
     const employer = req.employer;
     const {
       deploymentId,
-      companyName,
-      jobDescription,
+      companyName: requestedCompanyName,
+      jobDescription: requestedJobDescription,
       salary,
     } = req.body;
 
+    const companyName = requestedCompanyName || employer.companyName || employer.fullName;
+    const jobDescription = requestedJobDescription || 'Employment placement through Bliss Connect';
     if (!deploymentId || !companyName || !jobDescription || !salary) {
       return res.status(400).json({
         success: false,

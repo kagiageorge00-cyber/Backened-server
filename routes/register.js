@@ -36,6 +36,21 @@ function normalizeEnumValue(value, map) {
   return map[value.trim().toLowerCase()] || value.trim();
 }
 
+function normalizePaymentStatus(value) {
+  if (!value || typeof value !== 'string') return value;
+
+  const paymentStatusMap = {
+    pending: 'Pending',
+    paid: 'Paid',
+    completed: 'Paid',
+    successful: 'Paid',
+    failed: 'Failed',
+    unpaid: 'Unpaid',
+  };
+
+  return paymentStatusMap[value.trim().toLowerCase()] || value.trim();
+}
+
 const maritalStatusMap = {
   single: 'Single',
   married: 'Married',
@@ -524,7 +539,11 @@ router.post("/", async (req, res) => {
       success: true,
       message: 'Candidate registration submitted successfully. Complete payment to finish verification.',
       candidateId: candidateCode,
-      data: candidate,
+      data: candidate.toObject ? (() => {
+        const publicCandidate = candidate.toObject();
+        delete publicCandidate.password;
+        return publicCandidate;
+      })() : candidate,
       candidatePortalLink,
     };
 

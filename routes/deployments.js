@@ -52,7 +52,7 @@ router.post('/create', async (req, res) => {
       return res.status(403).json({ success: false, error: 'Employer account is not verified or active' });
     }
 
-    const { candidateId } = req.body;
+    const { candidateId, candidateName, candidateCountry, jobPosition } = req.body;
     if (!candidateId) return res.status(400).json({ success: false, error: 'candidateId required' });
 
     const candidate = await Candidate.findOne({
@@ -72,7 +72,14 @@ router.post('/create', async (req, res) => {
     }
 
     const deploymentId = `DEP-${Date.now()}`;
-    const dep = await Deployment.create({ deploymentId, employerId: employer.employerId, candidateId: candidate.candidateId || candidate.uniqueCode || candidate._id.toString() });
+    const dep = await Deployment.create({
+      deploymentId,
+      employerId: employer.employerId,
+      candidateId: candidate.candidateId || candidate.uniqueCode || candidate._id.toString(),
+      candidateName: candidateName || candidate.fullName || candidate.candidateName,
+      candidateCountry,
+      jobPosition,
+    });
     return res.status(201).json({ success: true, data: dep });
   } catch (err) {
     console.error('Deployment create error:', err);
@@ -301,6 +308,61 @@ router.post('/:deploymentId/visa', visaUpload.single('visaFile'), employerAuth, 
     });
   } catch (err) {
     console.error('Visa upload error:', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Compatibility endpoint for clients that already have a hosted visa document URL.
+router.post('/:deploymentId/visa-reference', async (req, res) => {
+  try {
+    const { deploymentId } = req.params;
+    const { visaNumber, visaPdfUrl, visaIssueDate, visaExpiryDate, remarks } = req.body;
+    const dep = await Deployment.findOne({ deploymentId, employerId: req.employer.employerId });
+    if (!dep) return res.status(404).json({ success: false, error: 'Deployment not found' });
+    if (!visaNumber || !visaPdfUrl) return res.status(400).json({ success: false, error: 'visaNumber and visaPdfUrl are required' });
+    dep.visaStatus = 'submitted';
+    dep.visaUrl = visaPdfUrl;
+    dep.visaUploadedAt = new Date();
+    dep.currentStage = 'Visa';
+    await dep.save();
+    return res.status(201).json({ success: true, data: dep, visaIssueDate, visaExpiryDate, remarks });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/:deploymentId/ticket', async (req, res) => {
+  try {
+    const { deploymentId } = req.params;
+    const { airline, flightNumber, departureAirport, arrivalAirport, departureDate, departureTime, ticketPdfUrl, boardingPassUrl } = req.body;
+    const dep = await Deployment.findOne({ deploymentId, employerId: req.employer.employerId });
+    if (!dep) return res.status(404).json({ success: false, error: 'Deployment not found' });
+    if (!airline || !flightNumber || !departureAirport || !arrivalAirport || !ticketPdfUrl) {
+      return res.status(400).json({ success: false, error: 'Complete ticket details are required' });
+    }
+    dep.ticketStatus = 'uploaded';
+    dep.currentStage = 'Ticket';
+    dep.arrivalStatus = 'uploaded';
+    await dep.save();
+    return res.status(201).json({ success: true, data: dep, ticket: { airline, flightNumber, departureAirport, arrivalAirport, departureDate, departureTime, ticketPdfUrl, boardingPassUrl } });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/:deploymentId/complete', async (req, res) => {
+  try {
+    const dep = await Deployment.findOne({ deploymentId: req.params.deploymentId, employerId: req.employer.employerId });
+    if (!dep) return res.status(404).json({ success: false, error: 'Deployment not found' });
+    if (dep.ticketStatus !== 'uploaded' || dep.visaStatus !== 'submitted') {
+      return res.status(400).json({ success: false, error: 'Visa and ticket must be uploaded before completion' });
+    }
+    dep.currentStage = 'Active';
+    dep.deploymentStatus = 'active';
+    dep.progress = 1;
+    await dep.save();
+    return res.json({ success: true, data: dep });
+  } catch (err) {
     return res.status(500).json({ success: false, error: err.message });
   }
 });

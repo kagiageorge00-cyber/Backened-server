@@ -6,6 +6,7 @@ const deploymentSchema = new mongoose.Schema({
   candidateId: { type: String, required: true, index: true },
   candidateName: { type: String },
   candidateCountry: { type: String },
+  jobPosition: { type: String },
   candidateEmail: { type: String },
   interviewId: { type: String, index: true },
   deploymentFee: { type: Number, default: 1000 },
