@@ -215,7 +215,7 @@ async function handleSubmitPayment(req, res) {
       amount: finalAmount,
       title: "Application Payment",
       method: paymentMethod || "mpesa",
-      status: "paid",
+      status: "pending",
       transactionId: transactionKey,
       metadata: { name, email, phone: detectedPhone, candidateId: candidateId || candidate_id || userId },
     });

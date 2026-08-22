@@ -96,7 +96,7 @@ describe('Apply-flow payment submission route', () => {
     }));
   });
 
-  test('stores successful payments as paid and preserves the payer phone number', async () => {
+  test('stores submitted payments as pending and preserves the payer phone number', async () => {
     const app = express();
     app.use(express.json());
     app.use('/api', submitPayments);
@@ -113,7 +113,7 @@ describe('Apply-flow payment submission route', () => {
       });
 
     expect(require('../models/Payment').create).toHaveBeenCalledWith(expect.objectContaining({
-      status: 'paid',
+      status: 'pending',
       phone: '+254700000000',
       amount: 1300,
       transactionId: 'RK7WXYZ9AB',

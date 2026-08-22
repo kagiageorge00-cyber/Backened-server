@@ -26,6 +26,16 @@ function normalizePhoneValue(value) {
   return normalized ? normalized.replace(/[^+0-9]/g, '') : null;
 }
 
+function isPhoneLike(value) {
+  if (!value || typeof value !== 'string') return false;
+  const digits = value.replace(/[^0-9]/g, '');
+  return digits.length >= 7 && digits.length <= 15;
+}
+
+function isEmailLike(value) {
+  return typeof value === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
 function calculateProfileCompletion(candidate) {
   const requiredFields = [
     'photoUrl',
@@ -142,7 +152,7 @@ async function handleSubmitPayment(req, res) {
       amount: finalAmount,
       title: "Application Payment",
       method: paymentMethod || "mpesa",
-      status: "paid",
+      status: "pending",
       transactionId: transactionKey,
       metadata: { name, email, phone: detectedPhone, candidateId: candidateId || candidate_id || userId },
     });
