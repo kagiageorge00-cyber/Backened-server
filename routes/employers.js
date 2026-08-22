@@ -360,21 +360,29 @@ router.post('/register', async (req, res) => {
       profileCompletion: 0,
     });
 
-    await EmployerNotification.create({
-      employerId,
-      type: 'welcome',
-      category: 'welcome',
-      title: 'Welcome to Bliss Connect Employer Portal',
-      message: `Your employer registration has been submitted successfully. Employer ID: ${employerId}. Please verify your email and phone to continue.`,
-      data: { employerId },
-    });
+    try {
+      await EmployerNotification.create({
+        employerId,
+        type: 'welcome',
+        category: 'welcome',
+        title: 'Welcome to Bliss Connect Employer Portal',
+        message: `Your employer registration has been submitted successfully. Employer ID: ${employerId}. Please verify your email and phone to continue.`,
+        data: { employerId },
+      });
+    } catch (notificationError) {
+      console.warn('Employer welcome notification failed:', notificationError.message || notificationError);
+    }
 
-    await notifyEmployerWelcome({
-      email: employer.email,
-      companyName: employer.companyName || employer.fullName,
-      employerId,
-      contactPerson: employer.contactPerson || employer.fullName,
-    });
+    try {
+      await notifyEmployerWelcome({
+        email: employer.email,
+        companyName: employer.companyName || employer.fullName,
+        employerId,
+        contactPerson: employer.contactPerson || employer.fullName,
+      });
+    } catch (notificationError) {
+      console.warn('Employer welcome email failed:', notificationError.message || notificationError);
+    }
 
     try {
       await sendVerificationEmail(employer.email, employer.fullName || employer.companyName, employerId, emailVerificationToken);
@@ -423,21 +431,29 @@ router.post('/register', async (req, res) => {
     });
   } catch (error) {
     console.error('Employer registration error:', error);
+    if (error?.code === 11000) {
+      const duplicateField = Object.keys(error.keyPattern || {})[0] || 'email or phone';
+      return res.status(409).json({
+        success: false,
+        error: `${duplicateField} is already registered`,
+      });
+    }
     return res.status(500).json({ success: false, error: error.message });
   }
 });
 
 router.post('/login', async (req, res) => {
   try {
-    const { employerId, email, password, candidateId } = req.body;
-    if ((!employerId && !email) || !password) {
+    const { employerId, email, identifier, password, candidateId } = req.body;
+    const loginIdentifier = employerId || email || identifier;
+    if (!loginIdentifier || !password) {
       return res.status(400).json({
         success: false,
         error: 'employerId or email and password are required',
       });
     }
 
-    const normalizedLogin = sanitizeValue(employerId || email || '');
+    const normalizedLogin = sanitizeValue(loginIdentifier);
 
     let employer = await Employer.findOne({
       $or: [
@@ -456,36 +472,37 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ success: false, error: 'Invalid Employer ID or password' });
     }
 
-    await EmployerNotification.create({
-      employerId: employer.employerId,
-      type: 'login',
-      category: 'message',
-      title: 'Welcome Back',
-      message: `Welcome Back ${employer.companyName}!\n\nYou have:\n- 0 candidate notifications\n- 0 interview requests\n- 1 new message`,
-      data: {
-        candidateNotifications: 0,
-        interviewRequests: 0,
-        messages: 1,
-      },
-    });
+    try {
+      await EmployerNotification.create({
+        employerId: employer.employerId,
+        type: 'login',
+        category: 'message',
+        title: 'Welcome Back',
+        message: `Welcome Back ${employer.companyName}!\n\nYou have:\n- 0 candidate notifications\n- 0 interview requests\n- 1 new message`,
+        data: {
+          candidateNotifications: 0,
+          interviewRequests: 0,
+          messages: 1,
+        },
+      });
+    } catch (notificationError) {
+      console.warn('Employer login notification failed:', notificationError.message || notificationError);
+    }
 
     const candidateContext = candidateId ? { candidateId } : undefined;
 
-    const candidateNotifications = await EmployerNotification.countDocuments({
-      employerId: employer.employerId,
-      category: 'candidate',
-      status: 'unread',
-    });
-    const interviewRequests = await EmployerNotification.countDocuments({
-      employerId: employer.employerId,
-      category: 'interview',
-      status: 'unread',
-    });
-    const messages = await EmployerNotification.countDocuments({
-      employerId: employer.employerId,
-      category: 'message',
-      status: 'unread',
-    });
+    let candidateNotifications = 0;
+    let interviewRequests = 0;
+    let messages = 0;
+    try {
+      [candidateNotifications, interviewRequests, messages] = await Promise.all([
+        EmployerNotification.countDocuments({ employerId: employer.employerId, category: 'candidate', status: 'unread' }),
+        EmployerNotification.countDocuments({ employerId: employer.employerId, category: 'interview', status: 'unread' }),
+        EmployerNotification.countDocuments({ employerId: employer.employerId, category: 'message', status: 'unread' }),
+      ]);
+    } catch (notificationError) {
+      console.warn('Employer notification counts failed:', notificationError.message || notificationError);
+    }
 
     const { token, expiry } = createEmployerToken(employer);
 
