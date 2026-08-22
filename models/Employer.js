@@ -45,6 +45,14 @@ const employerSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    nationalIdPassport: {
+      type: String,
+      trim: true,
+    },
+    occupation: {
+      type: String,
+      trim: true,
+    },
     email: {
       type: String,
       required: true,

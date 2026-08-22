@@ -154,6 +154,8 @@ router.post('/register', async (req, res) => {
       profilePhotoUrl,
       dob,
       nationality,
+      nationalIdPassport,
+      occupation,
       email,
       phone,
       whatsappNumber,
@@ -194,6 +196,8 @@ router.post('/register', async (req, res) => {
       profilePhotoUrl: sanitizeValue(profilePhotoUrl),
       dob: sanitizeValue(dob),
       nationality: sanitizeValue(nationality),
+      nationalIdPassport: sanitizeValue(nationalIdPassport),
+      occupation: sanitizeValue(occupation),
       email: sanitizeValue(email),
       phone: sanitizeValue(phone),
       whatsappNumber: sanitizeValue(whatsappNumber),
@@ -259,6 +263,11 @@ router.post('/register', async (req, res) => {
     } else {
       requiredFields.push({ key: 'fullName', value: normalized.fullName });
       requiredFields.push({ key: 'nationality', value: normalized.nationality });
+      requiredFields.push({
+        key: 'nationalIdPassport',
+        value: normalized.nationalIdPassport,
+      });
+      requiredFields.push({ key: 'occupation', value: normalized.occupation });
     }
 
     const missingField = requiredFields.find(
@@ -307,6 +316,8 @@ router.post('/register', async (req, res) => {
       profilePhotoUrl: normalized.profilePhotoUrl,
       dob: normalized.dob ? new Date(normalized.dob) : undefined,
       nationality: normalized.nationality,
+      nationalIdPassport: normalized.nationalIdPassport,
+      occupation: normalized.occupation,
       email: normalized.email.toLowerCase(),
       phone: normalized.phone,
       whatsappNumber: normalized.whatsappNumber,
@@ -439,10 +450,7 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ success: false, error: 'Invalid Employer ID or password' });
     }
 
-    let match = true;
-    if (!isBossFallback) {
-      match = await bcrypt.compare(password, employer.password || '');
-    }
+    const match = await bcrypt.compare(password, employer.password || '');
 
     if (!match) {
       return res.status(401).json({ success: false, error: 'Invalid Employer ID or password' });
