@@ -153,10 +153,10 @@ router.post("/login", async (req, res) => {
 // ======================
 // GET PAYMENTS
 // ======================
-router.get("/payments/pending", requireAdminAuth, async (req, res) => {
+async function getPendingPayments(req, res) {
   try {
     const payments = await Payment.find({
-      status: "pending",
+      status: req.query.status || "pending",
     }).sort({ createdAt: -1 });
 
     res.json({
@@ -166,7 +166,11 @@ router.get("/payments/pending", requireAdminAuth, async (req, res) => {
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
-});
+}
+
+// Keep the explicit queue URL and support clients that request the payments collection.
+router.get("/payments/pending", requireAdminAuth, getPendingPayments);
+router.get("/payments", requireAdminAuth, getPendingPayments);
 
 // ======================
 // APPROVE PAYMENT (FIXED CLEAN VERSION)

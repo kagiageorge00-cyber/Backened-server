@@ -115,6 +115,14 @@ describe('Admin payment approval flow', () => {
     expect(pendingRes.body.success).toBe(true);
     expect(pendingRes.body.data.some((item) => item._id === submitRes.body.paymentId)).toBe(true);
 
+    const paymentsRes = await request(app)
+      .get('/api/admin/payments')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(paymentsRes.status).toBe(200);
+    expect(paymentsRes.body.success).toBe(true);
+    expect(paymentsRes.body.data.some((item) => item._id === submitRes.body.paymentId)).toBe(true);
+
     const approveRes = await request(app)
       .post(`/api/admin/payments/${submitRes.body.paymentId}/approve`)
       .set('Authorization', `Bearer ${token}`);
