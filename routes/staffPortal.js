@@ -9,6 +9,16 @@ function sanitizeValue(value) {
   return typeof value === 'string' ? value.trim() : value;
 }
 
+function firstProvidedValue(source, keys) {
+  for (const key of keys) {
+    const value = source[key];
+    if (value !== undefined && value !== null && value !== '') {
+      return value;
+    }
+  }
+  return undefined;
+}
+
 function candidateIdentifierQuery(id) {
   const identifiers = [
     { candidateId: id },
@@ -146,6 +156,46 @@ router.patch('/marketplace/candidates/:id', authenticateStaff, async (req, res) 
       }
     });
 
+    const documents = req.body?.documents && typeof req.body.documents === 'object'
+      ? req.body.documents
+      : {};
+    const fieldAliases = {
+      email: ['email'],
+      phone: ['phone'],
+      jobType: ['jobType', 'job_type'],
+      gender: ['gender'],
+      dateOfBirth: ['dateOfBirth', 'dob', 'date_of_birth'],
+      maritalStatus: ['maritalStatus', 'marital_status'],
+      numberOfChildren: ['numberOfChildren', 'children', 'number_of_children'],
+      photoUrl: ['photoUrl', 'profilePhotoUrl', 'profilePhoto', 'photo'],
+      goodConductUrl: [
+        'goodConductUrl',
+        'conductUrl',
+        'policeClearanceUrl',
+        'goodConduct',
+        'policeClearance',
+      ],
+      medicalUrl: ['medicalUrl', 'medicalDocumentUrl', 'medical'],
+    };
+
+    Object.entries(fieldAliases).forEach(([canonical, aliases]) => {
+      const value = firstProvidedValue(req.body || {}, aliases) ??
+        firstProvidedValue(documents, aliases);
+      if (value !== undefined) {
+        updates[canonical] = sanitizeValue(value);
+      }
+    });
+
+    if (updates.numberOfChildren !== undefined) {
+      updates.numberOfChildren = Number(updates.numberOfChildren);
+      if (Number.isNaN(updates.numberOfChildren)) {
+        return res.status(400).json({
+          success: false,
+          error: 'numberOfChildren must be a number',
+        });
+      }
+    }
+
     if (Object.keys(updates).length === 0) {
       return res.status(400).json({ success: false, error: 'At least one marketplace field must be provided' });
     }
@@ -158,7 +208,7 @@ router.patch('/marketplace/candidates/:id', authenticateStaff, async (req, res) 
     const candidate = await Candidate.findOneAndUpdate(
       candidateIdentifierQuery(id),
       { $set: updates },
-      { new: true }
+      { new: true, runValidators: true }
     );
 
     if (!candidate) {
