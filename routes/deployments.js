@@ -5,41 +5,16 @@ const PaymentRecord = require('../models/PaymentRecord');
 const Candidate = require('../models/candidate');
 const employerAuth = require('../middleware/employerAuth');
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
+const { createAdaptiveStorage } = require('./upload');
 const { buildDeploymentSummary, calculateDeploymentFees } = require('../services/localRecruitmentService');
 
-const receiptStorage = multer.diskStorage({
-  destination(req, file, cb) {
-    const uploadDir = path.join(__dirname, '..', 'uploads', 'payment_receipts');
-    fs.mkdirSync(uploadDir, { recursive: true });
-    cb(null, uploadDir);
-  },
-  filename(req, file, cb) {
-    const safeName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
-    cb(null, `${Date.now()}-${safeName}`);
-  },
-});
-
 const receiptUpload = multer({
-  storage: receiptStorage,
+  storage: createAdaptiveStorage(),
   limits: { fileSize: 20 * 1024 * 1024 },
 });
 
-const visaStorage = multer.diskStorage({
-  destination(req, file, cb) {
-    const uploadDir = path.join(__dirname, '..', 'uploads', 'visas');
-    fs.mkdirSync(uploadDir, { recursive: true });
-    cb(null, uploadDir);
-  },
-  filename(req, file, cb) {
-    const safeName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
-    cb(null, `${Date.now()}-${safeName}`);
-  },
-});
-
 const visaUpload = multer({
-  storage: visaStorage,
+  storage: createAdaptiveStorage(),
   limits: { fileSize: 20 * 1024 * 1024 },
 });
 
@@ -220,7 +195,7 @@ router.post('/:deploymentId/payment-proof', receiptUpload.single('receiptFile'),
       return res.status(403).json({ success: false, error: 'Employer access denied' });
     }
 
-    const receiptPath = `/uploads/payment_receipts/${req.file.filename}`;
+    const receiptPath = req.file.secure_url || req.file.path;
     dep.paymentStatus = 'submitted';
     dep.paymentMethod = paymentMethod;
     dep.referenceNumber = referenceNumber;
@@ -254,7 +229,7 @@ router.post('/:deploymentId/visa', visaUpload.single('visaFile'), employerAuth, 
       return res.status(403).json({ success: false, error: 'Employer access denied' });
     }
 
-    const visaPath = `/uploads/visas/${req.file.filename}`;
+    const visaPath = req.file.secure_url || req.file.path;
     dep.visaStatus = 'submitted';
     dep.visaUrl = visaPath;
     dep.visaUploadedAt = new Date();

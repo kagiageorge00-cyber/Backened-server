@@ -6,23 +6,10 @@ const Candidate = require('../models/candidate');
 const Notification = require('../models/Notification');
 const employerAuth = require('../middleware/employerAuth');
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
-
-const signatureStorage = multer.diskStorage({
-  destination(req, file, cb) {
-    const uploadDir = path.join(__dirname, '..', 'uploads', 'signatures');
-    fs.mkdirSync(uploadDir, { recursive: true });
-    cb(null, uploadDir);
-  },
-  filename(req, file, cb) {
-    const safeName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
-    cb(null, `${Date.now()}-${safeName}`);
-  },
-});
+const { createAdaptiveStorage } = require('./upload');
 
 const signatureUpload = multer({
-  storage: signatureStorage,
+  storage: createAdaptiveStorage(),
   limits: { fileSize: 20 * 1024 * 1024 },
 });
 
@@ -189,7 +176,7 @@ router.post('/:contractId/sign', signatureUpload.single('signatureFile'), async 
       return res.status(403).json({ success: false, error: 'Access denied' });
     }
 
-    const signaturePath = `/uploads/signatures/${req.file.filename}`;
+    const signaturePath = req.file.secure_url || req.file.path;
 
     if (signatureType === 'employer') {
       contract.employerSignatureUrl = signaturePath;
@@ -344,7 +331,7 @@ router.post('/:contractId/manager-sign', requireRole('admin'), signatureUpload.s
     const contract = await Contract.findOne({ contractId });
     if (!contract) return res.status(404).json({ success: false, error: 'Contract not found' });
 
-    const signaturePath = `/uploads/signatures/${req.file.filename}`;
+    const signaturePath = req.file.secure_url || req.file.path;
     contract.managerSignatureUrl = signaturePath;
     contract.managerSigned = true;
     contract.managerSignedAt = new Date();

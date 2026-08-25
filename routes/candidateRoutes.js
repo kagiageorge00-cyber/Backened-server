@@ -2,8 +2,8 @@ const express = require('express');
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
+const cloudinary = require('cloudinary').v2;
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const router = express.Router();
 
 const Candidate = require('../models/candidate');
@@ -11,15 +11,21 @@ const { sendEmail } = require('../email');
 const { FRONTEND_URL } = require('../config');
 const { getCandidateDisplayName, getCandidateNameValue } = require('../utils/candidateDisplayName');
 
-const documentStorage = multer.diskStorage({
-  destination(req, file, cb) {
-    const uploadDir = path.join(__dirname, '..', 'uploads', 'candidate_documents');
-    fs.mkdirSync(uploadDir, { recursive: true });
-    cb(null, uploadDir);
-  },
-  filename(req, file, cb) {
-    const safeName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
-    cb(null, `${Date.now()}-${safeName}`);
+if (process.env.CLOUDINARY_URL) {
+  cloudinary.config(process.env.CLOUDINARY_URL);
+} else {
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+  });
+}
+
+const documentStorage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: 'bliss-connect/candidate-documents',
+    resource_type: 'auto',
   },
 });
 
@@ -27,6 +33,14 @@ const documentUpload = multer({
   storage: documentStorage,
   limits: { fileSize: 50 * 1024 * 1024 },
 });
+
+function getCloudinaryFileUrl(file) {
+  const fileUrl = file && (file.secure_url || file.path);
+  if (!/^https:\/\/res\.cloudinary\.com\//i.test(fileUrl || '')) {
+    return null;
+  }
+  return fileUrl;
+}
 
 // POST / - create a candidate
 router.post('/', async (req, res) => {
@@ -784,6 +798,11 @@ router.post('/uploadDocument', documentUpload.single('file'), async (req, res) =
       return res.status(400).json({ success: false, error: 'file is required' });
     }
 
+    const fileUrl = getCloudinaryFileUrl(req.file);
+    if (!fileUrl) {
+      return res.status(502).json({ success: false, error: 'Cloudinary did not return a preview URL' });
+    }
+
     const searchCriteria = [];
     if (mongoose.Types.ObjectId.isValid(candidateId)) {
       searchCriteria.push({ _id: candidateId });
@@ -798,8 +817,6 @@ router.post('/uploadDocument', documentUpload.single('file'), async (req, res) =
     if (!candidate) {
       return res.status(404).json({ success: false, error: 'Candidate not found' });
     }
-
-    const fileUrl = `${req.protocol}://${req.get('host')}/uploads/candidate_documents/${req.file.filename}`;
 
     candidate.documents = {
       ...(candidate.documents || {}),
@@ -861,6 +878,11 @@ router.post('/upload-documents', documentUpload.single('file'), async (req, res)
       return res.status(400).json({ success: false, error: 'file is required' });
     }
 
+    const fileUrl = getCloudinaryFileUrl(req.file);
+    if (!fileUrl) {
+      return res.status(502).json({ success: false, error: 'Cloudinary did not return a preview URL' });
+    }
+
     const searchCriteria = [];
     if (mongoose.Types.ObjectId.isValid(candidateId)) {
       searchCriteria.push({ _id: candidateId });
@@ -875,8 +897,6 @@ router.post('/upload-documents', documentUpload.single('file'), async (req, res)
     if (!candidate) {
       return res.status(404).json({ success: false, error: 'Candidate not found' });
     }
-
-    const fileUrl = `${req.protocol}://${req.get('host')}/uploads/candidate_documents/${req.file.filename}`;
 
     candidate.documents = {
       ...(candidate.documents || {}),

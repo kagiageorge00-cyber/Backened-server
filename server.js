@@ -390,6 +390,7 @@ const registerRoutes = require('./routes/register');
 const paymentRoutes = require('./routes/payment');
 const paymentRoutesV2 = require('./routes/paymentRoutes');
 const uploadRoutes = require('./routes/upload');
+const { createAdaptiveStorage } = uploadRoutes;
 let adminRoutes;
 try {
   adminRoutes = require('./routes/admin');
@@ -1021,23 +1022,25 @@ app.get('/api/admin/office-visit-bookings', async (req, res) => {
 // ======================
 // VIDEO UPLOAD
 // ======================
-const storage = multer.diskStorage({
-  destination(req, file, cb) {
-    cb(null, 'uploads/');
-  },
-
-  filename(req, file, cb) {
-    cb(null, `${Date.now()}-${file.originalname}`);
-  }
+const videoUpload = multer({
+  storage: createAdaptiveStorage(),
+  limits: { fileSize: 100 * 1024 * 1024 },
 });
-
-const upload = multer({ storage });
 
 app.post(
   '/api/upload/video/:userId',
-  upload.single('video'),
+  videoUpload.single('video'),
   async (req, res) => {
     try {
+      if (!req.file) {
+        return res.status(400).json({ success: false, error: 'No video uploaded' });
+      }
+
+      const videoUrl = req.file.secure_url || req.file.path;
+      if (!/^https:\/\/res\.cloudinary\.com\//i.test(videoUrl || '')) {
+        return res.status(502).json({ success: false, error: 'Cloudinary did not return a video URL' });
+      }
+
       const user = await User.findById(req.params.userId);
 
       if (!user) {
@@ -1047,11 +1050,13 @@ app.post(
         });
       }
 
-      user.videoUrl = `/uploads/${req.file.filename}`;
+      user.videoUrl = videoUrl;
       await user.save();
 
       res.json({
         success: true,
+        url: videoUrl,
+        previewUrl: videoUrl,
         user
       });
     } catch (error) {
