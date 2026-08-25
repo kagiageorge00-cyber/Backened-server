@@ -8,6 +8,12 @@ const paymentSchema = new mongoose.Schema(
       trim: true,
       default: null,
     },
+    userId: {
+      type: String,
+      index: true,
+      trim: true,
+      default: null,
+    },
     phone: {
       type: String,
       trim: true,
@@ -18,6 +24,11 @@ const paymentSchema = new mongoose.Schema(
       type: String,
       trim: true,
       index: true,
+    },
+    title: {
+      type: String,
+      trim: true,
+      default: 'Application Payment',
     },
     invoiceId: {
       type: String,
@@ -59,7 +70,7 @@ const paymentSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['pending', 'processing', 'paid', 'failed', 'rejected', 'completed'],
+      enum: ['pending', 'processing', 'approved', 'paid', 'failed', 'rejected', 'completed'],
       default: 'pending',
       index: true,
     },

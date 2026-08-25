@@ -155,13 +155,47 @@ router.post("/login", async (req, res) => {
 // ======================
 async function getPendingPayments(req, res) {
   try {
-    const payments = await Payment.find({
-      status: req.query.status || "pending",
-    }).sort({ createdAt: -1 });
+    const requestedStatus = req.query.status || "pending";
+    const statusFilter = requestedStatus === "pending"
+      ? { $in: ["pending", "processing"] }
+      : requestedStatus === "approved"
+        ? { $in: ["approved", "paid", "completed"] }
+        : requestedStatus;
+    const payments = await Payment.find({ status: statusFilter }).sort({ createdAt: -1 });
+
+    const candidateIds = payments
+      .map((payment) => payment.candidateId)
+      .filter(Boolean);
+    const candidates = await Candidate.find({
+      $or: [
+        { candidateId: { $in: candidateIds } },
+        { uniqueCode: { $in: candidateIds } },
+        { phone: { $in: candidateIds } },
+        { email: { $in: candidateIds } },
+      ],
+    }).select('candidateId uniqueCode fullName name email phone');
+    const candidateById = new Map();
+    for (const candidate of candidates) {
+      for (const key of [candidate.candidateId, candidate.uniqueCode, candidate.phone, candidate.email]) {
+        if (key) candidateById.set(String(key), candidate);
+      }
+    }
+
+    const data = payments.map((payment) => {
+      const candidate = candidateById.get(String(payment.candidateId));
+      const payload = payment.toObject();
+      payload.metadata = {
+        ...(payload.metadata || {}),
+        name: payload.metadata?.name || candidate?.fullName || candidate?.name,
+        email: payload.metadata?.email || candidate?.email,
+        phone: payload.metadata?.phone || candidate?.phone,
+      };
+      return payload;
+    });
 
     res.json({
       success: true,
-      data: payments,
+      data,
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -190,7 +224,7 @@ router.post(
           .json({ success: false, error: "Payment not found" });
       }
 
-      payment.status = "paid";
+      payment.status = "approved";
       payment.approvedAt = new Date();
 
       const candidate = await Candidate.findOne({

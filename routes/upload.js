@@ -79,7 +79,14 @@ function createAdaptiveStorage() {
 
   return {
     _handleFile(req, file, cb) {
+      const isCandidateUpload = Boolean(
+        (req.body && (req.body.candidateId || req.body.id)) ||
+        (req.query && (req.query.candidateId || req.query.id))
+      );
       if (!isCloudinaryConfigured()) {
+        if (isCandidateUpload) {
+          return cb(new Error('Cloudinary is not configured for candidate uploads'));
+        }
         return diskStorage._handleFile(req, file, cb);
       }
 
@@ -88,12 +95,18 @@ function createAdaptiveStorage() {
         cloudStorage._handleFile(req, file, (err, info) => {
           if (err) {
             console.warn('Cloudinary upload failed, falling back to disk storage:', err && err.message ? err.message : err);
+            if (isCandidateUpload) {
+              return cb(err);
+            }
             return diskStorage._handleFile(req, file, cb);
           }
           cb(null, info);
         });
       } catch (err) {
         console.warn('Cloudinary storage init failed, falling back to disk storage:', err && err.message ? err.message : err);
+        if (isCandidateUpload) {
+          return cb(err);
+        }
         return diskStorage._handleFile(req, file, cb);
       }
     },

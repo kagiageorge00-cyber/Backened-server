@@ -214,7 +214,7 @@ async function handleSubmitPayment(req, res) {
       userId,
       amount: finalAmount,
       title: "Application Payment",
-      method: paymentMethod || "mpesa",
+      paymentMethod: paymentMethod || "mpesa",
       status: "pending",
       transactionId: transactionKey,
       metadata: { name, email, phone: detectedPhone, candidateId: candidateId || candidate_id || userId },
@@ -331,7 +331,8 @@ async function handleSubmitPayment(req, res) {
         candidate.status = ['available', 'deployed'].includes(candidate.status)
           ? candidate.status
           : 'in_process';
-        candidate.paymentStatus = normalizePaymentStatus('paid');
+        // The submitted transaction still requires admin verification.
+        candidate.paymentStatus = normalizePaymentStatus('pending');
         candidate.isVerified = candidate.isVerified || false;
         candidate.paymentId = payment._id;
           candidate.profileCompletion = calculateProfileCompletion(candidate);
