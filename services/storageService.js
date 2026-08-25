@@ -1,27 +1,35 @@
 const cloudinary = require('cloudinary').v2;
-const path = require('path');
-const fs = require('fs');
 
 const CLOUDINARY_URL = process.env.CLOUDINARY_URL;
+const cloudinaryConfigured = Boolean(
+  CLOUDINARY_URL || (
+    process.env.CLOUDINARY_CLOUD_NAME &&
+    process.env.CLOUDINARY_API_KEY &&
+    process.env.CLOUDINARY_API_SECRET
+  )
+);
 
 if (CLOUDINARY_URL) {
   cloudinary.config({ secure: true });
+} else if (cloudinaryConfigured) {
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+  });
 }
 
 async function uploadFile(filePath, folder) {
-  if (CLOUDINARY_URL) {
-    const result = await cloudinary.uploader.upload(filePath, {
-      folder: folder || 'bliss/employers',
-      resource_type: 'auto',
-    });
-    return result.secure_url;
+  if (!cloudinaryConfigured) {
+    throw new Error('Cloudinary is not configured');
   }
 
-  const fileName = path.basename(filePath);
-  const publicPath = path.join(process.cwd(), 'uploads', folder || 'fallback', fileName);
-  await fs.promises.mkdir(path.dirname(publicPath), { recursive: true });
-  await fs.promises.copyFile(filePath, publicPath);
-  return `/uploads/${folder || 'fallback'}/${fileName}`;
+  const result = await cloudinary.uploader.upload(filePath, {
+    folder: folder || 'bliss/employers',
+    resource_type: 'auto',
+  });
+  if (!result.secure_url) throw new Error('Cloudinary did not return a preview URL');
+  return result.secure_url;
 }
 
 module.exports = {

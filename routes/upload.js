@@ -17,7 +17,7 @@ cloudinary.config({
 });
 
 // ========================
-// STORAGE (Cloudinary when configured, otherwise local disk fallback)
+// STORAGE (all uploads must be stored in Cloudinary)
 // ========================
 function createCloudinaryStorage() {
   return new CloudinaryStorage({
@@ -45,27 +45,6 @@ function createCloudinaryStorage() {
   });
 }
 
-function createDiskStorage() {
-  return multer.diskStorage({
-    destination(req, file, cb) {
-      try {
-        const relFolder = getUploadFolder(req) || 'bliss-connect';
-        // Ensure folder is under backend/uploads/
-        const uploadsRoot = path.join(__dirname, '..', 'uploads');
-        const finalFolder = path.join(uploadsRoot, relFolder.replace(/^uploads\/?/, ''));
-        fs.mkdirSync(finalFolder, { recursive: true });
-        cb(null, finalFolder);
-      } catch (err) {
-        cb(err);
-      }
-    },
-    filename(req, file, cb) {
-      const safeName = `${Date.now()}-${Math.round(Math.random() * 1e9)}-${file.originalname.replace(/\s+/g, '_')}`;
-      cb(null, safeName);
-    },
-  });
-}
-
 function isCloudinaryConfigured() {
   return Boolean(
     process.env.CLOUDINARY_CLOUD_NAME &&
@@ -75,44 +54,19 @@ function isCloudinaryConfigured() {
 }
 
 function createAdaptiveStorage() {
-  const diskStorage = createDiskStorage();
+  const cloudStorage = createCloudinaryStorage();
 
   return {
     _handleFile(req, file, cb) {
-      const isCandidateUpload = Boolean(
-        (req.body && (req.body.candidateId || req.body.id)) ||
-        (req.query && (req.query.candidateId || req.query.id))
-      );
       if (!isCloudinaryConfigured()) {
-        if (isCandidateUpload) {
-          return cb(new Error('Cloudinary is not configured for candidate uploads'));
-        }
-        return diskStorage._handleFile(req, file, cb);
+        return cb(new Error('Cloudinary is not configured'));
       }
 
-      try {
-        const cloudStorage = createCloudinaryStorage();
-        cloudStorage._handleFile(req, file, (err, info) => {
-          if (err) {
-            console.warn('Cloudinary upload failed, falling back to disk storage:', err && err.message ? err.message : err);
-            if (isCandidateUpload) {
-              return cb(err);
-            }
-            return diskStorage._handleFile(req, file, cb);
-          }
-          cb(null, info);
-        });
-      } catch (err) {
-        console.warn('Cloudinary storage init failed, falling back to disk storage:', err && err.message ? err.message : err);
-        if (isCandidateUpload) {
-          return cb(err);
-        }
-        return diskStorage._handleFile(req, file, cb);
-      }
+      return cloudStorage._handleFile(req, file, cb);
     },
     _removeFile(req, file, cb) {
-      if (diskStorage && typeof diskStorage._removeFile === 'function') {
-        return diskStorage._removeFile(req, file, cb);
+      if (typeof cloudStorage._removeFile === 'function') {
+        return cloudStorage._removeFile(req, file, cb);
       }
       cb(null);
     },
@@ -216,6 +170,84 @@ async function persistUploadToCandidate({ candidateId, field, fileUrl, originalN
   return candidate;
 }
 
+function getLocalUploadPath(fileUrl) {
+  if (!fileUrl || typeof fileUrl !== 'string') return null;
+
+  let pathname = fileUrl;
+  try {
+    pathname = new URL(fileUrl, 'http://localhost').pathname;
+  } catch (error) {
+    return null;
+  }
+
+  if (!pathname.startsWith('/uploads/')) return null;
+
+  const uploadsRoot = path.resolve(__dirname, '..', 'uploads');
+  const localPath = path.resolve(uploadsRoot, decodeURIComponent(pathname.slice('/uploads/'.length)));
+  if (localPath !== uploadsRoot && !localPath.startsWith(`${uploadsRoot}${path.sep}`)) return null;
+  return localPath;
+}
+
+async function migrateCandidateLocalUploads(candidateId) {
+  if (!isCloudinaryConfigured()) {
+    throw new Error('Cloudinary is not configured');
+  }
+
+  const criteria = buildCandidateSearchCriteria(candidateId);
+  if (criteria.length === 0) return null;
+
+  const candidate = await Candidate.findOne({ $or: criteria });
+  if (!candidate) return null;
+
+  const migrated = [];
+  const urlCache = new Map();
+  const migrateUrl = async (value, field) => {
+    const localPath = getLocalUploadPath(value);
+    if (!localPath) return value;
+    if (!(await fs.promises.stat(localPath).catch(() => false))) return value;
+
+    if (!urlCache.has(value)) {
+      const result = await cloudinary.uploader.upload(localPath, {
+        folder: 'bliss-connect/migrated-uploads',
+        resource_type: 'auto',
+      });
+      if (!result.secure_url) throw new Error(`Cloudinary returned no URL for ${field}`);
+      urlCache.set(value, result.secure_url);
+      migrated.push({ field, oldUrl: value, url: result.secure_url });
+    }
+    return urlCache.get(value);
+  };
+
+  const candidateFields = [
+    'photoUrl', 'videoUrl', 'passportUrl', 'medicalUrl', 'resumeUrl',
+    'additionalUrl', 'goodConductUrl', 'introductionVideoUrl', 'otherDocumentUrl',
+    'nationalIdFrontUrl', 'nationalIdBackUrl',
+  ];
+  for (const field of candidateFields) {
+    candidate[field] = await migrateUrl(candidate[field], field);
+  }
+
+  if (candidate.documents) {
+    for (const field of ['passportPhoto', 'nationalId', 'cv', 'coverLetter']) {
+      candidate.documents[field] = await migrateUrl(candidate.documents[field], `documents.${field}`);
+    }
+    if (Array.isArray(candidate.documents.certificates)) {
+      candidate.documents.certificates = await Promise.all(
+        candidate.documents.certificates.map((url) => migrateUrl(url, 'documents.certificates'))
+      );
+    }
+    if (Array.isArray(candidate.documents.uploads)) {
+      for (const item of candidate.documents.uploads) {
+        item.url = await migrateUrl(item.url, `documents.uploads.${item.filename || item.type || 'file'}`);
+      }
+    }
+    candidate.markModified?.('documents');
+  }
+
+  if (migrated.length > 0) await candidate.save();
+  return { candidate, migrated };
+}
+
 async function handleUploadRequest(req, res) {
   const file = req.file || (Array.isArray(req.files) && req.files[0]);
   if (!file) {
@@ -228,17 +260,12 @@ async function handleUploadRequest(req, res) {
   const candidateId = (req.body && (req.body.candidateId || req.body.id)) || (req.query && (req.query.candidateId || req.query.id));
   const field = (req.body && (req.body.field || req.body.documentType || req.body.type)) || (req.query && (req.query.field || req.query.documentType || req.query.type));
 
-  let fileUrl = file.path || file.location || file.url || '';
+  const fileUrl = file.secure_url || file.path || file.location || file.url || '';
   if (!/^https?:\/\//i.test(fileUrl)) {
-    const filename = file.filename || path.basename(file.path || file.originalname || 'file');
-    let relFolder = '';
-    if (file.destination) {
-      relFolder = path.relative(path.join(__dirname, '..', 'uploads'), file.destination).replace(/\\/g, '/').replace(/^\//, '');
-    } else {
-      relFolder = getUploadFolder(req).replace(/^uploads\/?/, '');
-    }
-    const folderSegment = relFolder ? `uploads/${relFolder}` : 'uploads';
-    fileUrl = `${req.protocol}://${req.get('host')}/${folderSegment}/${filename}`;
+    return res.status(502).json({
+      success: false,
+      error: 'Cloudinary did not return a preview URL',
+    });
   }
 
   let persistedCandidate = null;
@@ -254,6 +281,7 @@ async function handleUploadRequest(req, res) {
   return res.status(200).json({
     success: true,
     url: fileUrl,
+    previewUrl: fileUrl,
     fileName: file.filename || file.originalname,
     persisted: Boolean(persistedCandidate),
     candidateId: candidateId || null,
@@ -285,7 +313,27 @@ router.post("/", (req, res, next) => {
   });
 });
 
+router.post('/migrate-local', async (req, res) => {
+  try {
+    const candidateId = (req.body && (req.body.candidateId || req.body.id)) || (req.query && (req.query.candidateId || req.query.id));
+    if (!candidateId) return res.status(400).json({ success: false, error: 'candidateId is required' });
+
+    const result = await migrateCandidateLocalUploads(candidateId);
+    if (!result) return res.status(404).json({ success: false, error: 'Candidate not found' });
+
+    return res.json({
+      success: true,
+      migrated: result.migrated,
+      urls: result.migrated.map((item) => item.url),
+    });
+  } catch (error) {
+    console.error('Local upload migration error:', error);
+    return res.status(500).json({ success: false, error: error.message || String(error) });
+  }
+});
+
 module.exports = router;
 module.exports.persistUploadToCandidate = persistUploadToCandidate;
 module.exports.getUploadFolder = getUploadFolder;
 module.exports.createAdaptiveStorage = createAdaptiveStorage;
+module.exports.migrateCandidateLocalUploads = migrateCandidateLocalUploads;

@@ -47,7 +47,7 @@ describe('upload persistence', () => {
     expect(candidate.save).toHaveBeenCalled();
   });
 
-  test('falls back to disk storage when cloudinary upload fails', (done) => {
+  test('returns the Cloudinary error when upload fails', (done) => {
     process.env.CLOUDINARY_CLOUD_NAME = 'demo';
     process.env.CLOUDINARY_API_KEY = 'demo';
     process.env.CLOUDINARY_API_SECRET = 'demo';
@@ -61,9 +61,8 @@ describe('upload persistence', () => {
     };
     storage._handleFile({ query: { type: 'marketplace_job' } }, file, (err, info) => {
       try {
-        expect(err).toBeNull();
-        expect(info).toBeDefined();
-        expect(info.path).toContain('marketplace_jobs');
+        expect(err).toEqual(new Error('cloudinary unavailable'));
+        expect(info).toBeUndefined();
         done();
       } catch (assertionError) {
         done(assertionError);

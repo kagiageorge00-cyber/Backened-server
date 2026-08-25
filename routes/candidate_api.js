@@ -3,7 +3,8 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const multer = require('multer');
-const path = require('path');
+const cloudinary = require('cloudinary').v2;
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
 
 const Candidate = require('../models/candidate');
 const Application = require('../models/Application');
@@ -171,15 +172,18 @@ function computeProfileCompletion(candidate) {
 }
 
 // multer setup
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, path.join(__dirname, '..', 'uploads', 'candidate_documents'));
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+const storage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: 'bliss-connect/candidate-documents',
+    resource_type: 'auto',
   },
-  filename: function (req, file, cb) {
-    const ext = path.extname(file.originalname);
-    const name = `${Date.now()}-${Math.random().toString(36).substring(2,8)}${ext}`;
-    cb(null, name);
-  }
 });
 const upload = multer({ storage });
 
@@ -562,13 +566,16 @@ router.post('/profile/photo', jwtAuth, upload.single('file'), async (req, res) =
     if (!req.file) {
       return res.status(400).json({ success: false, error: 'No file provided' });
     }
-    const photoUrl = `${req.protocol}://${req.get('host')}/uploads/candidate_documents/${req.file.filename}`;
+    const photoUrl = req.file.secure_url || req.file.path;
+    if (!/^https?:\/\//i.test(photoUrl || '')) {
+      return res.status(502).json({ success: false, error: 'Cloudinary did not return a preview URL' });
+    }
     const updated = await Candidate.findByIdAndUpdate(
       candidate._id,
       { photoUrl },
       { new: true }
     );
-    return res.json({ success: true, photoUrl, data: updated });
+    return res.json({ success: true, photoUrl, previewUrl: photoUrl, data: updated });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });
   }
@@ -582,9 +589,12 @@ router.post('/documents/upload', jwtAuth, upload.single('file'), async (req, res
     const candidate = req.candidate;
     if (!req.file) return res.status(400).json({ success: false, error: 'File required' });
     const type = req.body.documentType || req.body.type || 'other';
-    const fileUrl = `${req.protocol}://${req.get('host')}/uploads/candidate_documents/${req.file.filename}`;
+    const fileUrl = req.file.secure_url || req.file.path;
+    if (!/^https?:\/\//i.test(fileUrl || '')) {
+      return res.status(502).json({ success: false, error: 'Cloudinary did not return a preview URL' });
+    }
     const doc = await Document.create({ candidateId: candidate._id.toString(), documentType: type, fileUrl, status: 'Uploaded' });
-    return res.json({ success: true, data: doc });
+    return res.json({ success: true, url: fileUrl, previewUrl: fileUrl, data: doc });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });
   }
