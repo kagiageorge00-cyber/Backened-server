@@ -146,9 +146,53 @@ router.patch('/marketplace/candidates/:id', authenticateStaff, async (req, res) 
       'createdAt',
       'applicationDate',
     ];
+    const editableFields = new Set([
+      'name',
+      'fullName',
+      'email',
+      'phone',
+      'country',
+      'nationality',
+      'gender',
+      'dateOfBirth',
+      'religion',
+      'maritalStatus',
+      'numberOfChildren',
+      'education',
+      'educationalLevel',
+      'experience',
+      'skills',
+      'languages',
+      'idNumber',
+      'county',
+      'jobPosition',
+      'jobType',
+      'jobAppliedFor',
+      'destinationCountry',
+      'destinationPreference',
+      'expectedSalary',
+      'photoUrl',
+      'videoUrl',
+      'passportUrl',
+      'medicalUrl',
+      'resumeUrl',
+      'additionalUrl',
+      'goodConductUrl',
+      'introductionVideoUrl',
+      'otherDocumentUrl',
+      'nationalIdFrontUrl',
+      'nationalIdBackUrl',
+      'candidateFormLink',
+      'status',
+      'currentStatus',
+      'applicationStatus',
+      'isVerified',
+      'profileCompletion',
+      'contactReleased',
+    ]);
 
     Object.keys(req.body || {}).forEach((field) => {
-      if (restrictedFields.includes(field)) {
+      if (restrictedFields.includes(field) || !editableFields.has(field)) {
         return;
       }
       if (req.body[field] !== undefined) {
@@ -162,20 +206,46 @@ router.patch('/marketplace/candidates/:id', authenticateStaff, async (req, res) 
     const fieldAliases = {
       email: ['email'],
       phone: ['phone'],
-      jobType: ['jobType', 'job_type'],
+      jobType: ['jobType', 'job_type', 'jobtype'],
       gender: ['gender'],
-      dateOfBirth: ['dateOfBirth', 'dob', 'date_of_birth'],
-      maritalStatus: ['maritalStatus', 'marital_status'],
-      numberOfChildren: ['numberOfChildren', 'children', 'number_of_children'],
-      photoUrl: ['photoUrl', 'profilePhotoUrl', 'profilePhoto', 'photo'],
+      dateOfBirth: ['dateOfBirth', 'dob', 'date_of_birth', 'dateofbirth'],
+      maritalStatus: ['maritalStatus', 'marital_status', 'maritalstatus'],
+      numberOfChildren: [
+        'numberOfChildren',
+        'children',
+        'number_of_children',
+        'noOfChildren',
+        'no_of_children',
+        'noofchildren',
+      ],
+      photoUrl: [
+        'photoUrl',
+        'profilePhotoUrl',
+        'profilePhoto',
+        'photo',
+        'passportPhoto',
+        'passport_photo',
+        'passportphoto',
+        'passportUrl',
+      ],
       goodConductUrl: [
         'goodConductUrl',
         'conductUrl',
         'policeClearanceUrl',
         'goodConduct',
         'policeClearance',
+        'goodConductDocument',
+        'good_conduct_url',
+        'goodconduct',
       ],
-      medicalUrl: ['medicalUrl', 'medicalDocumentUrl', 'medical'],
+      medicalUrl: [
+        'medicalUrl',
+        'medicalDocumentUrl',
+        'medicalDocument',
+        'medical_document_url',
+        'medical',
+        'medicaldocument',
+      ],
     };
 
     Object.entries(fieldAliases).forEach(([canonical, aliases]) => {
@@ -185,6 +255,11 @@ router.patch('/marketplace/candidates/:id', authenticateStaff, async (req, res) 
         updates[canonical] = sanitizeValue(value);
       }
     });
+
+    if (updates.photoUrl !== undefined) {
+      updates.passportUrl = updates.photoUrl;
+      updates['documents.passportPhoto'] = updates.photoUrl;
+    }
 
     if (updates.numberOfChildren !== undefined) {
       updates.numberOfChildren = Number(updates.numberOfChildren);

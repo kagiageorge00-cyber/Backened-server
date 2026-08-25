@@ -112,6 +112,14 @@ function sanitizeValue(value) {
   return typeof value === 'string' ? value.trim() : value;
 }
 
+function firstProvidedValue(source, keys) {
+  for (const key of keys) {
+    const value = source[key];
+    if (value !== undefined && value !== null && value !== '') return value;
+  }
+  return undefined;
+}
+
 // ======================
 // LOGIN
 // ======================
@@ -1093,15 +1101,71 @@ router.patch('/marketplace/candidates/:id', requireAdminAuth, async (req, res) =
       'createdAt',
       'applicationDate',
     ];
+    const editableFields = new Set([
+      'name', 'fullName', 'email', 'phone', 'country', 'nationality', 'gender',
+      'dateOfBirth', 'religion', 'maritalStatus', 'numberOfChildren', 'education',
+      'educationalLevel', 'experience', 'skills', 'languages', 'idNumber', 'county',
+      'jobPosition', 'jobType', 'jobAppliedFor', 'destinationCountry',
+      'destinationPreference', 'expectedSalary', 'photoUrl', 'videoUrl', 'passportUrl',
+      'medicalUrl', 'resumeUrl', 'additionalUrl', 'goodConductUrl',
+      'introductionVideoUrl', 'otherDocumentUrl', 'nationalIdFrontUrl',
+      'nationalIdBackUrl', 'candidateFormLink', 'status', 'currentStatus',
+      'applicationStatus', 'isVerified', 'profileCompletion', 'contactReleased',
+    ]);
 
     Object.keys(req.body || {}).forEach((field) => {
-      if (restrictedFields.includes(field)) {
+      if (restrictedFields.includes(field) || !editableFields.has(field)) {
         return;
       }
       if (req.body[field] !== undefined) {
         updates[field] = sanitizeValue(req.body[field]);
       }
     });
+
+    const documents = req.body?.documents && typeof req.body.documents === 'object'
+      ? req.body.documents
+      : {};
+    const fieldAliases = {
+      email: ['email'],
+      phone: ['phone'],
+      jobType: ['jobType', 'job_type', 'jobtype'],
+      gender: ['gender'],
+      dateOfBirth: ['dateOfBirth', 'dob', 'date_of_birth', 'dateofbirth'],
+      maritalStatus: ['maritalStatus', 'marital_status', 'maritalstatus'],
+      numberOfChildren: [
+        'numberOfChildren', 'children', 'number_of_children', 'noOfChildren',
+        'no_of_children', 'noofchildren',
+      ],
+      photoUrl: [
+        'photoUrl', 'profilePhotoUrl', 'profilePhoto', 'photo', 'passportPhoto',
+        'passport_photo', 'passportphoto', 'passportUrl',
+      ],
+      goodConductUrl: [
+        'goodConductUrl', 'conductUrl', 'policeClearanceUrl', 'goodConduct',
+        'policeClearance', 'goodConductDocument', 'good_conduct_url', 'goodconduct',
+      ],
+      medicalUrl: [
+        'medicalUrl', 'medicalDocumentUrl', 'medicalDocument', 'medical_document_url',
+        'medical', 'medicaldocument',
+      ],
+    };
+
+    Object.entries(fieldAliases).forEach(([canonical, aliases]) => {
+      const value = firstProvidedValue(req.body || {}, aliases) ?? firstProvidedValue(documents, aliases);
+      if (value !== undefined) updates[canonical] = sanitizeValue(value);
+    });
+
+    if (updates.photoUrl !== undefined) {
+      updates.passportUrl = updates.photoUrl;
+      updates['documents.passportPhoto'] = updates.photoUrl;
+    }
+
+    if (updates.numberOfChildren !== undefined) {
+      updates.numberOfChildren = Number(updates.numberOfChildren);
+      if (Number.isNaN(updates.numberOfChildren)) {
+        return res.status(400).json({ success: false, error: 'numberOfChildren must be a number' });
+      }
+    }
 
     if (Object.keys(updates).length === 0) {
       return res.status(400).json({ success: false, error: 'At least one marketplace field must be provided' });
