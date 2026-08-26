@@ -7,7 +7,7 @@ const contactService = require('../services/whatsappContactService');
 const campaignService = require('../services/whatsappCampaignService');
 const WhatsAppImportHistory = require('../models/WhatsAppImportHistory');
 const Papa = require('papaparse');
-const fs = require('fs');
+const axios = require('axios');
 
 /**
  * Import contacts from CSV/Excel
@@ -39,8 +39,11 @@ async function importContacts(req, res) {
       let contacts = [];
 
       if (fileType === 'csv') {
-        // Parse CSV
-        const fileContent = fs.readFileSync(req.file.path, 'utf8');
+        const fileUrl = req.file.secure_url || req.file.path || req.file.location || req.file.url;
+        if (!/^https?:\/\//i.test(fileUrl || '')) {
+          throw new Error('Cloudinary did not return an import file URL');
+        }
+        const fileContent = (await axios.get(fileUrl, { responseType: 'text' })).data;
         const parseResult = Papa.parse(fileContent, { header: true });
         contacts = parseResult.data.filter(row => row.phone_number); // Filter empty rows
       } else {
@@ -65,9 +68,6 @@ async function importContacts(req, res) {
 
       await importHistory.save();
 
-      // Clean up uploaded file
-      fs.unlinkSync(req.file.path);
-
       res.json({
         success: true,
         message: 'Contacts imported successfully',
@@ -82,20 +82,12 @@ async function importContacts(req, res) {
       importHistory.errors = [{ reason: error.message }];
       await importHistory.save();
 
-      if (req.file?.path && fs.existsSync(req.file.path)) {
-        fs.unlinkSync(req.file.path);
-      }
-
       res.status(400).json({
         success: false,
         error: error.message,
       });
     }
   } catch (error) {
-    if (req.file?.path && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
-    }
-
     res.status(500).json({
       success: false,
       error: error.message,

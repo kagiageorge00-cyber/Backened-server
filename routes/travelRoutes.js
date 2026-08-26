@@ -7,13 +7,13 @@ const { createCheckoutSession } = require('../services/intasendService');
 const { generateInvoicePdf } = require('../services/invoiceService');
 const { searchFlights, priceFlightOffer, createFlightBooking, getMarginBreakdown } = require('../services/amadeusService');
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
+const { createAdaptiveStorage } = require('./upload');
 const { sendEmail } = require('../email');
 
-const uploadDir = path.join(__dirname, '..', 'tmp', 'visa_uploads');
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-const upload = multer({ dest: uploadDir });
+const upload = multer({
+  storage: createAdaptiveStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 },
+});
 const router = express.Router();
 
 const validateRegistration = (payload) => {
@@ -130,9 +130,12 @@ router.post('/visa/:id/upload', upload.single('file'), async (req, res) => {
 
     if (!req.file) return res.status(400).json({ success: false, error: 'No file uploaded.' });
 
-    // Persist file path on record
-    const savedPath = req.file.path;
-    appRecord.documentPath = savedPath;
+    const fileUrl = req.file.secure_url || req.file.path || req.file.location || req.file.url;
+    if (!/^https?:\/\//i.test(fileUrl || '')) {
+      return res.status(502).json({ success: false, error: 'Cloudinary did not return a document URL.' });
+    }
+
+    appRecord.documentPath = fileUrl;
     appRecord.status = 'document_uploaded';
     await appRecord.save();
 
