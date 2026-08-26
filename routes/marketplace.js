@@ -206,7 +206,11 @@ router.get('/candidates/:candidateId', async (req, res) => {
       ],
     };
 
-    const candidate = await Candidate.findOne(query).select('-password');
+    const candidate = await Candidate.findOne({
+      ...query,
+      isVerified: true,
+      status: 'available',
+    }).select('-password');
     if (!candidate) {
       return res.status(404).json({ success: false, error: 'Candidate not found' });
     }

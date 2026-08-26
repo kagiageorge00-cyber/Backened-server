@@ -1073,7 +1073,10 @@ app.post(
 // ======================
 app.get('/api/marketplace', async (req, res) => {
   try {
-    const candidates = await Candidate.find();
+    const candidates = await Candidate.find({
+      isVerified: true,
+      status: 'available',
+    });
 
     res.json({
       success: true,

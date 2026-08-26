@@ -98,6 +98,32 @@ describe('Marketplace routes', () => {
         { phone: 'CAND-2026-0102' },
         { email: 'CAND-2026-0102' },
       ],
+      isVerified: true,
+      status: 'available',
+    });
+  });
+
+  test('GET /api/marketplace/candidates/:candidateId does not expose an unverified candidate', async () => {
+    Candidate.findOne.mockReturnValue({
+      select: jest.fn().mockResolvedValue(null),
+    });
+
+    const app = express();
+    app.use('/api/marketplace', marketplaceRoutes);
+
+    const res = await request(app).get('/api/marketplace/candidates/CND-2026-0999');
+
+    expect(res.status).toBe(404);
+    expect(res.body.success).toBe(false);
+    expect(Candidate.findOne).toHaveBeenCalledWith({
+      $or: [
+        { candidateId: 'CND-2026-0999' },
+        { uniqueCode: 'CND-2026-0999' },
+        { phone: 'CND-2026-0999' },
+        { email: 'CND-2026-0999' },
+      ],
+      isVerified: true,
+      status: 'available',
     });
   });
 });
