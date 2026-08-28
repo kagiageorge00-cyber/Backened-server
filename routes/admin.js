@@ -1059,8 +1059,7 @@ router.patch("/marketplace/candidates/:id/status", requireAdminAuth, async (req,
     const candidate = await Candidate.findOneAndUpdate(
       {
         $or: [
-          { _id: id },
-          { uniqueCode: id },
+          { candidateId: id },
           { phone: id },
         ],
       },
