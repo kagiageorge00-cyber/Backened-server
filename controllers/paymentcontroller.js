@@ -5,6 +5,7 @@ const Candidate = require('../models/candidate');
 const logger = require('../utils/logger');
 const { createCheckoutSession, verifyTransaction } = require('../services/intasendService');
 const { applicationFeeConfig } = require('../config/payment');
+const { findCandidateForPayment } = require('../utils/candidatePaymentResolver');
 
 function normalizeAmount(amount) {
   const parsed = Number(amount);
@@ -312,7 +313,7 @@ exports.getPaymentStatus = async (req, res, next) => {
       return res.status(404).json({ success: false, error: 'Payment not found.' });
     }
 
-    const candidate = await Candidate.findById(payment.candidateId);
+    const candidate = await findCandidateForPayment(Candidate, payment);
 
     return res.status(200).json({
       success: true,

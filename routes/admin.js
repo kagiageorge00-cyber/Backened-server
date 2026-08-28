@@ -34,6 +34,11 @@ const {
   ensureCandidatePortalCredentials,
   notifyCandidatePortalReady,
 } = require('../utils/candidatePortalCredentials');
+const {
+  buildCandidateQueryForPayments,
+  findCandidateForPayment,
+  getPaymentIdentityValues,
+} = require('../utils/candidatePaymentResolver');
 
 // WhatsApp Cloud API Service
 const {
@@ -171,26 +176,19 @@ async function getPendingPayments(req, res) {
         : requestedStatus;
     const payments = await Payment.find({ status: statusFilter }).sort({ createdAt: -1 });
 
-    const candidateIds = payments
-      .map((payment) => payment.candidateId)
-      .filter(Boolean);
-    const candidates = await Candidate.find({
-      $or: [
-        { candidateId: { $in: candidateIds } },
-        { uniqueCode: { $in: candidateIds } },
-        { phone: { $in: candidateIds } },
-        { email: { $in: candidateIds } },
-      ],
-    }).select('candidateId uniqueCode fullName name email phone');
+    const candidates = await Candidate.find(buildCandidateQueryForPayments(payments))
+      .select('candidateId uniqueCode fullName name email phone');
     const candidateById = new Map();
     for (const candidate of candidates) {
-      for (const key of [candidate.candidateId, candidate.uniqueCode, candidate.phone, candidate.email]) {
+      for (const key of [candidate._id, candidate.candidateId, candidate.uniqueCode, candidate.phone, candidate.email]) {
         if (key) candidateById.set(String(key), candidate);
       }
     }
 
     const data = payments.map((payment) => {
-      const candidate = candidateById.get(String(payment.candidateId));
+      const candidate = getPaymentIdentityValues(payment)
+        .map((key) => candidateById.get(key))
+        .find(Boolean);
       const payload = payment.toObject();
       payload.metadata = {
         ...(payload.metadata || {}),
@@ -235,14 +233,7 @@ router.post(
       payment.status = "approved";
       payment.approvedAt = new Date();
 
-      const candidate = await Candidate.findOne({
-        $or: [
-          { candidateId: payment.candidateId },
-          { phone: payment.candidateId },
-          { email: payment.candidateId },
-          { uniqueCode: payment.candidateId },
-        ],
-      });
+      const candidate = await findCandidateForPayment(Candidate, payment);
 
       const candidateReference = candidate?.candidateId || candidate?.uniqueCode || payment.candidateId;
       const formLinkTarget = candidateReference
@@ -415,7 +406,7 @@ router.get('/payments/:paymentId/form-link', requireAdminAuth, async (req, res) 
     const payment = await Payment.findById(paymentId);
     if (!payment) return res.status(404).json({ success: false, error: 'Payment not found' });
 
-    const candidate = await Candidate.findOne({ $or: [ { phone: payment.candidateId }, { email: payment.candidateId }, { uniqueCode: payment.candidateId } ] });
+    const candidate = await findCandidateForPayment(Candidate, payment);
 
     return res.json({
       success: true,
@@ -444,8 +435,14 @@ router.get('/payments/:paymentId/form-link', requireAdminAuth, async (req, res) 
       return res.status(404).json({ success: false, error: "Candidate not found" });
     }
 
+    const candidateIdentifiers = [candidate.candidateId, candidate.uniqueCode, candidate.phone, candidate.email, candidate._id.toString()].filter(Boolean);
     const payment = await Payment.findOne({
-      userId: { $in: [candidate.phone, candidate.email, candidate.uniqueCode, candidate._id.toString()] },
+      $or: [
+        { candidateId: { $in: candidateIdentifiers } },
+        { userId: { $in: candidateIdentifiers } },
+        { phone: candidate.phone },
+        { 'metadata.email': candidate.email },
+      ],
     }).sort({ createdAt: -1 });
 
     res.json({

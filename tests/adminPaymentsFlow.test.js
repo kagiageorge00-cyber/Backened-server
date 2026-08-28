@@ -7,7 +7,12 @@ jest.mock('../models/Payment', () => ({
     metadata: { name: 'Test Applicant', email: 'test@example.com' },
   }),
   find: jest.fn().mockReturnValue({
-    sort: jest.fn().mockResolvedValue([{ id: 'PAY_123', _id: 'PAY_123', status: 'pending' }]),
+    sort: jest.fn().mockResolvedValue([{
+      id: 'PAY_123',
+      _id: 'PAY_123',
+      status: 'pending',
+      toObject: jest.fn().mockReturnValue({ id: 'PAY_123', _id: 'PAY_123', status: 'pending' }),
+    }]),
   }),
   findById: jest.fn().mockResolvedValue({
     _id: 'PAY_123',
@@ -49,6 +54,9 @@ const express = require('express');
 const request = require('supertest');
 
 jest.mock('../models/candidate', () => ({
+  find: jest.fn().mockReturnValue({
+    select: jest.fn().mockResolvedValue([]),
+  }),
   findOneAndUpdate: jest.fn(),
   findOne: jest.fn(),
 }));

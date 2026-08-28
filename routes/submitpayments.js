@@ -338,6 +338,11 @@ async function handleSubmitPayment(req, res) {
           candidate.profileCompletion = calculateProfileCompletion(candidate);
         await candidate.save();
       }
+
+      if (candidate?._id && typeof payment.save === 'function') {
+        payment.candidateId = candidate._id.toString();
+        await payment.save();
+      }
     } catch (candidateError) {
       console.warn('Could not create or update candidate during payment submission:', candidateError);
     }
