@@ -87,6 +87,9 @@ function getFrontendUrl() {
 }
 
 function getVerificationStatus(employer) {
+  if (employer.isVerified) {
+    return 'verified_employer';
+  }
   if (employer.emailVerified && employer.phoneVerified && Array.isArray(employer.documents) && employer.documents.length > 0) {
     return 'documents_submitted';
   }
@@ -97,6 +100,34 @@ function getVerificationStatus(employer) {
     return 'email_verified';
   }
   return 'new_registration';
+}
+
+function getEmployerIdentityFromRequest(req) {
+  const authHeader = req.headers.authorization || req.headers.Authorization;
+  if (authHeader?.startsWith('Bearer ')) {
+    try {
+      const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+      const decoded = jwt.verify(token, JWT_SECRET);
+      if (decoded?.employerId) {
+        return {
+          employerId: decoded.employerId,
+          email: decoded.email,
+        };
+      }
+    } catch (error) {
+      console.warn('Employer auth token invalid:', error.message || error);
+    }
+  }
+
+  if (req.body?.employerId || req.query?.employerId) {
+    return { employerId: sanitizeValue(req.body?.employerId || req.query?.employerId) };
+  }
+
+  if (req.body?.email || req.query?.email) {
+    return { email: sanitizeValue(req.body?.email || req.query?.email).toLowerCase() };
+  }
+
+  return null;
 }
 
 async function sendVerificationEmail(email, name, employerId, token) {
@@ -662,6 +693,135 @@ router.post('/whatsapp/verify', async (req, res) => {
     });
   } catch (error) {
     console.error('WhatsApp verification error:', error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/kyc', async (req, res) => {
+  try {
+    const identity = getEmployerIdentityFromRequest(req);
+    const { employerId: bodyEmployerId, email: bodyEmail, documents, employerType, companyName, fullName } = req.body || {};
+    const employerLookup = identity?.employerId || bodyEmployerId || bodyEmail || identity?.email;
+
+    if (!employerLookup) {
+      return res.status(400).json({
+        success: false,
+        error: 'Employer identity is required to submit KYC.',
+      });
+    }
+
+    const employer = await Employer.findOne({
+      $or: [
+        { employerId: sanitizeValue(employerLookup) },
+        { email: sanitizeValue(employerLookup).toLowerCase() },
+      ],
+    });
+
+    if (!employer) {
+      return res.status(404).json({ success: false, error: 'Employer not found.' });
+    }
+
+    const normalizedDocuments = Array.isArray(documents)
+      ? documents.map((doc) => ({
+          type: sanitizeValue(doc?.type) || 'document',
+          label: sanitizeValue(doc?.label) || sanitizeValue(doc?.name) || 'Uploaded document',
+          url: sanitizeValue(doc?.url) || sanitizeValue(doc?.filePath) || '',
+          status: sanitizeValue(doc?.status) || 'Uploaded',
+        })).filter((doc) => doc.type && (doc.url || doc.label))
+      : [];
+
+    employer.documents = normalizedDocuments.length > 0 ? normalizedDocuments : employer.documents || [];
+    employer.employerType = sanitizeValue(employerType) || employer.employerType || 'company';
+    employer.companyName = sanitizeValue(companyName) || employer.companyName;
+    employer.fullName = sanitizeValue(fullName) || employer.fullName;
+    employer.isVerified = true;
+    employer.verificationStatus = getVerificationStatus(employer);
+    employer.status = 'active';
+
+    if (!employer.emailVerified) {
+      employer.emailVerified = true;
+    }
+    if (!employer.phoneVerified) {
+      employer.phoneVerified = true;
+    }
+
+    await employer.save();
+
+    return res.json({
+      success: true,
+      message: 'Employer KYC submitted successfully.',
+      employer: {
+        employerId: employer.employerId,
+        companyName: employer.companyName,
+        fullName: employer.fullName,
+        email: employer.email,
+        phone: employer.phone,
+        isVerified: employer.isVerified,
+        verificationStatus: employer.verificationStatus,
+        documents: employer.documents,
+      },
+      data: {
+        employerId: employer.employerId,
+        companyName: employer.companyName,
+        fullName: employer.fullName,
+        email: employer.email,
+        phone: employer.phone,
+        isVerified: employer.isVerified,
+        verificationStatus: employer.verificationStatus,
+        documents: employer.documents,
+      },
+    });
+  } catch (error) {
+    console.error('Employer KYC submission error:', error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.get('/profile', async (req, res) => {
+  try {
+    const identity = getEmployerIdentityFromRequest(req);
+    const employerId = identity?.employerId || sanitizeValue(req.query?.employerId || req.body?.employerId);
+    const email = identity?.email || sanitizeValue(req.query?.email || req.body?.email)?.toLowerCase();
+
+    if (!employerId && !email) {
+      return res.status(400).json({ success: false, error: 'Authentication required to fetch employer profile.' });
+    }
+
+    const employer = await Employer.findOne({
+      $or: [
+        ...(employerId ? [{ employerId: sanitizeValue(employerId) }] : []),
+        ...(email ? [{ email: sanitizeValue(email).toLowerCase() }] : []),
+      ],
+    });
+
+    if (!employer) {
+      return res.status(404).json({ success: false, error: 'Employer not found.' });
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        id: employer._id,
+        employerId: employer.employerId,
+        employerCode: employer.employerId,
+        employerType: employer.employerType,
+        companyName: employer.companyName,
+        fullName: employer.fullName,
+        contactPerson: employer.contactPerson || employer.fullName || employer.companyName,
+        position: employer.contactPersonPosition || employer.occupation || '',
+        email: employer.email,
+        phone: employer.phone,
+        country: employer.country,
+        city: employer.city,
+        address: employer.companyAddress || employer.physicalAddress || '',
+        website: employer.website,
+        isVerified: employer.isVerified,
+        verificationStatus: employer.verificationStatus,
+        documents: employer.documents || [],
+      },
+    });
+  } catch (error) {
+    console.error('Employer profile error:', error);
     return res.status(500).json({ success: false, error: error.message });
   }
 });
