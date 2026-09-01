@@ -10,8 +10,15 @@ function generateCandidatePortalCode() {
   return `CAND-${year}-${seq}`;
 }
 
-function ensureCandidateReference(candidate) {
+function resolvePublicCandidateId(candidate) {
   if (!candidate) return null;
+
+  if (candidate._id && typeof candidate._id.toString === 'function') {
+    const objectIdValue = candidate._id.toString();
+    if (objectIdValue && objectIdValue !== 'null' && objectIdValue !== 'undefined') {
+      return objectIdValue;
+    }
+  }
 
   const nextValue = candidate.candidateId?.toString().trim();
   if (nextValue) {
@@ -23,8 +30,27 @@ function ensureCandidateReference(candidate) {
   return generated;
 }
 
+function ensureCandidateReference(candidate) {
+  if (!candidate) return null;
+
+  if (candidate._id && typeof candidate._id.toString === 'function') {
+    const objectIdValue = candidate._id.toString();
+    if (objectIdValue && objectIdValue !== 'null' && objectIdValue !== 'undefined') {
+      return objectIdValue;
+    }
+  }
+
+  const nextValue = candidate.candidateId?.toString().trim();
+  if (nextValue) {
+    return nextValue;
+  }
+
+  return null;
+}
+
 module.exports = {
   generateCandidateReferenceId,
   generateCandidatePortalCode,
   ensureCandidateReference,
+  resolvePublicCandidateId,
 };

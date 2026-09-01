@@ -92,12 +92,7 @@ describe('Marketplace routes', () => {
       religion: 'Christian',
     });
     expect(Candidate.findOne).toHaveBeenCalledWith({
-      $or: [
-        { candidateId: 'CAND-2026-0102' },
-        { uniqueCode: 'CAND-2026-0102' },
-        { phone: 'CAND-2026-0102' },
-        { email: 'CAND-2026-0102' },
-      ],
+      uniqueCode: 'CAND-2026-0102',
       isVerified: true,
       status: 'available',
     });
@@ -116,12 +111,7 @@ describe('Marketplace routes', () => {
     expect(res.status).toBe(404);
     expect(res.body.success).toBe(false);
     expect(Candidate.findOne).toHaveBeenCalledWith({
-      $or: [
-        { candidateId: 'CND-2026-0999' },
-        { uniqueCode: 'CND-2026-0999' },
-        { phone: 'CND-2026-0999' },
-        { email: 'CND-2026-0999' },
-      ],
+      uniqueCode: 'CND-2026-0999',
       isVerified: true,
       status: 'available',
     });

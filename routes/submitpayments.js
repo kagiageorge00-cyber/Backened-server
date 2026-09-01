@@ -240,7 +240,6 @@ async function handleSubmitPayment(req, res) {
 
       if (!candidate) {
         candidate = await Candidate.create({
-          candidateId: generateCandidateReferenceId(),
           fullName: name || null,
           name: name || null,
             nationality,
@@ -282,6 +281,7 @@ async function handleSubmitPayment(req, res) {
           },
           paymentId: payment._id,
         });
+          candidate.candidateId = candidate._id ? candidate._id.toString() : candidate.candidateId;
           candidate.profileCompletion = calculateProfileCompletion(candidate);
           await candidate.save();
       } else {
@@ -327,7 +327,7 @@ async function handleSubmitPayment(req, res) {
           candidate.additionalUrl = additionalUrl || candidate.additionalUrl;
         candidate.email = candidate.email || detectedEmail;
         candidate.phone = candidate.phone || detectedPhone;
-        candidate.candidateId = ensureCandidateReference(candidate) || candidate.candidateId || generateCandidateReferenceId();
+        candidate.candidateId = candidate._id ? candidate._id.toString() : (ensureCandidateReference(candidate) || candidate.candidateId || null);
         candidate.status = ['available', 'deployed'].includes(candidate.status)
           ? candidate.status
           : 'in_process';

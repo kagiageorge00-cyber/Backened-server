@@ -104,7 +104,11 @@ describe('Candidate portal routes', () => {
       availability: 'Immediately Available',
       availabilityBadge: 'Verified',
     }));
-    expect(Candidate.find).toHaveBeenCalledWith({ isVerified: true, status: 'available' });
+    expect(Candidate.find).toHaveBeenCalledWith({
+      isVerified: true,
+      status: 'available',
+      uniqueCode: { $type: 'string', $regex: /\S/ },
+    });
   });
 
   test('GET /api/candidates/marketplace/profile/:candidateId returns a single formatted candidate card', async () => {
@@ -132,12 +136,7 @@ describe('Candidate portal routes', () => {
       profilePhoto: 'https://example.com/photo.jpg',
     }));
     expect(Candidate.findOne).toHaveBeenCalledWith({
-      $or: [
-        { uniqueCode: 'CAND-2026-0004' },
-        { candidateId: 'CAND-2026-0004' },
-        { phone: 'CAND-2026-0004' },
-        { email: 'CAND-2026-0004' }
-      ],
+      uniqueCode: 'CAND-2026-0004',
       isVerified: true,
       status: 'available',
     });

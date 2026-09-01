@@ -91,7 +91,7 @@ function buildCandidateMarketplaceProfile(candidate, employerRequirements = {}) 
   const profile = {
     id: candidateObj._id ? candidateObj._id.toString() : (candidateObj.candidateId || candidateObj.uniqueCode || ''),
     candidateId: candidateObj.candidateId || candidateObj.uniqueCode || candidateObj._id?.toString() || '',
-    candidateCode: candidateObj.uniqueCode || candidateObj.candidateId || candidateObj._id?.toString() || '',
+    candidateCode: candidateObj.uniqueCode || '',
     fullName: getCandidateNameValue(candidateObj),
     photoUrl,
     videoUrl,

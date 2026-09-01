@@ -47,4 +47,15 @@ describe('candidate marketplace scoring', () => {
 
     expect(profile.videoUrl).toBe('https://cdn.example.com/intro.mp4');
   });
+
+  test('does not label a candidate ID as a candidate code', () => {
+    const profile = buildCandidateMarketplaceProfile({
+      _id: '6a8f2bd483e1a2536900b841',
+      candidateId: 'CND-2026-5124',
+      fullName: 'SUSAN WAMBUI MAINA',
+    });
+
+    expect(profile.candidateId).toBe('CND-2026-5124');
+    expect(profile.candidateCode).toBe('');
+  });
 });

@@ -33,6 +33,14 @@ function requireVerifiedEmployer(req, res) {
   return true;
 }
 
+function marketplaceCandidateFilter() {
+  return {
+    isVerified: true,
+    status: { $in: ['available', 'in_process', 'approved'] },
+    uniqueCode: { $type: 'string', $regex: /\S/ },
+  };
+}
+
 function normalizeMarketplaceCandidate(candidate, employerRequirements = {}) {
   const candidateObj = candidate.toObject ? candidate.toObject() : { ...candidate };
   const profile = buildCandidateMarketplaceProfile(candidateObj, employerRequirements);
@@ -76,7 +84,7 @@ router.get('/candidates', async (req, res) => {
       language,
       verifiedOnly,
     } = req.query;
-    const query = { isVerified: true, status: { $in: ['available', 'in_process', 'approved'] } };
+    const query = marketplaceCandidateFilter();
 
     if (country) query.$or = [
       { country: { $regex: country, $options: 'i' } },
@@ -128,7 +136,7 @@ router.get('/search', async (req, res) => {
   try {
     const { q, country, skills, experience, jobPosition, language, page = 1, limit = 20 } = req.query;
     const searchTerm = q || req.query.search || '';
-    const query = { isVerified: true, status: { $in: ['available', 'in_process', 'approved'] } };
+    const query = marketplaceCandidateFilter();
     if (searchTerm) {
       const regex = new RegExp(searchTerm, 'i');
       query.$or = [{ fullName: regex }, { name: regex }, { uniqueCode: regex }, { jobPosition: regex }, { jobAppliedFor: regex }, { country: regex }, { destinationCountry: regex }];
@@ -153,7 +161,7 @@ router.get('/search', async (req, res) => {
 
 router.get('/filter', async (req, res) => {
   try {
-    const filters = { isVerified: true, status: { $in: ['available', 'in_process', 'approved'] } };
+    const filters = marketplaceCandidateFilter();
     if (req.query.country) {
       filters.$or = [{ country: { $regex: req.query.country, $options: 'i' } }, { destinationCountry: { $regex: req.query.country, $options: 'i' } }];
     }
@@ -173,7 +181,7 @@ router.get('/filter', async (req, res) => {
 
 router.get('/recommended', async (req, res) => {
   try {
-    const candidates = await executeQuery(Candidate.find({ isVerified: true, status: { $in: ['available', 'in_process', 'approved'] } }), {
+    const candidates = await executeQuery(Candidate.find(marketplaceCandidateFilter()), {
       sort: { createdAt: -1 },
       limit: 6,
       select: '-password',
@@ -197,14 +205,7 @@ router.get('/candidates/:candidateId', async (req, res) => {
       return res.status(400).json({ success: false, error: 'candidateId is required' });
     }
 
-    const query = {
-      $or: [
-        { candidateId },
-        { uniqueCode: candidateId },
-        { phone: candidateId },
-        { email: candidateId },
-      ],
-    };
+    const query = { uniqueCode: candidateId };
 
     const candidate = await Candidate.findOne({
       ...query,

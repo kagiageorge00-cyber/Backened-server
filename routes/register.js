@@ -12,6 +12,7 @@ const {
   notifyMarketplaceListing,
 } = require('../services/notificationservice');
 const { notifyCandidateRegistered } = require('../utils/adminNotificationHelper');
+const { resolvePublicCandidateId } = require('../utils/candidateIdentity');
 
 // ======================
 // 🔐 HELPERS
@@ -458,7 +459,7 @@ router.post("/", async (req, res) => {
         appliedJobTitle,
         appliedEmployerId,
         appliedEmployerName,
-        uniqueCode, // ✅ correct field (not candidateId)
+        uniqueCode,
         password: hashedPassword,
         profileCompletion: profileCompletionValue,
         documents: {
@@ -472,6 +473,11 @@ router.post("/", async (req, res) => {
         paymentStatus: "pending",
         status: "in_process",
       });
+
+      if (candidate && !candidate.candidateId && candidate._id) {
+        candidate.candidateId = candidate._id.toString();
+        await candidate.save();
+      }
 
       if (typeof candidate.save === 'function') {
         await candidate.save();
@@ -535,10 +541,12 @@ router.post("/", async (req, res) => {
     // ======================
     // RESPONSE
     // ======================
+    const publicCandidateId = resolvePublicCandidateId(candidate);
     const resp = {
       success: true,
       message: 'Candidate registration submitted successfully. Complete payment to finish verification.',
-      candidateId: candidateCode,
+      candidateId: publicCandidateId || candidateCode,
+      uniqueCode: candidateCode,
       data: candidate.toObject ? (() => {
         const publicCandidate = candidate.toObject();
         delete publicCandidate.password;
@@ -551,7 +559,7 @@ router.post("/", async (req, res) => {
       resp.marketplaceProfileLink = marketplaceProfileLink;
     }
 
-    // include plain password so frontend can display it once (only on create)
+    // include plain password so frontend can display it immediately during the registration step
     if (passwordPlain) {
       resp.password = passwordPlain;
     }

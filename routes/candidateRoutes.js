@@ -268,6 +268,7 @@ function buildMarketplaceCandidate(candidate) {
   return {
     // IDENTIFICATION
     candidateId: candidateObj.candidateId,
+    candidateCode: candidateObj.uniqueCode || null,
     fullName: getCandidateNameValue(candidateObj),
     name: getCandidateNameValue(candidateObj),
 
@@ -338,7 +339,11 @@ router.get('/', async (req, res) => {
 // GET /marketplace
 router.get('/marketplace', async (req, res) => {
   try {
-    const candidates = await Candidate.find({ isVerified: true, status: 'available' }).sort({ createdAt: -1 });
+    const candidates = await Candidate.find({
+      isVerified: true,
+      status: 'available',
+      uniqueCode: { $type: 'string', $regex: /\S/ },
+    }).sort({ createdAt: -1 });
     return res.json({
       success: true,
       count: candidates.length,
@@ -357,19 +362,8 @@ router.get('/marketplace/profile/:candidateId', async (req, res) => {
       return res.status(400).json({ success: false, error: 'candidateId is required' });
     }
 
-    const searchCriteria = [];
-    if (mongoose.Types.ObjectId.isValid(candidateId)) {
-      searchCriteria.push({ _id: candidateId });
-    }
-    searchCriteria.push(
-      { uniqueCode: candidateId },
-      { candidateId },
-      { phone: candidateId },
-      { email: candidateId }
-    );
-
     const candidate = await Candidate.findOne({
-      $or: searchCriteria,
+      uniqueCode: candidateId,
       isVerified: true,
       status: 'available',
     });
