@@ -7,6 +7,7 @@ const Employer = require('../models/Employer');
 const employerAuth = require('../middleware/employerAuth');
 const jwt = require('jsonwebtoken');
 const { verifyEmployerToken } = require('../services/jwtService');
+const { createNotification } = require('../utils/notificationHelper');
 
 // Generate Job ID
 function generateJobId() {
@@ -31,9 +32,9 @@ router.post('/create', employerAuth, async (req, res) => {
       employerLogo: req.employer.companyLogo,
       employerRating: req.employer.rating || 4.5,
       employerVerified: req.employer.verified || false,
+      ...jobData,
       status: 'Draft',
       qualityScore: 0,
-      ...jobData,
     });
 
     return res.status(201).json({
@@ -47,6 +48,83 @@ router.post('/create', employerAuth, async (req, res) => {
     return res.status(500).json({
       success: false,
       error: err.message || 'Failed to create job',
+    });
+  }
+});
+
+// Submit a job for staff review. Employers cannot publish directly.
+router.post('/submit-for-review', employerAuth, async (req, res) => {
+  try {
+    const body = req.body || {};
+    const now = new Date();
+    const salaryText = String(body.salary || '').replace(/[^0-9.]/g, '');
+    const images = Array.isArray(body.images)
+      ? body.images.filter(Boolean)
+      : body.images ? [body.images] : [];
+    const jobTitle = body.title || body.position || 'Untitled job';
+    const requirementsText = String(body.requirements || '').trim();
+
+    const job = await Job.create({
+      jobId: generateJobId(),
+      jobTitle,
+      title: jobTitle,
+      position: body.position || jobTitle,
+      jobCategory: body.jobCategory || 'General',
+      employmentType: body.contractType || 'Full Time',
+      industry: body.industry || 'General',
+      country: body.country,
+      city: body.location,
+      location: body.location,
+      workLocation: body.workLocation || 'On-site',
+      numberOfVacancies: Number(body.numberOfVacancies) || 1,
+      applicationDeadline: parseDateOrDefault(
+        body.applicationDeadline,
+        new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      ),
+      expectedStartDate: parseDateOrDefault(body.expectedStartDate, now),
+      jobSummary: body.description || '',
+      description: body.description || '',
+      images,
+      coverImage: images[0] || '',
+      qualifications: requirementsText,
+      requiredSkills: requirementsText ? [requirementsText] : [],
+      salary: Number(salaryText) || 0,
+      salaryType: body.salaryType || 'Annual',
+      currency: body.currency || 'USD',
+      requirements: {},
+      employerId: req.employer.employerId,
+      employerName: req.employer.companyName || 'Unnamed Company',
+      employerLogo: req.employer.companyLogo,
+      employerRating: req.employer.rating || 4.5,
+      employerVerified: req.employer.verified || false,
+      status: 'PendingReview',
+      postedDate: now,
+    });
+
+    await createNotification({
+      userId: req.employer.employerId,
+      userType: 'employer',
+      title: 'Job submitted for staff review',
+      message: `${jobTitle} was received and is awaiting staff approval before publication to the global marketplace.`,
+      type: 'job_submitted_for_review',
+      category: 'registration',
+      entityType: 'job',
+      entityId: job.jobId,
+      employerName: req.employer.companyName || req.employer.fullName || '',
+    }).catch((notificationError) => {
+      console.error('Job review notification failed:', notificationError.message);
+    });
+
+    return res.status(201).json({
+      success: true,
+      data: job,
+      message: 'Job submitted to staff for review.',
+    });
+  } catch (err) {
+    console.error('Job review submission error:', err);
+    return res.status(400).json({
+      success: false,
+      error: err.message || 'Failed to submit job for review',
     });
   }
 });
@@ -65,34 +143,13 @@ router.post('/:jobId/publish', employerAuth, async (req, res) => {
       });
     }
 
-    // Verify employer is verified
-    if (!req.employer.verified) {
-      return res.status(403).json({
-        success: false,
-        error: 'Complete employer verification before posting jobs',
-        requiresVerification: true,
-      });
-    }
-
-    // Calculate quality score
-    let qualityScore = 0;
-    if (job.jobTitle && job.jobTitle.length > 10) qualityScore += 10;
-    if (job.jobSummary && job.jobSummary.length > 50) qualityScore += 10;
-    if (job.keyResponsibilities && job.keyResponsibilities.length > 0) qualityScore += 15;
-    if (job.requiredSkills && job.requiredSkills.length > 0) qualityScore += 15;
-    if (job.qualifications && job.qualifications.length > 20) qualityScore += 10;
-    if (job.salary > 0) qualityScore += 15;
-    if (Object.values(job.benefits).some(v => v)) qualityScore += 10;
-    if (job.jobCategory && job.jobCategory.length > 0) qualityScore += 5;
-
-    // Update job status
+    // Keep this legacy endpoint review-only so employers cannot publish directly.
     const updatedJob = await Job.findOneAndUpdate(
       { jobId },
       {
-        status: 'Active',
-        publishedAt: new Date(),
-        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
-        qualityScore: Math.min(qualityScore, 100),
+        status: 'PendingReview',
+        publishedAt: null,
+        expiresAt: null,
       },
       { new: true }
     );
@@ -101,8 +158,7 @@ router.post('/:jobId/publish', employerAuth, async (req, res) => {
       success: true,
       jobId,
       data: updatedJob,
-      message: 'Congratulations! Your job has been published successfully.',
-      qualityScore: Math.min(qualityScore, 100),
+      message: 'Job submitted to staff for review.',
     });
   } catch (err) {
     console.error('Job publish error:', err);

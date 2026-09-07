@@ -7,6 +7,7 @@ const StaffConversation = require('../models/StaffConversation');
 const StaffMessage = require('../models/StaffMessage');
 const StaffNotification = require('../models/StaffNotification');
 const { ingestIncomingBlissAppMessage } = require('../services/staffOperationsBridge');
+const { createNotification } = require('../utils/notificationHelper');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'bliss-staff-secret';
 
@@ -793,18 +794,96 @@ async function postMarketplaceJob(req, res) {
 
 async function listJobs(req, res) {
   try {
+    const requestedStatus = req.query.status?.toString();
+    const filter = requestedStatus && requestedStatus !== 'all'
+      ? { status: requestedStatus }
+      : requestedStatus === 'all' ? {} : { status: 'Active' };
     if (mongoose.connection.readyState === 1) {
-      const jobs = await Job.find({ status: 'Active' })
-        .sort({ publishedAt: -1 })
+      const jobs = await Job.find(filter)
+        .sort({ createdAt: -1 })
         .limit(100);
       return res.json({ success: true, data: jobs });
     }
 
     await ensureDemoData();
-    return res.json({ success: true, data: memoryState.jobs });
+    const jobs = memoryState.jobs.filter((job) =>
+      !filter.status || job.status === filter.status);
+    return res.json({ success: true, data: jobs });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
   }
+}
+
+async function reviewJob(req, res) {
+  try {
+    const { jobId } = req.params;
+    const { status, ...updates } = req.body || {};
+    const allowedStatuses = ['PendingReview', 'Rejected', 'Active'];
+    if (!allowedStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        error: `status must be one of: ${allowedStatuses.join(', ')}`,
+      });
+    }
+
+    const allowedFields = [
+      'jobTitle', 'title', 'position', 'jobCategory', 'employmentType',
+      'industry', 'country', 'city', 'location', 'workLocation',
+      'numberOfVacancies', 'applicationDeadline', 'expectedStartDate',
+      'jobSummary', 'description', 'images', 'coverImage', 'requiredSkills',
+      'qualifications', 'salary', 'salaryType', 'currency', 'benefits',
+      'requirements', 'featured',
+    ];
+    const changes = Object.fromEntries(
+      Object.entries(updates).filter(([key]) => allowedFields.includes(key)),
+    );
+    changes.status = status;
+    if (status === 'Active') {
+      const now = new Date();
+      changes.postedDate = now;
+      changes.publishedAt = now;
+      changes.expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    } else if (status !== 'Active') {
+      changes.publishedAt = null;
+      changes.expiresAt = null;
+    }
+
+    if (mongoose.connection.readyState === 1) {
+      const job = await Job.findOneAndUpdate({ jobId }, changes, { new: true });
+      if (!job) return res.status(404).json({ success: false, error: 'Job not found' });
+      await notifyEmployerOfJobReview(job, status);
+      return res.json({ success: true, data: job, message: `Job marked ${status}` });
+    }
+
+    const job = memoryState.jobs.find((item) => item.jobId === jobId);
+    if (!job) return res.status(404).json({ success: false, error: 'Job not found' });
+    Object.assign(job, changes);
+    await notifyEmployerOfJobReview(job, status);
+    return res.json({ success: true, data: job, message: `Job marked ${status}` });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+}
+
+async function notifyEmployerOfJobReview(job, status) {
+  if (!job.employerId || status === 'PendingReview') return;
+
+  const approved = status === 'Active';
+  await createNotification({
+    userId: job.employerId,
+    userType: 'employer',
+    title: approved ? 'Job approved and published' : 'Job submission needs attention',
+    message: approved
+      ? `${job.title || job.jobTitle || 'Your job'} has been approved and published to the global marketplace.`
+      : `${job.title || job.jobTitle || 'Your job'} was not approved for marketplace publication. Please review the staff feedback and update the submission.`,
+    type: approved ? 'job_approved' : 'job_rejected',
+    category: 'registration',
+    entityType: 'job',
+    entityId: job.jobId,
+    employerName: job.employerName || '',
+  }).catch((error) => {
+    console.error('Job review notification failed:', error.message);
+  });
 }
 
 async function login(req, res) {
@@ -1196,5 +1275,6 @@ module.exports = {
   listAssignments,
   postMarketplaceJob,
   listJobs,
+  reviewJob,
   broadcast,
 };

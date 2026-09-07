@@ -1,5 +1,6 @@
 const Notification = require('../models/Notification');
 const Candidate = require('../models/candidate');
+const Employer = require('../models/Employer');
 const User = require('../models/User');
 const mongoose = require('mongoose');
 const { sendWhatsAppMessage } = require('../whatsapp');
@@ -54,6 +55,20 @@ async function resolveRecipient(userId) {
     return {
       phoneNumber: normalizePhone(user.phone),
       email: normalizeEmail(user.email),
+    };
+  }
+
+  const employer = await Employer.findOne({
+    $or: [
+      { employerId: id },
+      { email: id },
+      { phone: id },
+    ],
+  }).lean();
+  if (employer) {
+    return {
+      phoneNumber: normalizePhone(employer.whatsappNumber || employer.phone),
+      email: normalizeEmail(employer.email),
     };
   }
 

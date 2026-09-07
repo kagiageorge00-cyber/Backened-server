@@ -2,10 +2,10 @@ const express = require('express');
 const router = express.Router();
 const Interview = require('../models/Interview');
 const Candidate = require('../models/candidate');
-const Notification = require('../models/Notification');
 const employerAuth = require('../middleware/employerAuth');
 const crypto = require('crypto');
 const { generateRtcSession } = require('../services/rtcService');
+const { createNotification } = require('../utils/notificationHelper');
 
 const asyncCandidateLookup = async (candidateId) => {
   if (!candidateId) return null;
@@ -28,17 +28,17 @@ const createInterviewNotification = async ({
   interview,
   actionUrl,
 }) => {
-  await Notification.create({
-    notificationId: `NTF-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  await createNotification({
     userId,
     userType,
     title,
     message,
-    notificationType: 'interview',
+    type: 'interview',
     category: 'interview',
     entityType: 'interview',
     entityId: interview.interviewId,
     actionUrl,
+    employerName: interview.employerName,
   });
 };
 
@@ -101,6 +101,15 @@ router.post('/request', employerAuth, async (req, res) => {
       message: `Your interview with ${employer.companyName || employer.fullName || 'the employer'} has been scheduled for ${interviewDate}${interviewTime ? ` at ${interviewTime}` : ''}.`,
       interview,
       actionUrl: `/candidate/interviews/${interview.interviewId}`,
+    });
+
+    await createInterviewNotification({
+      userId: employer.employerId,
+      userType: 'employer',
+      title: 'Interview scheduled',
+      message: `Your interview with ${candidate.fullName || candidate.name || 'the candidate'} is scheduled for ${interviewDate}${interviewTime ? ` at ${interviewTime}` : ''}.`,
+      interview,
+      actionUrl: `/employer/interviews/${interview.interviewId}`,
     });
 
     return res.status(201).json({ success: true, interview });

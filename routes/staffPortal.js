@@ -64,8 +64,9 @@ router.put('/bookings/:id/status', staffController.updateBookingStatus);
 router.get('/support/tickets', staffController.listSupportTickets);
 router.post('/support/tickets/:id/respond', staffController.respondSupportTicket);
 router.get('/assignments', staffController.listAssignments);
-router.post('/marketplace/jobs', staffController.postMarketplaceJob);
-router.get('/marketplace/jobs', staffController.listJobs);
+router.post('/marketplace/jobs', authenticateStaff, staffController.postMarketplaceJob);
+router.get('/marketplace/jobs', authenticateStaff, staffController.listJobs);
+router.patch('/marketplace/jobs/:jobId', authenticateStaff, staffController.reviewJob);
 
 router.post('/deployments/:deploymentId/ticket', authenticateStaff, async (req, res) => {
   try {
