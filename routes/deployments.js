@@ -127,6 +127,8 @@ router.post('/:deploymentId/pay', async (req, res) => {
 
     dep.paid = true;
     dep.paymentStatus = 'verified';
+    dep.documentsReleased = true;
+    dep.documentsReleasedAt = new Date();
     dep.currentStage = 'Payment';
     dep.deploymentFee = fees.totalDue;
     dep.paymentMethod = paymentMethod || 'bank_transfer';
@@ -160,6 +162,71 @@ router.post('/:deploymentId/pay', async (req, res) => {
     return res.json({ success: true, payment: pr, contract, deployment: dep, fees, summary: buildDeploymentSummary({ candidateName: candidateName || candidate?.fullName || dep.candidateName || 'Candidate', grossSalary: grossSalary || dep.deploymentFee || amount, paymentMethod: paymentMethod || 'bank_transfer' }) });
   } catch (err) {
     console.error('Deployment pay error:', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Return candidate private details and documents only after verified payment.
+router.get('/:deploymentId/candidate-documents', async (req, res) => {
+  try {
+    const employer = req.employer;
+    const { deploymentId } = req.params;
+    const deployment = await Deployment.findOne({ deploymentId });
+    if (!deployment) {
+      return res.status(404).json({ success: false, error: 'Deployment not found' });
+    }
+    if (deployment.employerId !== employer.employerId) {
+      return res.status(403).json({ success: false, error: 'Employer access denied' });
+    }
+    if (deployment.paymentStatus !== 'verified' || deployment.documentsReleased !== true) {
+      return res.status(403).json({ success: false, error: 'Candidate documents are locked until payment is approved' });
+    }
+
+    const candidate = await Candidate.findOne({
+      $or: [
+        { candidateId: deployment.candidateId },
+        { uniqueCode: deployment.candidateId },
+        { phone: deployment.candidateId },
+        { email: deployment.candidateId },
+      ],
+    }).select('-password');
+    if (!candidate) {
+      return res.status(404).json({ success: false, error: 'Candidate not found' });
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        deploymentId,
+        candidateId: candidate.candidateId || candidate.uniqueCode,
+        fullName: candidate.fullName || candidate.name,
+        email: candidate.email,
+        phone: candidate.phone,
+        nationality: candidate.nationality,
+        gender: candidate.gender,
+        dateOfBirth: candidate.dateOfBirth,
+        idNumber: candidate.idNumber,
+        county: candidate.county,
+        religion: candidate.religion,
+        maritalStatus: candidate.maritalStatus,
+        numberOfChildren: candidate.numberOfChildren,
+        education: candidate.education,
+        educationalLevel: candidate.educationalLevel,
+        passportUrl: candidate.passportUrl,
+        medicalUrl: candidate.medicalUrl,
+        resumeUrl: candidate.resumeUrl,
+        additionalUrl: candidate.additionalUrl,
+        goodConductUrl: candidate.goodConductUrl,
+        otherDocumentUrl: candidate.otherDocumentUrl,
+        nationalIdFrontUrl: candidate.nationalIdFrontUrl,
+        nationalIdBackUrl: candidate.nationalIdBackUrl,
+        documents: candidate.documents || {},
+        documentsReleased: true,
+        documentsReleasedAt: deployment.documentsReleasedAt,
+      },
+    });
+  } catch (err) {
+    console.error('Candidate document release error:', err);
     return res.status(500).json({ success: false, error: err.message });
   }
 });
@@ -219,9 +286,11 @@ router.post('/:deploymentId/visa', visaUpload.single('visaFile'), employerAuth, 
   try {
     const employer = req.employer;
     const { deploymentId } = req.params;
+    const { visaNumber } = req.body;
 
     if (!deploymentId) return res.status(400).json({ success: false, error: 'deploymentId required' });
     if (!req.file) return res.status(400).json({ success: false, error: 'Visa file is required' });
+    if (!visaNumber || !visaNumber.trim()) return res.status(400).json({ success: false, error: 'Visa reference number is required' });
 
     const dep = await Deployment.findOne({ deploymentId });
     if (!dep) return res.status(404).json({ success: false, error: 'Deployment not found' });
@@ -230,6 +299,7 @@ router.post('/:deploymentId/visa', visaUpload.single('visaFile'), employerAuth, 
     }
 
     const visaPath = req.file.secure_url || req.file.path;
+    dep.visaNumber = visaNumber.trim();
     dep.visaStatus = 'submitted';
     dep.visaUrl = visaPath;
     dep.visaUploadedAt = new Date();
@@ -290,6 +360,11 @@ router.post('/:deploymentId/visa', visaUpload.single('visaFile'), employerAuth, 
 // Compatibility endpoint for clients that already have a hosted visa document URL.
 router.post('/:deploymentId/visa-reference', async (req, res) => {
   try {
+    return res.status(400).json({
+      success: false,
+      error: 'Visa submission requires the visa reference number and uploaded visa file',
+    });
+
     const { deploymentId } = req.params;
     const { visaNumber, visaPdfUrl, visaIssueDate, visaExpiryDate, remarks } = req.body;
     const dep = await Deployment.findOne({ deploymentId, employerId: req.employer.employerId });
@@ -308,6 +383,11 @@ router.post('/:deploymentId/visa-reference', async (req, res) => {
 
 router.post('/:deploymentId/ticket', async (req, res) => {
   try {
+    return res.status(403).json({
+      success: false,
+      error: 'Flight ticket upload is managed by Bliss staff',
+    });
+
     const { deploymentId } = req.params;
     const { airline, flightNumber, departureAirport, arrivalAirport, departureDate, departureTime, ticketPdfUrl, boardingPassUrl } = req.body;
     const dep = await Deployment.findOne({ deploymentId, employerId: req.employer.employerId });
@@ -327,6 +407,11 @@ router.post('/:deploymentId/ticket', async (req, res) => {
 
 router.post('/:deploymentId/complete', async (req, res) => {
   try {
+    return res.status(403).json({
+      success: false,
+      error: 'Deployment activation is managed by Bliss staff after ticket upload',
+    });
+
     const dep = await Deployment.findOne({ deploymentId: req.params.deploymentId, employerId: req.employer.employerId });
     if (!dep) return res.status(404).json({ success: false, error: 'Deployment not found' });
     if (dep.ticketStatus !== 'uploaded' || dep.visaStatus !== 'submitted') {

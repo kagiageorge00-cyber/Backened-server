@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const Candidate = require('../models/candidate');
+const Deployment = require('../models/Deployment');
+const Ticket = require('../models/Ticket');
 const mongoose = require('mongoose');
 const authenticateStaff = require('../middleware/staffAuth');
 const staffController = require('../controllers/staffController');
@@ -64,6 +66,76 @@ router.post('/support/tickets/:id/respond', staffController.respondSupportTicket
 router.get('/assignments', staffController.listAssignments);
 router.post('/marketplace/jobs', staffController.postMarketplaceJob);
 router.get('/marketplace/jobs', staffController.listJobs);
+
+router.post('/deployments/:deploymentId/ticket', authenticateStaff, async (req, res) => {
+  try {
+    const { deploymentId } = req.params;
+    const {
+      airline,
+      flightNumber,
+      departureAirport,
+      arrivalAirport,
+      departureDate,
+      arrivalDate,
+      ticketPdfUrl,
+    } = req.body || {};
+    const deployment = await Deployment.findOne({ deploymentId });
+
+    if (!deployment) {
+      return res.status(404).json({ success: false, error: 'Deployment not found' });
+    }
+    if (deployment.visaStatus !== 'submitted') {
+      return res.status(400).json({ success: false, error: 'Visa must be submitted before staff can upload the flight ticket' });
+    }
+    if (!airline || !flightNumber || !departureAirport || !arrivalAirport || !ticketPdfUrl) {
+      return res.status(400).json({ success: false, error: 'Complete flight ticket details are required' });
+    }
+
+    const ticket = await Ticket.create({
+      ticketId: `TKT-${Date.now()}`,
+      deploymentId,
+      employerId: deployment.employerId,
+      candidateId: deployment.candidateId,
+      airline,
+      departureDate,
+      arrivalDate,
+      fileUrl: ticketPdfUrl,
+      uploadedBy: req.staff.staffId || req.staff.id || req.staff.email || 'staff',
+    });
+
+    deployment.ticketStatus = 'uploaded';
+    deployment.currentStage = 'Ticket';
+    deployment.arrivalStatus = 'uploaded';
+    await deployment.save();
+
+    return res.status(201).json({ success: true, data: deployment, ticket });
+  } catch (err) {
+    console.error('Staff ticket upload error:', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/deployments/:deploymentId/complete', authenticateStaff, async (req, res) => {
+  try {
+    const { deploymentId } = req.params;
+    const deployment = await Deployment.findOne({ deploymentId });
+    if (!deployment) {
+      return res.status(404).json({ success: false, error: 'Deployment not found' });
+    }
+    if (deployment.ticketStatus !== 'uploaded' || deployment.visaStatus !== 'submitted') {
+      return res.status(400).json({ success: false, error: 'Visa and flight ticket must be uploaded before completion' });
+    }
+
+    deployment.currentStage = 'Active';
+    deployment.deploymentStatus = 'active';
+    deployment.progress = 1;
+    await deployment.save();
+    return res.json({ success: true, data: deployment });
+  } catch (err) {
+    console.error('Staff deployment completion error:', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 function escapeRegExp(value) {
   return value.toString().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
