@@ -367,10 +367,8 @@ router.post("/", async (req, res) => {
         uploads: candidate.documents?.uploads || [],
       };
 
-      if (!candidate.password) {
-        passwordPlain = `BLISS${Math.floor(1000 + Math.random() * 9000)}`;
-        candidate.password = await bcrypt.hash(passwordPlain, 10);
-      }
+      passwordPlain = `BLISS${Math.floor(1000 + Math.random() * 9000)}`;
+      candidate.password = await bcrypt.hash(passwordPlain, 10);
 
       await candidate.save();
     } else {

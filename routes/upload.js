@@ -116,7 +116,12 @@ function buildCandidateSearchCriteria(candidateId) {
   if (candidateId && /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(candidateId)) {
     criteria.push({ _id: candidateId });
   }
-  criteria.push({ uniqueCode: candidateId }, { phone: candidateId }, { email: candidateId });
+  criteria.push(
+    { candidateId },
+    { uniqueCode: candidateId },
+    { phone: candidateId },
+    { email: candidateId },
+  );
   return criteria;
 }
 
@@ -149,7 +154,7 @@ async function persistUploadToCandidate({ candidateId, field, fileUrl, originalN
     candidate.medicalUrl = fileUrl;
   } else if (['goodconduct', 'goodconducturl', 'conduct', 'conducturl'].includes(normalizedField)) {
     candidate.goodConductUrl = fileUrl;
-  } else if (['videourl', 'video', 'introvideo', 'introductionvideo'].includes(normalizedField)) {
+  } else if (['videourl', 'video', 'introvideo', 'introductionvideo', 'candidate_video'].includes(normalizedField)) {
     candidate.videoUrl = fileUrl;
     candidate.introductionVideoUrl = fileUrl;
   } else if (['otherdocument', 'otherdocumenturl'].includes(normalizedField)) {
