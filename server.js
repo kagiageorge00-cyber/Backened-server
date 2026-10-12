@@ -682,7 +682,7 @@ app.get('/api/candidate-form/data', async (req, res) => {
     ].filter(Boolean);
     const validPayment = paymentIdentifiers.length
       ? await PaymentModel.findOne({
-          status: { $in: ['paid', 'completed'] },
+          status: { $in: ['approved', 'paid', 'completed'] },
           $or: [
             { candidateId: { $in: paymentIdentifiers } },
             { phone: { $in: paymentIdentifiers } },
@@ -692,7 +692,11 @@ app.get('/api/candidate-form/data', async (req, res) => {
         }).sort({ createdAt: -1 })
       : null;
 
-    const paymentIsValid = Boolean(validPayment || (candidate && candidate.paymentStatus && candidate.paymentStatus.toLowerCase() === 'paid'));
+    const candidatePaymentStatus = candidate?.paymentStatus?.toString().trim().toLowerCase();
+    const paymentIsValid = Boolean(
+      validPayment ||
+      ['approved', 'paid', 'completed'].includes(candidatePaymentStatus)
+    );
 
     if (!paymentIsValid) {
       return res.status(200).json({

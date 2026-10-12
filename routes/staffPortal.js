@@ -6,6 +6,7 @@ const Ticket = require('../models/Ticket');
 const mongoose = require('mongoose');
 const authenticateStaff = require('../middleware/staffAuth');
 const staffController = require('../controllers/staffController');
+const { requireStaffPermission } = require('../middleware/staffPermissions');
 
 function sanitizeValue(value) {
   return typeof value === 'string' ? value.trim() : value;
@@ -35,26 +36,28 @@ function candidateIdentifierQuery(id) {
 }
 
 router.post('/login', staffController.login);
-router.get('/accounts', staffController.listStaffAccounts);
+router.use(authenticateStaff);
+router.get('/accounts', authenticateStaff, staffController.listStaffAccounts);
 router.get('/dashboard', staffController.dashboard);
-router.get('/chats', staffController.listChats);
-router.get('/chats/:id', staffController.getChatById);
-router.post('/chats/app-inbound', staffController.receiveBlissAppMessage);
-router.post('/chats/send', staffController.sendMessage);
-router.post('/chats/upload', staffController.uploadFile);
-router.put('/chats/assign', staffController.assignConversation);
-router.put('/chats/transfer', staffController.transferConversation);
-router.post('/chats/internal-note', staffController.addInternalNote);
-router.post('/broadcast', staffController.broadcast);
-router.post('/campaigns/send', staffController.broadcast);
+router.get('/chats', authenticateStaff, staffController.listChats);
+router.get('/chats/:id', authenticateStaff, staffController.getChatById);
+router.post('/chats/app-inbound', authenticateStaff, staffController.receiveBlissAppMessage);
+router.post('/chats/send', authenticateStaff, staffController.sendMessage);
+router.put('/chats/status', authenticateStaff, staffController.updateChatStatus);
+router.post('/chats/upload', authenticateStaff, staffController.uploadFile);
+router.put('/chats/assign', authenticateStaff, staffController.assignConversation);
+router.put('/chats/transfer', authenticateStaff, staffController.transferConversation);
+router.post('/chats/internal-note', authenticateStaff, staffController.addInternalNote);
+router.post('/broadcast', requireStaffPermission('campaigns.manage'), staffController.broadcast);
+router.post('/campaigns/send', requireStaffPermission('campaigns.manage'), staffController.broadcast);
 router.get('/notifications', staffController.fetchNotifications);
 router.get('/performance', staffController.performance);
 router.get('/staff/performance', staffController.performance);
 
-router.get('/applications', staffController.listApplications);
-router.put('/applications/:id', staffController.updateApplication);
-router.get('/candidates/pending', staffController.listPendingCandidates);
-router.put('/candidates/:id/complete', staffController.completeCandidate);
+router.get('/applications', requireStaffPermission('candidates.manage'), staffController.listApplications);
+router.put('/applications/:id', requireStaffPermission('candidates.manage'), staffController.updateApplication);
+router.get('/candidates/pending', requireStaffPermission('candidates.manage'), staffController.listPendingCandidates);
+router.put('/candidates/:id/complete', requireStaffPermission('candidates.manage'), staffController.completeCandidate);
 router.get('/employers', staffController.listEmployers);
 router.post('/employers/register', staffController.registerEmployer);
 router.get('/agents', staffController.listAgents);
@@ -64,9 +67,12 @@ router.put('/bookings/:id/status', staffController.updateBookingStatus);
 router.get('/support/tickets', staffController.listSupportTickets);
 router.post('/support/tickets/:id/respond', staffController.respondSupportTicket);
 router.get('/assignments', staffController.listAssignments);
-router.post('/marketplace/jobs', authenticateStaff, staffController.postMarketplaceJob);
-router.get('/marketplace/jobs', authenticateStaff, staffController.listJobs);
-router.patch('/marketplace/jobs/:jobId', authenticateStaff, staffController.reviewJob);
+router.post('/marketplace/jobs', requireStaffPermission('jobs.manage'), staffController.postMarketplaceJob);
+router.get('/marketplace/jobs', requireStaffPermission('jobs.manage'), staffController.listJobs);
+router.patch('/marketplace/jobs/:jobId', requireStaffPermission('jobs.manage'), staffController.reviewJob);
+
+router.put('/chats/follow-up', requireStaffPermission('followup.manage'), staffController.scheduleChatFollowUp);
+router.get('/follow-ups', requireStaffPermission('followup.manage'), staffController.listChatFollowUps);
 
 router.post('/deployments/:deploymentId/ticket', authenticateStaff, async (req, res) => {
   try {

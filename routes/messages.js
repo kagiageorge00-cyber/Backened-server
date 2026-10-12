@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const Message = require('../models/Message');
+const Conversation = require('../models/Conversation');
 const Deployment = require('../models/Deployment');
 const Candidate = require('../models/candidate');
 const Employer = require('../models/Employer');
@@ -29,11 +31,12 @@ function validateMessageContent(message) {
 }
 
 // Check if employer has active deployment with candidate
-async function canMessage(employerId, candidateId) {
+async function canMessage(employerId, candidateIds) {
   try {
+    const identifiers = Array.isArray(candidateIds) ? candidateIds : [candidateIds];
     const deployment = await Deployment.findOne({
       employerId,
-      candidateId,
+      candidateId: { $in: identifiers.filter(Boolean) },
       currentStage: { $in: ['Contract', 'Visa', 'Active', 'Deployed'] },
       adminVerified: true,
     });
@@ -42,6 +45,62 @@ async function canMessage(employerId, candidateId) {
     return false;
   }
 }
+
+// Open a candidate conversation after an admin-approved deployment.
+router.post('/conversations', employerAuth, async (req, res) => {
+  try {
+    const candidateLookup = String(req.body?.candidateId || '').trim();
+    if (!candidateLookup) {
+      return res.status(400).json({ success: false, error: 'candidateId is required' });
+    }
+
+    const candidateFilters = [
+      { uniqueCode: candidateLookup },
+      { candidateId: candidateLookup },
+    ];
+    if (mongoose.Types.ObjectId.isValid(candidateLookup)) {
+      candidateFilters.unshift({ _id: candidateLookup });
+    }
+    const candidate = await Candidate.findOne({ $or: candidateFilters }).select('_id uniqueCode candidateId fullName name');
+    if (!candidate) {
+      return res.status(404).json({ success: false, error: 'Candidate not found' });
+    }
+
+    const candidateIds = [candidate._id.toString(), candidate.uniqueCode, candidate.candidateId].filter(Boolean);
+    if (!await canMessage(req.employer.employerId, candidateIds)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Chat becomes available after the candidate has an admin-approved active deployment.',
+        requiresDeployment: true,
+      });
+    }
+
+    const participants = [req.employer.employerId, candidate._id.toString()];
+    let conversation = await Conversation.findOne({
+      participants: { $all: participants },
+      $expr: { $eq: [{ $size: '$participants' }, participants.length] },
+    });
+    if (!conversation) {
+      conversation = await Conversation.create({
+        conversationId: `CONV-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        participants,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: conversation,
+      candidate: {
+        id: candidate._id.toString(),
+        candidateCode: candidate.uniqueCode || candidate.candidateId || '',
+        name: candidate.fullName || candidate.name || 'Candidate',
+      },
+    });
+  } catch (err) {
+    console.error('Employer conversation start error:', err);
+    return res.status(500).json({ success: false, error: err.message || 'Unable to start chat' });
+  }
+});
 
 // Send message (employer to candidate)
 router.post('/send', employerAuth, async (req, res) => {
@@ -75,7 +134,28 @@ router.post('/send', employerAuth, async (req, res) => {
     }
 
     // Check if employer has active deployment with this candidate
-    const hasDeployment = await canMessage(senderId, receiverId);
+    const candidate = await Candidate.findOne({
+      $or: [
+        { uniqueCode: receiverId },
+        { candidateId: receiverId },
+        ...(mongoose.Types.ObjectId.isValid(receiverId) ? [{ _id: receiverId }] : []),
+      ],
+    }).select('_id uniqueCode candidateId');
+    const candidateIds = candidate
+      ? [candidate._id.toString(), candidate.uniqueCode, candidate.candidateId, receiverId].filter(Boolean)
+      : [receiverId];
+    const conversation = await Conversation.findOne({
+      $or: [
+        ...(mongoose.Types.ObjectId.isValid(conversationId) ? [{ _id: conversationId }] : []),
+        { conversationId },
+      ],
+      participants: { $all: [senderId, candidate?._id.toString() || receiverId] },
+    });
+    if (!conversation) {
+      return res.status(404).json({ success: false, error: 'Conversation not found' });
+    }
+
+    const hasDeployment = await canMessage(senderId, candidateIds);
     if (!hasDeployment) {
       return res.status(403).json({
         success: false,
@@ -86,12 +166,14 @@ router.post('/send', employerAuth, async (req, res) => {
 
     // Create message
     const msg = await Message.create({
-      conversationId,
+      conversationId: conversation._id.toString(),
       senderId,
       receiverId,
       message,
       senderType: 'employer',
     });
+    conversation.updatedAt = new Date();
+    await conversation.save();
 
     // Create notification for candidate
     const notificationId = `NTF-${Date.now()}-${Math.random().toString(36).substr(2, 8).toUpperCase()}`;
@@ -127,14 +209,26 @@ router.get('/:conversationId', employerAuth, async (req, res) => {
   try {
     const { conversationId } = req.params;
 
-    const messages = await Message.find({ conversationId })
+    const conversation = await Conversation.findOne({
+      $or: [
+        ...(mongoose.Types.ObjectId.isValid(conversationId) ? [{ _id: conversationId }] : []),
+        { conversationId },
+      ],
+      participants: req.employer.employerId,
+    });
+    if (!conversation) {
+      return res.status(404).json({ success: false, error: 'Conversation not found' });
+    }
+
+    const canonicalConversationId = conversation._id.toString();
+    const messages = await Message.find({ conversationId: canonicalConversationId })
       .sort({ createdAt: 1 })
       .limit(100);
 
     // Mark as read for employer
     await Message.updateMany(
       {
-        conversationId,
+        conversationId: canonicalConversationId,
         receiverId: req.employer.employerId,
         readStatus: 'unread',
       },
@@ -159,30 +253,35 @@ router.get('/employer/conversations', employerAuth, async (req, res) => {
   try {
     const employerId = req.employer.employerId;
 
-    // Get unique candidate IDs from conversations
-    const messages = await Message.find({
-      $or: [{ senderId: employerId }, { receiverId: employerId }],
-    })
-      .sort({ createdAt: -1 })
+    const storedConversations = await Conversation.find({ participants: employerId })
+      .sort({ updatedAt: -1 })
       .lean();
-
-    // Group by conversation
-    const conversationMap = new Map();
-    for (const msg of messages) {
-      const conversationId = msg.conversationId;
-      if (!conversationMap.has(conversationId)) {
-        const otherParty =
-          msg.senderId === employerId ? msg.receiverId : msg.senderId;
-        conversationMap.set(conversationId, {
-          conversationId,
-          candidateId: otherParty,
-          lastMessage: msg.message,
-          lastMessageTime: msg.createdAt,
-        });
+    const conversations = await Promise.all(storedConversations.map(async (conversation) => {
+      const candidateId = conversation.participants.find((participant) => participant !== employerId) || '';
+      const candidateFilters = [
+        { uniqueCode: candidateId },
+        { candidateId },
+      ];
+      if (mongoose.Types.ObjectId.isValid(candidateId)) {
+        candidateFilters.unshift({ _id: candidateId });
       }
-    }
-
-    const conversations = Array.from(conversationMap.values());
+      const [candidate, lastMessage] = await Promise.all([
+        Candidate.findOne({ $or: candidateFilters })
+          .select('_id uniqueCode candidateId fullName name')
+          .lean(),
+        Message.findOne({ conversationId: conversation._id.toString() })
+          .sort({ createdAt: -1 })
+          .lean(),
+      ]);
+      return {
+        conversationId: conversation._id.toString(),
+        candidateId: candidate?._id?.toString() || candidateId,
+        candidateCode: candidate?.uniqueCode || candidate?.candidateId || candidateId,
+        candidateName: candidate?.fullName || candidate?.name || candidateId,
+        lastMessage: lastMessage?.message || '',
+        lastMessageTime: lastMessage?.createdAt || conversation.updatedAt,
+      };
+    }));
 
     return res.json({
       success: true,

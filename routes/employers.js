@@ -4,6 +4,8 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const Employer = require('../models/Employer');
 const EmployerNotification = require('../models/EmployerNotification');
+const SupportTicket = require('../models/SupportTicket');
+const employerAuth = require('../middleware/employerAuth');
 const { sendEmail } = require('../email');
 const {
   notifyEmployerWelcome,
@@ -13,6 +15,43 @@ const { sendWhatsAppMessage } = require('../whatsapp');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'employer_secret_key';
 const router = express.Router();
+
+router.get('/support/tickets', employerAuth, async (req, res) => {
+  try {
+    const tickets = await SupportTicket.find({ userId: req.employer.employerId })
+      .sort({ createdAt: -1 })
+      .lean();
+    return res.json({ success: true, data: tickets });
+  } catch (error) {
+    console.error('Employer support tickets error:', error);
+    return res.status(500).json({ success: false, error: 'Unable to load support tickets' });
+  }
+});
+
+router.post('/support/tickets', employerAuth, async (req, res) => {
+  try {
+    const subject = sanitizeValue(req.body?.subject);
+    const description = sanitizeValue(req.body?.description);
+    if (!subject || !description) {
+      return res.status(400).json({ success: false, error: 'Subject and description are required' });
+    }
+    const employer = req.employer;
+    const ticket = await SupportTicket.create({
+      ticketId: `SUP-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
+      userId: employer.employerId,
+      userType: 'employer',
+      userName: employer.contactPerson || employer.fullName || employer.companyName || '',
+      userEmail: employer.email || '',
+      subject,
+      description,
+      messages: [{ from: 'customer', text: description }],
+    });
+    return res.status(201).json({ success: true, data: ticket });
+  } catch (error) {
+    console.error('Employer support ticket creation error:', error);
+    return res.status(500).json({ success: false, error: 'Unable to submit support ticket' });
+  }
+});
 
 function sanitizeValue(value) {
   return typeof value === 'string' ? value.trim() : value;

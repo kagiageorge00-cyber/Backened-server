@@ -1,14 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const Job = require('../models/Job');
-const JobBookmark = require('../models/JobBookmark');
 const JobApplication = require('../models/JobApplication');
 const Notification = require('../models/Notification');
 const Employer = require('../models/Employer');
 const employerAuth = require('../middleware/employerAuth');
 const jwt = require('jsonwebtoken');
 const { verifyEmployerToken } = require('../services/jwtService');
-const { createNotification } = require('../utils/notificationHelper');
 
 // Generate Job ID
 function generateJobId() {
@@ -19,55 +17,6 @@ function generateJobId() {
 function generateApplicationId() {
   return `APP-${Date.now()}-${Math.random().toString(36).substr(2, 8).toUpperCase()}`;
 }
-
-async function updateJobBookmark(req, res, field, value) {
-  try {
-    const { jobId } = req.params;
-    const job = await Job.findOne({ jobId, status: 'Active' }).select('jobId');
-    if (!job) {
-      return res.status(404).json({ success: false, error: 'Job not found' });
-    }
-
-    const bookmark = await JobBookmark.findOneAndUpdate(
-      { employerId: req.employer.employerId, jobId },
-      { employerId: req.employer.employerId, jobId, [field]: value },
-      { upsert: true, new: true, setDefaultsOnInsert: true },
-    );
-
-    return res.json({ success: true, data: bookmark });
-  } catch (err) {
-    console.error(`Job ${field} update error:`, err);
-    return res.status(500).json({ success: false, error: 'Unable to update job bookmark' });
-  }
-}
-
-router.get('/saved', employerAuth, async (req, res) => {
-  const items = await JobBookmark.find({ employerId: req.employer.employerId, saved: true })
-    .sort({ updatedAt: -1 });
-  return res.json({ success: true, data: items });
-});
-
-router.get('/shortlisted', employerAuth, async (req, res) => {
-  const items = await JobBookmark.find({ employerId: req.employer.employerId, shortlisted: true })
-    .sort({ updatedAt: -1 });
-  return res.json({ success: true, data: items });
-});
-
-router.put('/:jobId/saved', employerAuth, (req, res) =>
-  updateJobBookmark(req, res, 'saved', true),
-);
-
-router.delete('/:jobId/saved', employerAuth, (req, res) =>
-  updateJobBookmark(req, res, 'saved', false),
-);
-
-router.put('/:jobId/shortlisted', employerAuth, (req, res) =>
-  updateJobBookmark(req, res, 'shortlisted', true),
-);
-
-router.delete('/:jobId/shortlisted', employerAuth, (req, res) =>
-  updateJobBookmark(req, res, 'shortlisted', false),
-);
 
 // Create Job (Draft)
 router.post('/create', employerAuth, async (req, res) => {
@@ -149,20 +98,6 @@ router.post('/submit-for-review', employerAuth, async (req, res) => {
       employerVerified: req.employer.verified || false,
       status: 'PendingReview',
       postedDate: now,
-    });
-
-    await createNotification({
-      userId: req.employer.employerId,
-      userType: 'employer',
-      title: 'Job submitted for staff review',
-      message: `${jobTitle} was received and is awaiting staff approval before publication to the global marketplace.`,
-      type: 'job_submitted_for_review',
-      category: 'registration',
-      entityType: 'job',
-      entityId: job.jobId,
-      employerName: req.employer.companyName || req.employer.fullName || '',
-    }).catch((notificationError) => {
-      console.error('Job review notification failed:', notificationError.message);
     });
 
     return res.status(201).json({

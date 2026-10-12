@@ -9,11 +9,12 @@ const staffSchema = new mongoose.Schema(
     password: { type: String, required: true },
     role: { type: String, default: 'Customer Care Officer' },
     department: { type: String, default: 'Customer Care' },
+    rank: { type: String, enum: ['Staff', 'Senior Staff', 'Team Lead', 'Supervisor', 'Administrator'], default: 'Staff' },
     blissId: { type: String, default: '' },
     isActive: { type: Boolean, default: true },
     avatar: { type: String, default: '' },
     country: { type: String, default: 'Kenya' },
-    online: { type: Boolean, default: true },
+    online: { type: Boolean, default: false },
   },
   { timestamps: true }
 );
