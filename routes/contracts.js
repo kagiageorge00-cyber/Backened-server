@@ -87,6 +87,9 @@ router.post('/generate', async (req, res) => {
     });
 
     await contract.save();
+    deployment.currentStage = 'Contract';
+    deployment.contractStatus = 'generated';
+    await deployment.save();
 
     // Audit: contract generated
     try {

@@ -7,10 +7,14 @@ const Employer = require('../models/Employer');
 const StaffConversation = require('../models/StaffConversation');
 const StaffMessage = require('../models/StaffMessage');
 const StaffNotification = require('../models/StaffNotification');
+const WhatsAppContact = require('../models/WhatsAppContact');
+const WhatsAppOptOut = require('../models/WhatsAppOptOut');
 const SupportTicket = require('../models/SupportTicket');
 const { ingestIncomingBlissAppMessage, backfillStaffConversationQueues } = require('../services/staffOperationsBridge');
 const { createNotification } = require('../utils/notificationHelper');
 const { permissionsFor } = require('../middleware/staffPermissions');
+const { sendWhatsAppMessage } = require('../whatsapp');
+const { sendPushForNotification } = require('../services/pushNotificationDelivery');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'bliss-staff-secret';
 
@@ -1018,17 +1022,17 @@ async function receiveBlissAppMessage(req, res) {
 
 async function sendMessage(req, res) {
   try {
-    const { conversationId, sender, text, senderName } = req.body;
-    if (!conversationId || !sender || !text) {
-      return res.status(400).json({ success: false, error: 'conversationId, sender and text are required' });
+    const { conversationId, text } = req.body;
+    if (!conversationId || !text || !text.trim()) {
+      return res.status(400).json({ success: false, error: 'conversationId and text are required' });
     }
     const accessibleConversation = await findAccessibleConversation(req, conversationId);
     if (!accessibleConversation) return res.status(404).json({ success: false, error: 'Conversation not found' });
 
-    const authenticatedSender = req.staff.fullName || req.staff.email || sender;
+    const authenticatedSender = req.staff.fullName || req.staff.email || 'Staff';
     const message = mongoose.connection.readyState === 1
-      ? await StaffMessage.create({ conversationId, sender: authenticatedSender, text, type: 'text' })
-      : { conversationId, sender: authenticatedSender, text, type: 'text', read: false, createdAt: new Date().toISOString() };
+      ? await StaffMessage.create({ conversationId, sender: 'staff', senderName: authenticatedSender, text, type: 'text' })
+      : { conversationId, sender: 'staff', senderName: authenticatedSender, text, type: 'text', read: false, createdAt: new Date().toISOString() };
 
     if (mongoose.connection.readyState !== 1) {
       memoryState.messages.push(message);
@@ -1046,13 +1050,61 @@ async function sendMessage(req, res) {
       );
     }
 
+    const pushIds = [accessibleConversation.blissId, conversationId]
+      .map((value) => String(value || '').trim())
+      .filter(Boolean);
+    const pushDelivery = await sendPushForNotification({
+      userId: pushIds[0],
+      userIds: pushIds.slice(1),
+      userType: 'candidate',
+      notificationId: `CHAT-${message._id?.toString?.() || Date.now()}`,
+      notificationType: 'chat_reply',
+      title: `New reply from ${authenticatedSender}`,
+      message: String(text).trim(),
+      entityType: 'conversation',
+      entityId: conversationId,
+    }).catch((error) => ({ success: false, sent: 0, failed: 0, error: error.message }));
+
+    let whatsappDelivery = { success: false, skipped: true };
+    const customerPhone = String(accessibleConversation.customerPhone || '').trim();
+    if (customerPhone) {
+      const phoneDigits = customerPhone.replace(/\D/g, '').replace(/^00/, '');
+      const phoneForms = [customerPhone, phoneDigits, `+${phoneDigits}`];
+      const [contact, optedOut] = await Promise.all([
+        WhatsAppContact.findOne({
+          phoneNumber: { $in: phoneForms },
+          optedIn: true,
+          optedOut: false,
+        }).select('phoneNumber').lean(),
+        WhatsAppOptOut.findOne({ phoneNumber: { $in: phoneForms } }).select('_id').lean(),
+      ]);
+
+      if (optedOut) {
+        whatsappDelivery = { success: false, error: 'Customer has opted out of WhatsApp messages.' };
+      } else if (!contact) {
+        whatsappDelivery = { success: false, error: 'No WhatsApp opt-in contact exists for this number.' };
+      } else {
+        whatsappDelivery = await sendWhatsAppMessage(
+          contact.phoneNumber,
+          `${authenticatedSender} replied to your Bliss Connect message: ${String(text).trim()}`,
+        );
+      }
+    }
+
     if (mongoose.connection.readyState === 1) {
       await StaffNotification.create({ title: 'Staff reply sent', body: `${authenticatedSender} replied to ${conversationId}`, type: 'chat' });
     } else {
       memoryState.notifications.push({ title: 'Staff reply sent', body: `${authenticatedSender} replied to ${conversationId}`, type: 'chat', read: false, createdAt: new Date().toISOString() });
     }
 
-    return res.status(201).json({ success: true, data: message });
+    return res.status(201).json({
+      success: true,
+      data: message,
+      channels: {
+        push: pushDelivery,
+        whatsapp: whatsappDelivery,
+      },
+    });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
   }
@@ -1121,9 +1173,24 @@ async function listChatFollowUps(req, res) {
 
 async function broadcast(req, res) {
   try {
-    const { subject, message, targetGroup = 'all_contacted_users' } = req.body || {};
+    const {
+      subject,
+      message,
+      templateName,
+      templateParameters = [],
+      targetGroup = 'all_contacted_users',
+    } = req.body || {};
     if (!subject?.trim() || !message?.trim()) {
       return res.status(400).json({ success: false, error: 'Campaign subject and message are required' });
+    }
+    if (!templateName?.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: 'An approved WhatsApp template name is required for a campaign.',
+      });
+    }
+    if (!Array.isArray(templateParameters)) {
+      return res.status(400).json({ success: false, error: 'templateParameters must be an array of strings' });
     }
     if (mongoose.connection.readyState !== 1) {
       return res.status(503).json({ success: false, error: 'Campaign delivery requires the database and WhatsApp campaign service' });
@@ -1138,7 +1205,11 @@ async function broadcast(req, res) {
       return res.status(400).json({ success: false, error: 'Unsupported campaign audience' });
     }
     const campaign = await campaignService.createCampaign({
-      name: subject.trim(), message: message.trim(), audienceTags: tagsByAudience[targetGroup],
+      name: subject.trim(),
+      message: message.trim(),
+      templateName: templateName.trim(),
+      templateParameters: templateParameters.map((value) => String(value)),
+      audienceTags: tagsByAudience[targetGroup],
       createdBy: req.staff.email || req.staff.sub || 'staff',
     });
     try {

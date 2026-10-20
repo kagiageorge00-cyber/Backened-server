@@ -123,10 +123,20 @@ async function createNotification({
 
   const whatsappMessage = `📢 *${title}*\n\n${message}`;
 
+  const channelDeliveries = {
+    whatsapp: { success: false },
+    email: { success: false },
+  };
+
   if (finalPhoneNumber) {
     try {
-      await sendWhatsAppMessage(finalPhoneNumber, whatsappMessage);
-      console.log(`✅ WhatsApp notification sent to ${finalPhoneNumber}`);
+      const result = await sendWhatsAppMessage(finalPhoneNumber, whatsappMessage);
+      channelDeliveries.whatsapp = {
+        success: result?.success === true,
+        ...(result?.error ? { error: result.error } : {}),
+        ...(result?.messageId ? { messageId: result.messageId } : {}),
+      };
+      if (result?.success) console.log('[WHATSAPP] Provider accepted notification'); else console.warn('[WHATSAPP] Notification rejected:', result?.error);
     } catch (err) {
       console.log(`⚠️ WhatsApp notification failed for ${finalPhoneNumber}: ${err.message}`);
     }
@@ -144,13 +154,15 @@ async function createNotification({
         </div>
       `;
       
-      await sendEmail(finalEmail, subject, message, htmlBody);
+      const result = await sendEmail(finalEmail, subject, message, htmlBody);
+      channelDeliveries.email = { success: result?.success !== false };
       console.log(`✅ Email notification sent to ${finalEmail}`);
     } catch (err) {
       console.log(`⚠️ Email notification failed for ${finalEmail}: ${err.message}`);
     }
   }
 
+  notification.$locals.channelDeliveries = channelDeliveries;
   return notification;
 }
 

@@ -4,8 +4,7 @@ const { randomUUID } = require('crypto');
 const Notification = require('../models/Notification');
 const { createNotification } = require('../utils/notificationHelper');
 const PushToken = require('../models/PushToken');
-const { sendWhatsAppMessage } = require('../whatsapp');
-const { sendEmail } = require('../email');
+const fcmService = require('../services/fcmService');
 
 function buildNotificationPayload(body) {
   const {
@@ -106,38 +105,18 @@ router.post('/send', async (req, res) => {
     if (note) {
       channels.web.success = true;
       channels.web.notificationId = note.notificationId;
-    }
-
-    if (email) {
-      try {
-        await sendEmail(
-          email,
-          req.body.subject || title,
-          message,
-          html || `<p>${message}</p>`
-        );
-        channels.email.success = true;
-      } catch (err) {
-        console.error('Email send failed in /send:', err.message);
-      }
-    }
-
-    if (phoneNumber) {
-      try {
-        await sendWhatsAppMessage(phoneNumber, `📢 ${title}\n\n${message}`);
-        channels.whatsapp.success = true;
-      } catch (err) {
-        console.error('WhatsApp send failed in /send:', err.message);
-      }
-    }
-
-    if (payload.userId) {
-      try {
-        const tokens = await PushToken.find({ userId: payload.userId });
-        channels.push.success = true;
-        channels.push.sent = tokens.length;
-      } catch (err) {
-        console.error('Push token lookup failed in /send:', err.message);
+      const deliveries = note.$locals?.channelDeliveries || {};
+      channels.email = deliveries.email || channels.email;
+      channels.whatsapp = deliveries.whatsapp || channels.whatsapp;
+      const push = note.$locals?.pushDelivery;
+      if (push) {
+        channels.push = {
+          success: push.success === true,
+          sent: push.sent || 0,
+          failed: push.failed || 0,
+          ...(push.error ? { error: push.error } : {}),
+          ...(push.errors?.length ? { errors: push.errors } : {}),
+        };
       }
     }
 
@@ -235,9 +214,14 @@ router.get('/user/:userType/:userId', async (req, res) => {
 // Register push token (device)
 router.post('/register-token', async (req, res) => {
   try {
-    const { userId, userType, token, platform } = req.body;
+    const { userId, userType, token, platform, marketingOptIn } = req.body;
     if (!userId || !token) return res.status(400).json({ success: false, error: 'userId and token are required' });
-    await PushToken.findOneAndUpdate({ userId, token }, { $set: { userType, platform, token, userId } }, { upsert: true });
+    const update = { userType, platform, token, userId };
+    if (typeof marketingOptIn === 'boolean') {
+      update.marketingOptIn = marketingOptIn;
+      update.marketingOptInAt = marketingOptIn ? new Date() : null;
+    }
+    await PushToken.findOneAndUpdate({ userId, token }, { $set: update }, { upsert: true });
     return res.json({ success: true, message: 'Token registered' });
   } catch (err) {
     console.error('Register token error:', err);
@@ -251,9 +235,11 @@ router.post('/send-push', async (req, res) => {
     const { userId, title, message } = req.body;
     if (!userId || !message) return res.status(400).json({ success: false, error: 'userId and message required' });
     const tokens = await PushToken.find({ userId });
-    // TODO: integrate with FCM/APNs production provider
-    console.log('Would send push to tokens:', tokens.map(t => t.token));
-    return res.json({ success: true, sent: tokens.length });
+    const result = await fcmService.sendToTokens(tokens, {
+      title: title || 'Bliss Connect',
+      message,
+    });
+    return res.json({ success: result.failed === 0 && result.sent > 0, ...result });
   } catch (err) {
     console.error('Send push error:', err);
     return res.status(500).json({ success: false, error: err.message });

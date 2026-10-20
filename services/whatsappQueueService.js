@@ -106,7 +106,7 @@ function getRedisConnection() {
     return redisConnection;
   }
 
-  redisConnection = new Redis({
+  const redisOptions = {
     host: process.env.REDIS_HOST || 'localhost',
     port: process.env.REDIS_PORT || 6379,
     enableOfflineQueue: false,
@@ -114,7 +114,10 @@ function getRedisConnection() {
     connectTimeout: 2000,
     maxRetriesPerRequest: 1,
     retryStrategy: () => null,
-  });
+  };
+  redisConnection = process.env.REDIS_URL
+    ? new Redis(process.env.REDIS_URL, redisOptions)
+    : new Redis(redisOptions);
 
   redisConnection.on('error', err => {
     if (!redisErrorReported) {

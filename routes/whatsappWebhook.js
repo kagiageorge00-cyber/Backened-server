@@ -178,7 +178,10 @@ async function handleStatusUpdate(status, messageId, phoneNumber, timestamp) {
     const queueUpdate = await WhatsAppQueue.findOneAndUpdate(
       { providerMessageId: messageId },
       {
-        status: statusType === 'delivered' ? 'delivered' : statusType === 'read' ? 'read' : 'sent',
+        status: ['sent', 'delivered', 'read', 'failed'].includes(statusType) ? statusType : 'sent',
+        ...(statusType === 'failed' ? { failedAt: new Date(), lastError: status.errors?.[0]?.title || status.errors?.[0]?.message || '' } : {}),
+        ...(statusType === 'delivered' ? { deliveredAt: new Date() } : {}),
+        ...(statusType === 'sent' ? { sentAt: new Date() } : {}),
         updatedAt: new Date(),
       },
       { new: true }
@@ -188,7 +191,11 @@ async function handleStatusUpdate(status, messageId, phoneNumber, timestamp) {
     await WhatsAppMessageLog.findOneAndUpdate(
       { providerMessageId: messageId },
       {
-        status: statusType,
+        status: ['sent', 'delivered', 'read', 'failed'].includes(statusType) ? statusType : 'sent',
+        phoneNumber: phoneNumber || 'unknown',
+        direction: 'outbound',
+        messageType: 'text',
+        error: status.errors?.[0]?.title || status.errors?.[0]?.message || '',
         updatedAt: new Date(),
         eventType: `message_${statusType}`,
       },
@@ -262,6 +269,18 @@ router.post('/webhook', async (req, res) => {
             // Handle message status updates
             if (changeValue.statuses && Array.isArray(changeValue.statuses)) {
               for (const status of changeValue.statuses) {
+                if (status.status === 'failed') {
+                  console.error('[whatsapp-webhook] Meta reports message delivery failed', {
+                    messageId: status.id,
+                    recipientId: status.recipient_id,
+                    errors: (status.errors || []).map((error) => ({
+                      code: error.code,
+                      title: error.title,
+                      message: error.message,
+                      details: error.error_data?.details,
+                    })),
+                  });
+                }
                 await handleStatusUpdate(
                   status,
                   status.id,

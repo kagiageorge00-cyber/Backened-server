@@ -116,7 +116,7 @@ function validatePhoneNumber(phoneNumber, defaultCountry = 'KE') {
  */
 async function createOrUpdateContact(contactData) {
   try {
-    const { fullName, phoneNumber, source = 'manual', tags = [] } = contactData;
+    const { fullName, phoneNumber, source = 'manual', tags = [], optedIn = false } = contactData;
 
     // Validate phone number
     const validation = validatePhoneNumber(phoneNumber);
@@ -132,6 +132,10 @@ async function createOrUpdateContact(contactData) {
       contact.fullName = fullName || contact.fullName;
       contact.tags = [...new Set([...contact.tags, ...tags])]; // Merge tags
       contact.source = source;
+      if (optedIn === true) {
+        contact.optedIn = true;
+        contact.optedOut = false;
+      }
       await contact.save();
       return { contact, isNew: false };
     } else {
@@ -141,7 +145,8 @@ async function createOrUpdateContact(contactData) {
         phoneNumber: validation.number,
         source,
         tags,
-        optedIn: true,
+        // A phone number alone is not marketing consent.
+        optedIn: optedIn === true,
         optedOut: false,
       });
       await contact.save();
@@ -199,6 +204,7 @@ async function bulkImportContacts(contacts, tags = []) {
         phoneNumber: validation.number,
         source: contact.source || 'bulk_import',
         tags: [...(contact.tags || []), ...tags],
+        optedIn: ['true', 'yes', '1'].includes(String(contact.opted_in || contact.optedIn || '').trim().toLowerCase()),
       });
 
       results.successful++;

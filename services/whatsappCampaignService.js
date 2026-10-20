@@ -16,7 +16,7 @@ function getRedisClient() {
     return redisClient;
   }
 
-  redisClient = new redis({
+  const redisOptions = {
     host: process.env.REDIS_HOST || 'localhost',
     port: process.env.REDIS_PORT || 6379,
     enableOfflineQueue: false,
@@ -24,7 +24,10 @@ function getRedisClient() {
     connectTimeout: 1500,
     maxRetriesPerRequest: 1,
     retryStrategy: () => null,
-  });
+  };
+  redisClient = process.env.REDIS_URL
+    ? new redis(process.env.REDIS_URL, redisOptions)
+    : new redis(redisOptions);
 
   redisClient.on('error', err => {
     if (!redisErrorReported) {
@@ -208,6 +211,9 @@ async function queueCampaign(campaignId, options = {}) {
     if (campaign.status !== 'draft') {
       throw new Error('Campaign must be in draft status to queue');
     }
+    if (!campaign.templateName?.trim()) {
+      throw new Error('An approved WhatsApp template is required for proactive campaigns.');
+    }
 
     // Get audience based on tags (ensure opted-in and not opted-out)
     let query = { optedOut: false, optedIn: true };
@@ -274,13 +280,15 @@ async function launchCampaign(campaignId) {
       throw new Error('Campaign must be queued before launching');
     }
 
-    // Update status
+    // Do not report a running campaign when Redis cannot reach its worker.
+    const notified = await notifyCampaignLaunch(campaignId);
+    if (!notified) {
+      throw new Error('WhatsApp campaign queue is unavailable. Check the Redis connection.');
+    }
+
     campaign.status = 'running';
     campaign.updatedAt = new Date();
     await campaign.save();
-
-    // Notify queue worker without failing the launch if Redis is unavailable
-    await notifyCampaignLaunch(campaignId);
 
     return {
       campaignId,
@@ -361,8 +369,8 @@ async function deleteCampaign(campaignId) {
       throw new Error('Campaign not found');
     }
 
-    if (campaign.status !== 'draft') {
-      throw new Error('Only draft campaigns can be deleted');
+    if (!['draft', 'queued'].includes(campaign.status)) {
+      throw new Error('Only draft or unlaunched queued campaigns can be deleted');
     }
 
     // Delete all queue entries

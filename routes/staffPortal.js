@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Candidate = require('../models/candidate');
 const Deployment = require('../models/Deployment');
+const PaymentRecord = require('../models/PaymentRecord');
 const Ticket = require('../models/Ticket');
 const mongoose = require('mongoose');
 const authenticateStaff = require('../middleware/staffAuth');
@@ -54,6 +55,30 @@ router.get('/notifications', staffController.fetchNotifications);
 router.get('/performance', staffController.performance);
 router.get('/staff/performance', staffController.performance);
 
+router.post('/deployments/:deploymentId/payment/approve', async (req, res) => {
+  try {
+    const deployment = await Deployment.findOne({ deploymentId: req.params.deploymentId });
+    if (!deployment) return res.status(404).json({ success: false, error: 'Deployment not found' });
+    if (deployment.paymentStatus !== 'submitted') {
+      return res.status(400).json({ success: false, error: 'No submitted payment is awaiting approval' });
+    }
+    deployment.paymentStatus = 'verified';
+    deployment.adminVerified = true;
+    deployment.verifiedAt = new Date();
+    deployment.verifiedBy = req.staff.staffId || req.staff.id || req.staff.email || 'staff';
+    deployment.paid = true;
+    deployment.documentsReleased = true;
+    deployment.documentsReleasedAt = new Date();
+    deployment.currentStage = 'Payment';
+    await deployment.save();
+    await PaymentRecord.updateMany({ deploymentId: deployment.deploymentId }, { paymentStatus: 'verified', paidAt: new Date() });
+    return res.json({ success: true, data: deployment });
+  } catch (err) {
+    console.error('Deployment payment approval error:', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 router.get('/applications', requireStaffPermission('candidates.manage'), staffController.listApplications);
 router.put('/applications/:id', requireStaffPermission('candidates.manage'), staffController.updateApplication);
 router.get('/candidates/pending', requireStaffPermission('candidates.manage'), staffController.listPendingCandidates);
@@ -91,8 +116,14 @@ router.post('/deployments/:deploymentId/ticket', authenticateStaff, async (req, 
     if (!deployment) {
       return res.status(404).json({ success: false, error: 'Deployment not found' });
     }
+    if (!deployment.isInternational) {
+      return res.status(400).json({ success: false, error: 'Flight tickets are not required for local deployments' });
+    }
     if (deployment.visaStatus !== 'submitted') {
       return res.status(400).json({ success: false, error: 'Visa must be submitted before staff can upload the flight ticket' });
+    }
+    if (deployment.paymentStatus !== 'verified' || !deployment.documentsReleased) {
+      return res.status(400).json({ success: false, error: 'Payment must be verified before travel arrangements' });
     }
     if (!airline || !flightNumber || !departureAirport || !arrivalAirport || !ticketPdfUrl) {
       return res.status(400).json({ success: false, error: 'Complete flight ticket details are required' });
@@ -128,6 +159,9 @@ router.post('/deployments/:deploymentId/complete', authenticateStaff, async (req
     const deployment = await Deployment.findOne({ deploymentId });
     if (!deployment) {
       return res.status(404).json({ success: false, error: 'Deployment not found' });
+    }
+    if (!deployment.isInternational) {
+      return res.status(400).json({ success: false, error: 'Local deployments do not use the travel activation flow' });
     }
     if (deployment.ticketStatus !== 'uploaded' || deployment.visaStatus !== 'submitted') {
       return res.status(400).json({ success: false, error: 'Visa and flight ticket must be uploaded before completion' });

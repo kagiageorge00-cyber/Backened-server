@@ -1,4 +1,3 @@
-const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 require('dotenv').config();
 
 const whatsappCloudService = (() => {
@@ -10,15 +9,6 @@ const whatsappCloudService = (() => {
   }
 })();
 
-const WHATSAPP_PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID;
-const WHATSAPP_ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
-const CLOUD_CONFIGURED = Boolean(
-  WHATSAPP_PHONE_NUMBER_ID &&
-  WHATSAPP_ACCESS_TOKEN &&
-  whatsappCloudService &&
-  whatsappCloudService.validateConfig()
-);
-
 async function sendWhatsAppMessage(to, message) {
   if (!to || !message) {
     console.warn('[WHATSAPP] Missing recipient or message');
@@ -29,22 +19,22 @@ async function sendWhatsAppMessage(to, message) {
     .replace(/[\s\-()\.\+]/g, '')
     .replace(/^00/, '');
 
-  if (CLOUD_CONFIGURED) {
-    try {
-      const result = await whatsappCloudService.sendTextMessage(cleanedPhone, message);
-      if (result && result.success) {
-        return result;
-      }
-      throw new Error(result?.error || 'WhatsApp Cloud send failed');
-    } catch (err) {
-      console.error('[WHATSAPP] Cloud send failed:', err.message);
-      // fall through to fallback behavior
-    }
+  if (!whatsappCloudService || !whatsappCloudService.validateConfig()) {
+    const error = 'WhatsApp Cloud API is not configured. Check WHATSAPP_PHONE_NUMBER_ID and WHATSAPP_ACCESS_TOKEN.';
+    console.error(`[WHATSAPP] ${error}`);
+    return { success: false, error };
   }
 
-  console.log('[WHATSAPP] Cloud API not configured or failed, falling back to test mode');
-  console.log('[WHATSAPP] Fallback message:', { to: cleanedPhone, message });
-  return { success: true, fallback: true, error: 'Fallback mode, message logged' };
+  try {
+    const result = await whatsappCloudService.sendTextMessage(cleanedPhone, message);
+    if (result?.success === true) return result;
+    const error = result?.error || 'WhatsApp Cloud API rejected the message.';
+    console.error('[WHATSAPP] Cloud send failed:', error);
+    return { success: false, error, ...(result?.data ? { data: result.data } : {}) };
+  } catch (err) {
+    console.error('[WHATSAPP] Cloud send failed:', err.message);
+    return { success: false, error: err.message };
+  }
 }
 
 module.exports = { sendWhatsAppMessage };

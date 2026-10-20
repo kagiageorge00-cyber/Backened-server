@@ -10,15 +10,14 @@ require('dotenv').config();
 const PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID;
 const WABA_ID = process.env.WHATSAPP_WABA_ID;
 const ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
-const API_VERSION = 'v20.0';
+const API_VERSION = process.env.WHATSAPP_API_VERSION || 'v26.0';
 const API_BASE_URL = process.env.WHATSAPP_API_BASE_URL || `https://graph.facebook.com/${API_VERSION}`;
-const DEBUG_API_BASE_URL = 'https://graph.facebook.com/v23.0';
+const DEBUG_API_BASE_URL = API_BASE_URL;
 
 // Validate configuration
 function validateConfig() {
   const missing = [];
   if (!PHONE_NUMBER_ID) missing.push('WHATSAPP_PHONE_NUMBER_ID');
-  if (!WABA_ID) missing.push('WHATSAPP_WABA_ID');
   if (!ACCESS_TOKEN) missing.push('WHATSAPP_ACCESS_TOKEN');
   
   if (missing.length > 0) {
@@ -26,6 +25,14 @@ function validateConfig() {
     return false;
   }
   return true;
+}
+
+function validateWabaConfig() {
+  if (!WABA_ID) {
+    console.warn('WhatsApp template management requires WHATSAPP_WABA_ID');
+    return false;
+  }
+  return validateConfig();
 }
 
 async function fetchGraphApi(url) {
@@ -533,7 +540,7 @@ async function sendTemplateMessage(phoneNumber, templateName, parameters = [], l
 
 async function createMessageTemplate(name, bodyText, languageCode = 'en_US', category = 'TRANSACTIONAL', headerText = null, footerText = null) {
   try {
-    if (!validateConfig()) {
+    if (!validateWabaConfig()) {
       throw new Error('WhatsApp Cloud API not configured');
     }
 

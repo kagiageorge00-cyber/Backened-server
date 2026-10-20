@@ -101,7 +101,7 @@ async function importContacts(req, res) {
  */
 async function createContact(req, res) {
   try {
-    const { fullName, phoneNumber, tags = [] } = req.body;
+    const { fullName, phoneNumber, tags = [], optedIn = false } = req.body;
 
     if (!fullName || !phoneNumber) {
       return res.status(400).json({ success: false, error: 'Name and phone number are required' });
@@ -112,6 +112,7 @@ async function createContact(req, res) {
       phoneNumber,
       source: 'manual',
       tags: Array.isArray(tags) ? tags : [tags],
+      optedIn: optedIn === true,
     });
 
     res.status(201).json({ success: true, data: result.contact, isNew: result.isNew });

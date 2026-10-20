@@ -43,6 +43,21 @@ const employerNotificationSchema = new mongoose.Schema(
   }
 );
 
+employerNotificationSchema.post('save', async function sendFcmAfterSave(notification) {
+  try {
+    const { sendPushForEmployerNotification } = require('../services/pushNotificationDelivery');
+    notification.$locals.pushDelivery = await sendPushForEmployerNotification(notification);
+  } catch (error) {
+    notification.$locals.pushDelivery = {
+      success: false,
+      sent: 0,
+      failed: 0,
+      error: error.message,
+    };
+    console.error('[FCM] Employer notification push failed:', error.message);
+  }
+});
+
 const EmployerNotification =
   mongoose.models.EmployerNotification ||
   mongoose.model('EmployerNotification', employerNotificationSchema);

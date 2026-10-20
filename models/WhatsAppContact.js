@@ -11,7 +11,7 @@ const whatsappContactSchema = new mongoose.Schema({
   },
   source: { type: String, default: 'manual' },
   tags: [{ type: String, trim: true }],
-  optedIn: { type: Boolean, default: true },
+  optedIn: { type: Boolean, default: false },
   optedOut: { type: Boolean, default: false },
   lastMessageSentAt: { type: Date, default: null },
   lastReplyAt: { type: Date, default: null },

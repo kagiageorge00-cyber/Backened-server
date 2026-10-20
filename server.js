@@ -1131,18 +1131,47 @@ app.use((req, res) => {
 // ======================
 let httpServer;
 let socketManager;
+let whatsappQueueInterval;
+
+async function startWhatsAppQueueWorker() {
+  if (mongoose.connection.readyState !== 1) return;
+  if (!process.env.REDIS_URL && !process.env.REDIS_HOST) {
+    logger.warn('WhatsApp campaign worker not started: REDIS_URL or REDIS_HOST is not configured');
+    return;
+  }
+
+  try {
+    const queueService = require('./services/whatsappQueueService');
+    const worker = await queueService.getMessageWorker();
+    if (!worker) {
+      logger.warn('WhatsApp campaign worker could not connect to Redis');
+      return;
+    }
+    whatsappQueueInterval = setInterval(() => {
+      queueService.processQueue().catch((error) => {
+        logger.error('WhatsApp campaign queue poll failed:', error.message);
+      });
+    }, 5000);
+    whatsappQueueInterval.unref?.();
+    logger.info('WhatsApp campaign worker started');
+  } catch (error) {
+    logger.warn('WhatsApp campaign worker failed to start:', error.message);
+  }
+}
 
 async function startServer() {
   const PORT = process.env.PORT || 3000;
+  const mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI;
 
   try {
-    if (!process.env.MONGO_URI) {
+    if (!mongoUri) {
       console.warn('⚠️ MONGO_URI missing; continuing without MongoDB');
     } else {
-      await mongoose.connect(process.env.MONGO_URI, {
+      await mongoose.connect(mongoUri, {
         serverSelectionTimeoutMS: 5000,
       });
       logger.info('MongoDB Connected');
+      await startWhatsAppQueueWorker();
     }
   } catch (error) {
     console.warn('⚠️ MongoDB connection failed; continuing without database:', error.message);

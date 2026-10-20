@@ -27,7 +27,7 @@ router.post('/create', async (req, res) => {
       return res.status(403).json({ success: false, error: 'Employer account is not verified or active' });
     }
 
-    const { candidateId, candidateName, candidateCountry, jobPosition } = req.body;
+    const { candidateId, candidateName, candidateCountry, jobPosition, isInternational } = req.body;
     if (!candidateId) return res.status(400).json({ success: false, error: 'candidateId required' });
 
     const candidate = await Candidate.findOne({
@@ -54,6 +54,7 @@ router.post('/create', async (req, res) => {
       candidateName: candidateName || candidate.fullName || candidate.candidateName,
       candidateCountry,
       jobPosition,
+      isInternational: isInternational === true || isInternational === 'true',
     });
     return res.status(201).json({ success: true, data: dep });
   } catch (err) {
@@ -77,6 +78,19 @@ router.get('/employer/:employerId', async (req, res) => {
   }
 });
 
+router.get('/:deploymentId', async (req, res) => {
+  try {
+    const deployment = await Deployment.findOne({ deploymentId: req.params.deploymentId });
+    if (!deployment) return res.status(404).json({ success: false, error: 'Deployment not found' });
+    if (deployment.employerId !== req.employer.employerId) {
+      return res.status(403).json({ success: false, error: 'Employer access denied' });
+    }
+    return res.json({ success: true, data: deployment });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 router.patch('/:deploymentId/status', async (req, res) => {
   try {
     const employer = req.employer;
@@ -96,12 +110,12 @@ router.patch('/:deploymentId/status', async (req, res) => {
   }
 });
 
-// Simulate deployment payment and create payment record + contract
+// Submit payment details for staff verification. Submission does not release documents.
 router.post('/:deploymentId/pay', async (req, res) => {
   try {
     const employer = req.employer;
     const { deploymentId } = req.params;
-    const { amount, paymentMethod, grossSalary, candidateName } = req.body;
+    const { amount, paymentMethod, grossSalary, candidateName, referenceNumber, receiptUrl } = req.body;
     if (!deploymentId || !amount) return res.status(400).json({ success: false, error: 'deploymentId and amount required' });
 
     const dep = await Deployment.findOne({ deploymentId });
@@ -111,8 +125,18 @@ router.post('/:deploymentId/pay', async (req, res) => {
     }
 
     const PaymentRecord = require('../models/PaymentRecord');
-    const Contract = require('../models/Contract');
-    const fees = calculateDeploymentFees(grossSalary || dep.deploymentFee || amount);
+    const isInternational = req.body.isInternational === true || req.body.isInternational === 'true';
+    const isHousemaid = /house\s*maid|domestic worker|domestic helper/i.test(dep.jobPosition || '');
+    if (paymentMethod === 'paypal' && isInternational && !isHousemaid) {
+      return res.status(400).json({ success: false, error: 'PayPal checkout is only available for local deployments and international housemaid deployments' });
+    }
+    const localFees = calculateDeploymentFees(grossSalary || dep.deploymentFee || amount);
+    const fees = isInternational
+      ? { ...localFees, totalDue: Number(amount), currency: 'USD' }
+      : localFees;
+    if (!referenceNumber || !receiptUrl) {
+      return res.status(400).json({ success: false, error: 'Payment reference and receipt URL are required' });
+    }
 
     const paymentId = `PAY-${Date.now()}`;
     const pr = await PaymentRecord.create({
@@ -120,46 +144,22 @@ router.post('/:deploymentId/pay', async (req, res) => {
       deploymentId,
       employerId: employer.employerId,
       amount: Number(amount || fees.totalDue),
+      currency: fees.currency,
       paymentMethod: paymentMethod || 'bank_transfer',
-      paymentStatus: 'completed',
-      paidAt: new Date(),
+      paymentStatus: 'submitted',
+      transactionReference: referenceNumber,
     });
 
-    dep.paid = true;
-    dep.paymentStatus = 'verified';
-    dep.documentsReleased = true;
-    dep.documentsReleasedAt = new Date();
+    dep.paid = false;
+    dep.paymentStatus = 'submitted';
+    dep.referenceNumber = referenceNumber;
+    dep.receiptUrl = receiptUrl;
     dep.currentStage = 'Payment';
     dep.deploymentFee = fees.totalDue;
     dep.paymentMethod = paymentMethod || 'bank_transfer';
     await dep.save();
 
-    const candidate = await Candidate.findOne({
-      $or: [
-        { candidateId: dep.candidateId },
-        { uniqueCode: dep.candidateId },
-        { phone: dep.candidateId },
-        { email: dep.candidateId },
-      ],
-    });
-    if (candidate) {
-      candidate.status = 'deployed';
-      candidate.currentStatus = 'Deployed';
-      candidate.contactReleased = true;
-      await candidate.save();
-    }
-
-    const contract = await Contract.create({
-      contractId: `CTR-${Date.now()}`,
-      deploymentId,
-      employerId: employer.employerId,
-      candidateId: dep.candidateId,
-      candidateName: candidateName || candidate?.fullName || dep.candidateName || 'Candidate',
-      employerName: employer.companyName || employer.fullName || 'Employer',
-      contractStatus: 'pending_employer_signature',
-    });
-
-    return res.json({ success: true, payment: pr, contract, deployment: dep, fees, summary: buildDeploymentSummary({ candidateName: candidateName || candidate?.fullName || dep.candidateName || 'Candidate', grossSalary: grossSalary || dep.deploymentFee || amount, paymentMethod: paymentMethod || 'bank_transfer' }) });
+    return res.json({ success: true, payment: pr, deployment: dep, fees, summary: buildDeploymentSummary({ candidateName: candidateName || dep.candidateName || 'Candidate', grossSalary: grossSalary || dep.deploymentFee || amount, paymentMethod: paymentMethod || 'bank_transfer' }) });
   } catch (err) {
     console.error('Deployment pay error:', err);
     return res.status(500).json({ success: false, error: err.message });
@@ -296,6 +296,9 @@ router.post('/:deploymentId/visa', visaUpload.single('visaFile'), employerAuth, 
     if (!dep) return res.status(404).json({ success: false, error: 'Deployment not found' });
     if (dep.employerId !== employer.employerId) {
       return res.status(403).json({ success: false, error: 'Employer access denied' });
+    }
+    if (!dep.isInternational) {
+      return res.status(400).json({ success: false, error: 'Visa processing is not required for local deployments' });
     }
 
     const visaPath = req.file.secure_url || req.file.path;

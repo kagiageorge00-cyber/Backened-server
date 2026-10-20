@@ -5,6 +5,8 @@ const pushTokenSchema = new mongoose.Schema({
   userType: String,
   token: String,
   platform: String,
+  marketingOptIn: { type: Boolean, default: false },
+  marketingOptInAt: Date,
   createdAt: { type: Date, default: Date.now },
 });
 

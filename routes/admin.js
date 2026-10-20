@@ -1237,7 +1237,6 @@ router.get('/whatsapp/verify-access', requireAdminAuth, async (req, res) => {
     const accessReport = await verifyWhatsAppAccess();
 
     console.log('🔎 WhatsApp verify-access', {
-      tokenPrefix: process.env.WHATSAPP_ACCESS_TOKEN?.slice(0, 10),
       wabaId: process.env.WHATSAPP_WABA_ID,
       phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID,
     });
@@ -1312,7 +1311,7 @@ router.post('/whatsapp/send', requireAdminAuth, async (req, res) => {
     if (!validateWhatsAppConfig()) {
       return res.status(503).json({
         success: false,
-        error: 'WhatsApp Cloud API not configured. Set WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_WABA_ID, and WHATSAPP_ACCESS_TOKEN.',
+        error: 'WhatsApp Cloud API not configured. Set WHATSAPP_PHONE_NUMBER_ID and WHATSAPP_ACCESS_TOKEN.',
       });
     }
 
@@ -1358,7 +1357,7 @@ router.post('/whatsapp/send-template', requireAdminAuth, async (req, res) => {
     if (!validateWhatsAppConfig()) {
       return res.status(503).json({
         success: false,
-        error: 'WhatsApp Cloud API not configured. Set WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_WABA_ID, and WHATSAPP_ACCESS_TOKEN.',
+        error: 'WhatsApp Cloud API not configured. Set WHATSAPP_PHONE_NUMBER_ID and WHATSAPP_ACCESS_TOKEN.',
       });
     }
 
@@ -1615,7 +1614,7 @@ router.post('/whatsapp/test', requireAdminAuth, async (req, res) => {
       return res.status(400).json({
         success: false,
         error: result.error,
-        hint: 'Check that WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_WABA_ID, and WHATSAPP_ACCESS_TOKEN are correct in .env',
+        hint: 'Check that WHATSAPP_PHONE_NUMBER_ID and WHATSAPP_ACCESS_TOKEN are correct in Render environment settings.',
       });
     }
 
