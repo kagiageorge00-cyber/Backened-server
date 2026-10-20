@@ -38,7 +38,6 @@ const whatsappOptOutSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // Indexes
-whatsappOptOutSchema.index({ phoneNumber: 1 });
 whatsappOptOutSchema.index({ optOutReason: 1 });
 whatsappOptOutSchema.index({ optedOutAt: -1 });
 
