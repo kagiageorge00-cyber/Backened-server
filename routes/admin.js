@@ -28,7 +28,7 @@ const {
 // ✅ FIX: correct import
 const { sendEmail } = require("../email");
 
-const { FRONTEND_URL } = require("../config");
+const { FRONTEND_URL, BACKEND_URL } = require("../config");
 const { getCandidateDisplayName } = require('../utils/candidateDisplayName');
 const {
   ensureCandidatePortalCredentials,
@@ -59,7 +59,69 @@ const {
 
 const WhatsAppContact = require('../models/WhatsAppContact');
 const WhatsAppMessageLog = require('../models/WhatsAppMessageLog');
+const SocialSharePost = require('../models/SocialSharePost');
+const Job = require('../models/Job');
 const staffController = require('../controllers/staffController');
+const { randomBytes } = require('crypto');
+
+router.get('/social-share-posts', requireAdminAuth, async (req, res) => {
+  try {
+    const posts = await SocialSharePost.find().sort({ createdAt: -1 }).limit(50).lean();
+    return res.json({
+      success: true,
+      data: posts.map((post) => ({
+        ...post,
+        shareUrl: `${BACKEND_URL}/share/${post.slug}`,
+        applyUrl: `${FRONTEND_URL}/jobs/global/${encodeURIComponent(post.jobId)}`,
+      })),
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/social-share-posts', requireAdminAuth, async (req, res) => {
+  try {
+    const caption = String(req.body?.caption || '').trim();
+    const imageUrl = String(req.body?.imageUrl || '').trim();
+    const jobId = String(req.body?.jobId || '').trim();
+    if (!caption || !imageUrl || !jobId) {
+      return res.status(400).json({ success: false, error: 'caption, imageUrl and jobId are required' });
+    }
+    if (caption.length > 2200) {
+      return res.status(400).json({ success: false, error: 'Caption must be 2,200 characters or fewer' });
+    }
+    if (!/^https:\/\/res\.cloudinary\.com\//i.test(imageUrl)) {
+      return res.status(400).json({ success: false, error: 'Upload the image to Cloudinary before creating a share link' });
+    }
+    const job = await Job.findOne({ jobId, status: 'Active' }).select('jobId').lean();
+    if (!job) return res.status(400).json({ success: false, error: 'Select an active marketplace job' });
+
+    const slug = randomBytes(8).toString('hex');
+    const post = await SocialSharePost.create({
+      slug,
+      caption,
+      imageUrl,
+      jobId,
+      createdBy: req.admin?.username || req.admin?.email || 'admin',
+    });
+    return res.status(201).json({
+      success: true,
+      data: {
+        id: post._id,
+        slug: post.slug,
+        caption: post.caption,
+        imageUrl: post.imageUrl,
+        jobId: post.jobId,
+        applyUrl: `${FRONTEND_URL}/jobs/global/${encodeURIComponent(post.jobId)}`,
+        createdAt: post.createdAt,
+        shareUrl: `${BACKEND_URL}/share/${post.slug}`,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
 
 // Required fields for publishing
 const REQUIRED_FIELDS_FOR_PUBLISH = [
@@ -1383,7 +1445,7 @@ router.post('/whatsapp/send-template', requireAdminAuth, async (req, res) => {
 
 router.post('/whatsapp/templates', requireAdminAuth, async (req, res) => {
   try {
-    const { name, bodyText, languageCode = 'en_US', category = 'TRANSACTIONAL', headerText, footerText } = req.body;
+    const { name, bodyText, languageCode = 'en_US', category = 'UTILITY', headerText, footerText, buttons = [] } = req.body;
 
     if (!name || !bodyText) {
       return res.status(400).json({
@@ -1399,7 +1461,7 @@ router.post('/whatsapp/templates', requireAdminAuth, async (req, res) => {
       });
     }
 
-    const result = await createMessageTemplate(name, bodyText, languageCode, category, headerText, footerText);
+    const result = await createMessageTemplate(name, bodyText, languageCode, category, headerText, footerText, buttons);
 
     if (!result.success) {
       return res.status(400).json({

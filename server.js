@@ -183,6 +183,7 @@ app.get('/api/downloads/latest', (req, res) => {
 const Candidate = require('./models/candidate');
 const User = require('./models/User');
 const Job = require('./models/Job');
+const SocialSharePost = require('./models/SocialSharePost');
 
 async function ensureDefaultAdminUser() {
   try {
@@ -411,6 +412,55 @@ const localRecruitmentRoutes = require('./routes/localRecruitment');
 const internationalRecruitmentRoutes = require('./routes/internationalRecruitment');
 const CandidateModel = require('./models/candidate');
 const PaymentModel = require('./models/Payment');
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>\"']/g, (character) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  })[character]);
+}
+
+app.get('/share/:slug', async (req, res) => {
+  try {
+    const post = await SocialSharePost.findOne({ slug: req.params.slug }).lean();
+    if (!post) return res.status(404).send('<h1>Share link not found</h1>');
+
+    const caption = String(post.caption || '').trim();
+    const title = (caption.split(/\r?\n/)[0] || 'Bliss Connect').slice(0, 80);
+    const description = caption.slice(0, 280);
+    const imageUrl = post.imageUrl;
+    const shareUrl = `${BACKEND_URL}/share/${post.slug}`;
+    const applyUrl = `${FRONTEND_URL}/jobs/global/${encodeURIComponent(post.jobId)}`;
+    const html = `<!doctype html>
+<html lang="en"><head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${escapeHtml(title)}</title>
+  <meta name="description" content="${escapeHtml(description)}">
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="${escapeHtml(title)}">
+  <meta property="og:description" content="${escapeHtml(description)}">
+  <meta property="og:image" content="${escapeHtml(imageUrl)}">
+  <meta property="og:image:secure_url" content="${escapeHtml(imageUrl)}">
+  <meta property="og:image:alt" content="${escapeHtml(title)}">
+  <meta property="og:url" content="${escapeHtml(shareUrl)}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="${escapeHtml(title)}">
+  <meta name="twitter:description" content="${escapeHtml(description)}">
+  <meta name="twitter:image" content="${escapeHtml(imageUrl)}">
+  <style>
+    *{box-sizing:border-box}body{margin:0;background:#f4f6fb;color:#172033;font:16px/1.6 system-ui,-apple-system,Segoe UI,sans-serif}
+    main{max-width:760px;margin:32px auto;padding:0 16px}.card{overflow:hidden;background:#fff;border-radius:20px;box-shadow:0 12px 40px #17203318}
+    img{display:block;width:100%;max-height:72vh;object-fit:contain;background:#101828}.caption{padding:22px;white-space:pre-wrap;overflow-wrap:anywhere}
+    .brand{padding:0 22px 20px;color:#53627a;font-size:13px;font-weight:600;letter-spacing:.04em}
+    .apply{display:inline-flex;margin:0 22px 22px;padding:12px 22px;border-radius:10px;background:#1769e0;color:#fff;text-decoration:none;font-weight:700}
+</style>
+</head><body><main><article class="card"><img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(title)}"><div class="caption">${escapeHtml(caption)}</div><div class="brand">BLISS CONNECT</div><a class="apply" href="${escapeHtml(applyUrl)}">Apply for this opportunity</a></article></main></body></html>`;
+    res.set('Cache-Control', 'public, max-age=300');
+    return res.type('html').send(html);
+  } catch (error) {
+    console.error('Social share page error:', error.message);
+    return res.status(500).send('<h1>Unable to load this share page</h1>');
+  }
+});
 const bcrypt = require('bcryptjs');
 const marketplaceRoutes = require('./routes/marketplace');
 const interviewsRoutes = require('./routes/interviews');

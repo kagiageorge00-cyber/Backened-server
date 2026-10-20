@@ -538,7 +538,7 @@ async function sendTemplateMessage(phoneNumber, templateName, parameters = [], l
   }
 }
 
-async function createMessageTemplate(name, bodyText, languageCode = 'en_US', category = 'TRANSACTIONAL', headerText = null, footerText = null) {
+async function createMessageTemplate(name, bodyText, languageCode = 'en_US', category = 'UTILITY', headerText = null, footerText = null, buttons = []) {
   try {
     if (!validateWabaConfig()) {
       throw new Error('WhatsApp Cloud API not configured');
@@ -567,9 +567,18 @@ async function createMessageTemplate(name, bodyText, languageCode = 'en_US', cat
       });
     }
 
+    if (Array.isArray(buttons) && buttons.length > 0) {
+      components.push({
+        type: 'BUTTONS',
+        buttons,
+      });
+    }
+
     const payload = {
       name,
-      language: { code: languageCode },
+      // Template creation expects a locale string; sending { code } causes Meta
+      // to report that even supported locales are unavailable.
+      language: languageCode,
       category,
       components,
     };
