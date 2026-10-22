@@ -71,7 +71,7 @@ router.get('/social-share-posts', requireAdminAuth, async (req, res) => {
       success: true,
       data: posts.map((post) => ({
         ...post,
-        shareUrl: `${BACKEND_URL}/share/${post.slug}`,
+        shareUrl: `${FRONTEND_URL}/share/${post.slug}`,
         applyUrl: `${FRONTEND_URL}/jobs/global/${encodeURIComponent(post.jobId)}`,
       })),
     });
@@ -115,7 +115,7 @@ router.post('/social-share-posts', requireAdminAuth, async (req, res) => {
         jobId: post.jobId,
         applyUrl: `${FRONTEND_URL}/jobs/global/${encodeURIComponent(post.jobId)}`,
         createdAt: post.createdAt,
-        shareUrl: `${BACKEND_URL}/share/${post.slug}`,
+        shareUrl: `${FRONTEND_URL}/share/${post.slug}`,
       },
     });
   } catch (error) {
