@@ -214,6 +214,7 @@ function normalizeCandidate(candidate) {
     numberOfChildren: candidateObj.numberOfChildren,
     jobPosition: mappedJobPosition,
     jobType: candidateObj.jobType,
+    isInternational: candidateObj.isInternational === true,
     destinationCountry: candidateObj.destinationCountry,
     destinationPreference,
     expectedSalary: candidateObj.expectedSalary,
@@ -493,6 +494,7 @@ router.post('/form/submit', async (req, res) => {
       jobPosition,
       jobAppliedFor,
       jobType,
+      isInternational,
       destinationCountry,
       destinationPreference,
       preferredDestination,
@@ -586,6 +588,11 @@ router.post('/form/submit', async (req, res) => {
         numberOfChildren,
         jobPosition: resolvedJobPosition,
         jobType,
+        isInternational: typeof isInternational === 'boolean'
+          ? isInternational
+          : candidate?.isInternational === true ||
+            /international/i.test(String(jobType || candidate?.jobType || '')) ||
+            Boolean(destinationCountry || candidate?.destinationCountry),
         destinationCountry,
         destinationPreference: resolvedDestinationPreference,
         expectedSalary,
@@ -643,6 +650,13 @@ router.post('/form/submit', async (req, res) => {
       candidate.numberOfChildren = numberOfChildren !== undefined ? numberOfChildren : candidate.numberOfChildren;
       candidate.jobPosition = resolvedJobPosition || candidate.jobPosition || candidate.jobAppliedFor || candidate.appliedJobTitle;
       candidate.jobType = jobType || candidate.jobType;
+      if (typeof isInternational === 'boolean') {
+        candidate.isInternational = isInternational;
+      } else if (candidate.isInternational !== true &&
+          (/international/i.test(String(jobType || candidate.jobType || '')) ||
+            Boolean(destinationCountry || candidate.destinationCountry))) {
+        candidate.isInternational = true;
+      }
       candidate.destinationCountry = destinationCountry || candidate.destinationCountry;
       candidate.destinationPreference = resolvedDestinationPreference.length > 0
         ? resolvedDestinationPreference

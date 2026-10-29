@@ -145,6 +145,7 @@ router.post('/', async (req, res) => {
       jobPosition,
       jobAppliedFor,
       jobType,
+      isInternational,
       destinationCountry,
       destinationPreference,
       preferredDestination,
@@ -239,6 +240,11 @@ router.post('/', async (req, res) => {
       jobPosition: normalizedJobPosition,
       jobAppliedFor: normalizedJobPosition,
       jobType: resolveFieldValue(jobType, candidate?.jobType || ''),
+      isInternational: typeof isInternational === 'boolean'
+        ? isInternational
+        : candidate?.isInternational === true ||
+          /international/i.test(String(jobType || candidate?.jobType || '')) ||
+          Boolean(normalizedDestination),
       destinationCountry: normalizedDestination,
       destinationPreference: normalizedDestinationPreferences,
       expectedSalary: resolveFieldValue(expectedSalary, candidate?.expectedSalary || ''),

@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const Staff = require('../models/Staff');
@@ -7,16 +8,23 @@ const Employer = require('../models/Employer');
 const StaffConversation = require('../models/StaffConversation');
 const StaffMessage = require('../models/StaffMessage');
 const StaffNotification = require('../models/StaffNotification');
+const Notification = require('../models/Notification');
 const WhatsAppContact = require('../models/WhatsAppContact');
 const WhatsAppOptOut = require('../models/WhatsAppOptOut');
 const SupportTicket = require('../models/SupportTicket');
-const { ingestIncomingBlissAppMessage, backfillStaffConversationQueues } = require('../services/staffOperationsBridge');
+const {
+  ingestIncomingBlissAppMessage,
+  backfillStaffConversationQueues,
+  setCustomerPresence,
+} = require('../services/staffOperationsBridge');
 const { createNotification } = require('../utils/notificationHelper');
 const { permissionsFor } = require('../middleware/staffPermissions');
 const { sendWhatsAppMessage } = require('../whatsapp');
 const { sendPushForNotification } = require('../services/pushNotificationDelivery');
+const { sendEmail } = require('../email');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'bliss-staff-secret';
+const CUSTOMER_ONLINE_WINDOW_MS = 60 * 1000;
 
 const memoryState = {
   staff: [],
@@ -101,6 +109,112 @@ async function findAccessibleConversation(req, conversationId) {
   return memoryState.conversations.find((conversation) =>
     conversation.conversationId === conversationId && staffCanAccessConversation(req.staff, conversation)
   ) || null;
+}
+
+function isCustomerOnline(conversation, now = Date.now()) {
+  const lastActive = Date.parse(conversation?.lastCustomerActiveAt || '');
+  return Number.isFinite(lastActive) &&
+    now - lastActive <= CUSTOMER_ONLINE_WINDOW_MS;
+}
+
+async function notifyCustomerOfOfflineReply(conversation, sender) {
+  const deliveries = {
+    inApp: { success: false },
+    email: { success: false },
+    whatsapp: { success: false },
+    push: { success: false },
+  };
+  const title = `New message from ${sender}`;
+  const message = 'You have a new message in your Bliss Connect chat. Open the app to read it.';
+  const actionUrl = process.env.FRONTEND_URL || 'https://blissconnect12.netlify.app';
+
+  if (mongoose.connection.readyState === 1 && conversation.blissId) {
+    try {
+      const notification = await Notification.create({
+        notificationId: `CHAT-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`,
+        userId: conversation.blissId,
+        userType: 'candidate',
+        title,
+        message,
+        notificationType: 'chat_reply',
+        category: 'message',
+        actionUrl,
+        entityType: 'conversation',
+        entityId: conversation.conversationId,
+      });
+      deliveries.inApp = { success: true };
+      deliveries.push = notification.$locals?.pushDelivery || {
+        success: false,
+        sent: 0,
+        failed: 0,
+        error: 'Push delivery did not return a result.',
+      };
+    } catch (error) {
+      deliveries.inApp = { success: false, error: error.message };
+      deliveries.push = { success: false, error: error.message };
+      console.error('Offline chat notification could not be saved:', error.message);
+    }
+  } else {
+    const error = conversation.blissId
+      ? 'Notification storage is unavailable.'
+      : 'Customer Bliss ID is unavailable.';
+    deliveries.inApp = { success: false, error };
+    deliveries.push = { success: false, error };
+  }
+
+  if (conversation.customerEmail) {
+    try {
+      const result = await sendEmail({
+        to: conversation.customerEmail,
+        subject: title,
+        text: message,
+      });
+      deliveries.email = result === false
+        ? { success: false, error: 'Email provider did not accept the notification.' }
+        : { success: true };
+    } catch (error) {
+      deliveries.email = { success: false, error: error.message };
+      console.error('Offline chat email notification failed:', error.message);
+    }
+  } else {
+    deliveries.email = { success: false, error: 'Customer email is unavailable.' };
+  }
+
+  const customerPhone = String(conversation.customerPhone || '').trim();
+  if (customerPhone) {
+    const phoneDigits = customerPhone.replace(/\D/g, '').replace(/^00/, '');
+    const phoneForms = [...new Set([customerPhone, phoneDigits, `+${phoneDigits}`])];
+    try {
+      const [contact, optedOut] = mongoose.connection.readyState === 1
+        ? await Promise.all([
+            WhatsAppContact.findOne({
+              phoneNumber: { $in: phoneForms },
+              optedIn: true,
+              optedOut: false,
+            }).select('phoneNumber').lean(),
+            WhatsAppOptOut.findOne({ phoneNumber: { $in: phoneForms } }).select('_id').lean(),
+          ])
+        : [null, null];
+
+      if (optedOut) {
+        deliveries.whatsapp = { success: false, error: 'Customer has opted out of WhatsApp messages.' };
+      } else if (!contact) {
+        deliveries.whatsapp = { success: false, error: 'No WhatsApp opt-in contact exists for this number.' };
+      } else {
+        deliveries.whatsapp = await sendWhatsAppMessage(
+          contact.phoneNumber,
+          `${title}. ${message}`,
+        );
+      }
+    } catch (error) {
+      deliveries.whatsapp = { success: false, error: error.message };
+      console.error('Offline chat WhatsApp notification failed:', error.message);
+    }
+  } else {
+    deliveries.whatsapp = { success: false, error: 'Customer phone number is unavailable.' };
+  }
+
+  return deliveries;
 }
 
 function normalizeWorkLocation(value) {
@@ -978,7 +1092,34 @@ async function listChats(req, res) {
     const conversations = mongoose.connection.readyState === 1
       ? await StaffConversation.find(staffChatScope(req.staff)).sort({ updatedAt: -1 }).lean()
       : memoryState.conversations.filter((conversation) => staffCanAccessConversation(req.staff, conversation));
-    return res.json({ success: true, data: conversations });
+    return res.json({
+      success: true,
+      data: conversations.map((conversation) => ({
+        ...conversation,
+        online: isCustomerOnline(conversation),
+      })),
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+}
+
+async function updateCustomerPresence(req, res) {
+  try {
+    const blissId = String(req.user?.blissId || '').trim();
+    const { online } = req.body || {};
+    if (!blissId) {
+      return res.status(403).json({ success: false, error: 'Customer account required.' });
+    }
+    if (typeof online !== 'boolean') {
+      return res.status(400).json({ success: false, error: 'online must be a boolean.' });
+    }
+
+    const conversationsUpdated = await setCustomerPresence(blissId, online);
+    return res.json({
+      success: true,
+      data: { online, conversationsUpdated },
+    });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
   }
@@ -1050,46 +1191,10 @@ async function sendMessage(req, res) {
       );
     }
 
-    const pushIds = [accessibleConversation.blissId, conversationId]
-      .map((value) => String(value || '').trim())
-      .filter(Boolean);
-    const pushDelivery = await sendPushForNotification({
-      userId: pushIds[0],
-      userIds: pushIds.slice(1),
-      userType: 'candidate',
-      notificationId: `CHAT-${message._id?.toString?.() || Date.now()}`,
-      notificationType: 'chat_reply',
-      title: `New reply from ${authenticatedSender}`,
-      message: String(text).trim(),
-      entityType: 'conversation',
-      entityId: conversationId,
-    }).catch((error) => ({ success: false, sent: 0, failed: 0, error: error.message }));
-
-    let whatsappDelivery = { success: false, skipped: true };
-    const customerPhone = String(accessibleConversation.customerPhone || '').trim();
-    if (customerPhone) {
-      const phoneDigits = customerPhone.replace(/\D/g, '').replace(/^00/, '');
-      const phoneForms = [customerPhone, phoneDigits, `+${phoneDigits}`];
-      const [contact, optedOut] = await Promise.all([
-        WhatsAppContact.findOne({
-          phoneNumber: { $in: phoneForms },
-          optedIn: true,
-          optedOut: false,
-        }).select('phoneNumber').lean(),
-        WhatsAppOptOut.findOne({ phoneNumber: { $in: phoneForms } }).select('_id').lean(),
-      ]);
-
-      if (optedOut) {
-        whatsappDelivery = { success: false, error: 'Customer has opted out of WhatsApp messages.' };
-      } else if (!contact) {
-        whatsappDelivery = { success: false, error: 'No WhatsApp opt-in contact exists for this number.' };
-      } else {
-        whatsappDelivery = await sendWhatsAppMessage(
-          contact.phoneNumber,
-          `${authenticatedSender} replied to your Bliss Connect message: ${String(text).trim()}`,
-        );
-      }
-    }
+    const online = isCustomerOnline(accessibleConversation);
+    const offlineDeliveries = online
+      ? null
+      : await notifyCustomerOfOfflineReply(accessibleConversation, authenticatedSender);
 
     if (mongoose.connection.readyState === 1) {
       await StaffNotification.create({ title: 'Staff reply sent', body: `${authenticatedSender} replied to ${conversationId}`, type: 'chat' });
@@ -1101,10 +1206,72 @@ async function sendMessage(req, res) {
       success: true,
       data: message,
       channels: {
-        push: pushDelivery,
-        whatsapp: whatsappDelivery,
+        inApp: offlineDeliveries?.inApp || { success: false, skipped: true },
+        email: offlineDeliveries?.email || { success: false, skipped: true },
+        push: offlineDeliveries?.push || { success: false, skipped: true },
+        whatsapp: offlineDeliveries?.whatsapp || { success: false, skipped: true },
       },
+      customerOnline: online,
     });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+}
+
+async function sendMultichannelMessage(req, res) {
+  try {
+    const { conversationId, text, subject = 'Message from Bliss Connect', channels = {} } = req.body || {};
+    const body = String(text || '').trim();
+    if (!conversationId || !body) {
+      return res.status(400).json({ success: false, error: 'conversationId and text are required' });
+    }
+    const conversation = await findAccessibleConversation(req, conversationId);
+    if (!conversation) return res.status(404).json({ success: false, error: 'Conversation not found' });
+
+    const sender = req.staff.fullName || req.staff.email || 'Bliss Connect';
+    const message = mongoose.connection.readyState === 1
+      ? await StaffMessage.create({ conversationId, sender: 'staff', senderName: sender, text: body, type: 'text' })
+      : { conversationId, sender: 'staff', senderName: sender, text: body, type: 'text', read: false, createdAt: new Date().toISOString() };
+    if (mongoose.connection.readyState === 1) {
+      await StaffConversation.findOneAndUpdate({ conversationId }, { lastMessage: body, lastActive: 'Just now', status: 'Waiting Candidate' });
+    } else {
+      memoryState.messages.push(message);
+      Object.assign(conversation, { lastMessage: body, lastActive: 'Just now', status: 'Waiting Candidate' });
+    }
+
+    const deliveries = {};
+    if (channels.app === true) {
+      const pushIds = [conversation.blissId, conversationId].map((value) => String(value || '').trim()).filter(Boolean);
+      deliveries.app = await sendPushForNotification({
+        userId: pushIds[0], userIds: pushIds.slice(1), userType: 'candidate',
+        notificationId: `STAFF-${message._id?.toString?.() || Date.now()}`,
+        notificationType: 'staff_message', title: `Message from ${sender}`, message: body,
+        entityType: 'conversation', entityId: conversationId,
+      }).catch((error) => ({ success: false, sent: 0, error: error.message }));
+    }
+
+    if (channels.whatsapp === true) {
+      const phone = String(conversation.customerPhone || '').trim();
+      const digits = phone.replace(/\D/g, '').replace(/^00/, '');
+      const forms = phone ? [...new Set([phone, digits, `+${digits}`])] : [];
+      const [contact, optedOut] = forms.length ? await Promise.all([
+        WhatsAppContact.findOne({ phoneNumber: { $in: forms }, optedIn: true, optedOut: false }).select('phoneNumber').lean(),
+        WhatsAppOptOut.findOne({ phoneNumber: { $in: forms } }).select('_id').lean(),
+      ]) : [null, null];
+      if (optedOut) deliveries.whatsapp = { success: false, error: 'Customer has opted out of WhatsApp messages.' };
+      else if (!contact) deliveries.whatsapp = { success: false, error: 'No WhatsApp opt-in contact exists for this number.' };
+      else deliveries.whatsapp = await sendWhatsAppMessage(contact.phoneNumber, body);
+    }
+
+    if (channels.email === true) {
+      if (!conversation.customerEmail) deliveries.email = { success: false, error: 'No email address is available for this conversation.' };
+      else {
+        const result = await sendEmail({ to: conversation.customerEmail, subject: String(subject).trim() || 'Message from Bliss Connect', text: body });
+        deliveries.email = result ? { success: true } : { success: false, error: 'Email delivery failed. Check the email provider configuration.' };
+      }
+    }
+
+    return res.status(201).json({ success: true, data: message, channels: deliveries });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
   }
@@ -1392,9 +1559,11 @@ module.exports = {
   performance,
   fetchNotifications,
   listChats,
+  updateCustomerPresence,
   getChatById,
   receiveBlissAppMessage,
   sendMessage,
+  sendMultichannelMessage,
   uploadFile,
   assignConversation,
   updateChatStatus,

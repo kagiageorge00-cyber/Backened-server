@@ -17,6 +17,15 @@ class InboxService {
     };
   }
 
+  async createConversation(user, payload = {}) {
+    const department =
+      typeof payload.department === 'string' && payload.department.trim()
+        ? payload.department.trim()
+        : 'Customer Care';
+    const conversation = await this.repository.createConversation(user, department);
+    return { success: true, data: { conversation } };
+  }
+
   async getConversationDetails(user, conversationId) {
     const conversation = await this.repository.getConversation(conversationId);
 
@@ -55,10 +64,17 @@ class InboxService {
       return { success: false, message: 'You are not authorized to send messages in this conversation.' };
     }
 
+    const messageText = typeof payload.messageText === 'string' ? payload.messageText.trim() : '';
+    if (!messageText) {
+      return { success: false, message: 'Message text is required.' };
+    }
+
     const message = await this.repository.createMessage({
       conversationId,
       senderId: user.blissId,
-      ...payload,
+      receiverId: conversation.departmentId,
+      messageType: payload.messageType || 'text',
+      messageText,
     });
 
     if (this.notificationService) {

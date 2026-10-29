@@ -138,6 +138,7 @@ async function ingestIncomingBlissAppMessage(payload = {}) {
       lastMessage: messageText,
       lastActive: 'Just now',
       online: true,
+      lastCustomerActiveAt: new Date(),
     };
 
     if (existingConversation?.queueType && existingConversation.queueType !== 'Unclassified') {
@@ -221,6 +222,7 @@ async function ingestIncomingBlissAppMessage(payload = {}) {
     existingConversation.lastMessage = messageText;
     existingConversation.lastActive = 'Just now';
     existingConversation.online = true;
+    existingConversation.lastCustomerActiveAt = new Date();
   } else {
     memoryState.conversations.push({
       conversationId,
@@ -238,6 +240,7 @@ async function ingestIncomingBlissAppMessage(payload = {}) {
       lastMessage: messageText,
       lastActive: 'Just now',
       online: true,
+      lastCustomerActiveAt: new Date(),
       notes: [],
     });
   }
@@ -272,7 +275,28 @@ async function ingestIncomingBlissAppMessage(payload = {}) {
   };
 }
 
+async function setCustomerPresence(blissId, online) {
+  const lastCustomerActiveAt = online ? new Date() : null;
+  if (mongoose.connection.readyState === 1) {
+    const result = await StaffConversation.updateMany(
+      { blissId },
+      { $set: { online, lastCustomerActiveAt } },
+    );
+    return result.modifiedCount ?? result.nModified ?? 0;
+  }
+
+  let updated = 0;
+  for (const conversation of memoryState.conversations) {
+    if (conversation.blissId !== blissId) continue;
+    conversation.online = online;
+    conversation.lastCustomerActiveAt = lastCustomerActiveAt;
+    updated += 1;
+  }
+  return updated;
+}
+
 module.exports = {
   ingestIncomingBlissAppMessage,
   backfillStaffConversationQueues,
+  setCustomerPresence,
 };

@@ -24,6 +24,7 @@ const staffConversationSchema = new mongoose.Schema(
     nextFollowUpAt: { type: Date, default: null, index: true },
     followUpNote: { type: String, default: '' },
     online: { type: Boolean, default: true },
+    lastCustomerActiveAt: { type: Date, default: null },
   },
   { timestamps: true }
 );

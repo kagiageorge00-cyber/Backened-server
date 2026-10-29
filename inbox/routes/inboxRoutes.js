@@ -13,6 +13,8 @@ const service = new InboxService(repository, notificationService, null);
 const controller = new InboxController(service);
 
 router.get('/', authenticateToken, controller.listConversations.bind(controller));
+router.post('/', authenticateToken, controller.createConversation.bind(controller));
+router.post('/presence', authenticateToken, controller.updateCustomerPresence.bind(controller));
 router.get('/search', authenticateToken, controller.search.bind(controller));
 router.get('/:conversationId', authenticateToken, controller.getConversation.bind(controller));
 router.get('/:conversationId/messages', authenticateToken, controller.getMessages.bind(controller));

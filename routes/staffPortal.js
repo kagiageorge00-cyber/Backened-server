@@ -44,6 +44,7 @@ router.get('/chats', authenticateStaff, staffController.listChats);
 router.get('/chats/:id', authenticateStaff, staffController.getChatById);
 router.post('/chats/app-inbound', authenticateStaff, staffController.receiveBlissAppMessage);
 router.post('/chats/send', authenticateStaff, staffController.sendMessage);
+router.post('/chats/send-multichannel', authenticateStaff, staffController.sendMultichannelMessage);
 router.put('/chats/status', authenticateStaff, staffController.updateChatStatus);
 router.post('/chats/upload', authenticateStaff, staffController.uploadFile);
 router.put('/chats/assign', authenticateStaff, staffController.assignConversation);
@@ -92,7 +93,7 @@ router.put('/bookings/:id/status', staffController.updateBookingStatus);
 router.get('/support/tickets', staffController.listSupportTickets);
 router.post('/support/tickets/:id/respond', staffController.respondSupportTicket);
 router.get('/assignments', staffController.listAssignments);
-router.post('/marketplace/jobs', requireStaffPermission('jobs.manage'), staffController.postMarketplaceJob);
+router.post('/marketplace/jobs', staffController.postMarketplaceJob);
 router.get('/marketplace/jobs', requireStaffPermission('jobs.manage'), staffController.listJobs);
 router.patch('/marketplace/jobs/:jobId', requireStaffPermission('jobs.manage'), staffController.reviewJob);
 

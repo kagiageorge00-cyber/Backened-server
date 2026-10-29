@@ -30,6 +30,10 @@ const jobSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    contractType: {
+      type: String,
+      trim: true,
+    },
     industry: {
       type: String,
       required: true,
@@ -56,6 +60,10 @@ const jobSchema = new mongoose.Schema(
     workLocation: {
       type: String,
       required: true,
+    },
+    duration: {
+      type: String,
+      trim: true,
     },
     numberOfVacancies: {
       type: Number,
@@ -90,6 +98,10 @@ const jobSchema = new mongoose.Schema(
     },
     requiredSkills: [String],
     qualifications: {
+      type: String,
+      trim: true,
+    },
+    requirementsText: {
       type: String,
       trim: true,
     },

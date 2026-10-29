@@ -60,37 +60,65 @@ router.post('/submit-for-review', employerAuth, async (req, res) => {
     const images = Array.isArray(body.images)
       ? body.images.filter(Boolean)
       : body.images ? [body.images] : [];
-    const jobTitle = body.title || body.position || 'Untitled job';
-    const requirementsText = String(body.requirements || '').trim();
+    const jobTitle = body.jobTitle || body.title || body.position || 'Untitled job';
+    const requirementsText = String(
+      body.requirementsText ||
+      (typeof body.requirements === 'string' ? body.requirements : '') ||
+      '',
+    ).trim();
 
     const job = await Job.create({
       jobId: generateJobId(),
       jobTitle,
-      title: jobTitle,
+      title: body.title || jobTitle,
       position: body.position || jobTitle,
       jobCategory: body.jobCategory || 'General',
-      employmentType: body.contractType || 'Full Time',
+      employmentType: body.employmentType || body.contractType || 'Full Time',
+      contractType: body.contractType || '',
       industry: body.industry || 'General',
       country: body.country,
-      city: body.location,
+      city: body.city || body.location,
       location: body.location,
       workLocation: body.workLocation || 'On-site',
+      duration: body.duration || '',
       numberOfVacancies: Number(body.numberOfVacancies) || 1,
       applicationDeadline: parseDateOrDefault(
         body.applicationDeadline,
         new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
       ),
       expectedStartDate: parseDateOrDefault(body.expectedStartDate, now),
-      jobSummary: body.description || '',
+      jobSummary: body.jobSummary || body.description || '',
+      keyResponsibilities: Array.isArray(body.keyResponsibilities)
+        ? body.keyResponsibilities
+        : [],
+      dailyDuties: Array.isArray(body.dailyDuties) ? body.dailyDuties : [],
       description: body.description || '',
       images,
-      coverImage: images[0] || '',
-      qualifications: requirementsText,
-      requiredSkills: requirementsText ? [requirementsText] : [],
+      coverImage: body.coverImage || images[0] || '',
+      qualifications: body.qualifications || requirementsText,
+      requirementsText,
+      requiredSkills: Array.isArray(body.requiredSkills)
+        ? body.requiredSkills
+        : requirementsText ? [requirementsText] : [],
+      yearsOfExperience: Number(body.yearsOfExperience) || undefined,
+      languagesRequired: Array.isArray(body.languagesRequired)
+        ? body.languagesRequired
+        : [],
+      preferredNationalities: Array.isArray(body.preferredNationalities)
+        ? body.preferredNationalities
+        : [],
+      preferredGender: body.preferredGender || 'Any',
+      ageRange: body.ageRange || {},
       salary: Number(salaryText) || 0,
       salaryType: body.salaryType || 'Annual',
       currency: body.currency || 'USD',
-      requirements: {},
+      otherBenefits: Array.isArray(body.otherBenefits) ? body.otherBenefits : [],
+      benefits: body.benefits || {},
+      requirements: body.requirementsFlags ||
+        (body.requirements && typeof body.requirements === 'object'
+          ? body.requirements
+          : {}),
+      featured: false,
       employerId: req.employer.employerId,
       employerName: req.employer.companyName || 'Unnamed Company',
       employerLogo: req.employer.companyLogo,

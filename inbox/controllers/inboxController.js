@@ -15,6 +15,15 @@ class InboxController {
     }
   }
 
+  async createConversation(req, res) {
+    try {
+      const result = await this.service.createConversation(req.user, req.body);
+      return res.status(201).json(result);
+    } catch (error) {
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
   async getConversation(req, res) {
     try {
       const result = await this.service.getConversationDetails(req.user, req.params.conversationId);

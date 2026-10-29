@@ -22,7 +22,7 @@ function getApiBaseUrl(path = '') {
   return `${baseUrl}${normalizedPath}`;
 }
 
-const FRONTEND_URL = normalizeUrl(process.env.FRONTEND_URL || 'https://blissconnect12.netlify.app') || 'https://blissconnect12.netlify.app';
+const FRONTEND_URL = normalizeUrl(process.env.FRONTEND_URL || 'https://blisssconnect.netlify.app') || 'https://blisssconnect.netlify.app';
 
 module.exports = {
   FRONTEND_URL,

@@ -9,9 +9,19 @@ jest.mock('../middleware/staffAuth', () => (req, res, next) => {
   next();
 });
 
+jest.mock('../controllers/staffController', () => new Proxy({
+  postMarketplaceJob: jest.fn((req, res) =>
+    res.status(201).json({ success: true, data: { title: req.body.title } })),
+}, {
+  get(target, property) {
+    return property in target ? target[property] : jest.fn();
+  },
+}));
+
 const express = require('express');
 const request = require('supertest');
 const Candidate = require('../models/candidate');
+const staffController = require('../controllers/staffController');
 const staffPortalRoutes = require('../routes/staffPortal');
 
 describe('Staff marketplace candidate routes', () => {
@@ -44,6 +54,26 @@ describe('Staff marketplace candidate routes', () => {
         { phone: 'CAND-2026-3741' },
         { email: 'CAND-2026-3741' },
       ],
+    });
+  });
+
+  describe('Staff marketplace job posting', () => {
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    test('allows a staff member without a specific rank to post a marketplace job', async () => {
+      const app = express();
+      app.use(express.json());
+      app.use('/api/staff', staffPortalRoutes);
+
+      const res = await request(app)
+        .post('/api/staff/marketplace/jobs')
+        .send({ title: 'Customer Support Representative' });
+
+      expect(res.status).toBe(201);
+      expect(res.body.data.title).toBe('Customer Support Representative');
+      expect(staffController.postMarketplaceJob).toHaveBeenCalled();
     });
   });
 

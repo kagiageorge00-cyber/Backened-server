@@ -5,6 +5,24 @@ const Notification = require('../models/Notification');
 const { createNotification } = require('../utils/notificationHelper');
 const PushToken = require('../models/PushToken');
 const fcmService = require('../services/fcmService');
+const { authenticateToken } = require('../auth/middleware/authMiddleware');
+
+router.get('/me', authenticateToken, async (req, res) => {
+  try {
+    const userId = String(req.user?.blissId || '').trim();
+    if (!userId) {
+      return res.status(403).json({ success: false, error: 'Customer account required.' });
+    }
+    const notifications = await Notification.find({ userId })
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .lean();
+    return res.json({ success: true, data: notifications });
+  } catch (error) {
+    console.error('Customer notification list failed:', error.message);
+    return res.status(500).json({ success: false, error: 'Could not load notifications.' });
+  }
+});
 
 function buildNotificationPayload(body) {
   const {
