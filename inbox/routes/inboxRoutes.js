@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../../auth/middleware/authMiddleware');
 const InboxController = require('../controllers/inboxController');
+const staffController = require('../../controllers/staffController');
 const upload = require('../middlewares/uploadMiddleware');
 const NotificationService = require('../services/notificationService');
 const InboxRepository = require('../repositories/inboxRepository');
@@ -14,7 +15,7 @@ const controller = new InboxController(service);
 
 router.get('/', authenticateToken, controller.listConversations.bind(controller));
 router.post('/', authenticateToken, controller.createConversation.bind(controller));
-router.post('/presence', authenticateToken, controller.updateCustomerPresence.bind(controller));
+router.post('/presence', authenticateToken, staffController.updateCustomerPresence);
 router.get('/search', authenticateToken, controller.search.bind(controller));
 router.get('/:conversationId', authenticateToken, controller.getConversation.bind(controller));
 router.get('/:conversationId/messages', authenticateToken, controller.getMessages.bind(controller));
