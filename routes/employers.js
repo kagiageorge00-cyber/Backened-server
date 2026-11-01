@@ -4,6 +4,8 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const Employer = require('../models/Employer');
 const EmployerNotification = require('../models/EmployerNotification');
+const Interview = require('../models/Interview');
+const Deployment = require('../models/Deployment');
 const SupportTicket = require('../models/SupportTicket');
 const employerAuth = require('../middleware/employerAuth');
 const { sendEmail } = require('../email');
@@ -15,6 +17,70 @@ const { sendWhatsAppMessage } = require('../whatsapp');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'employer_secret_key';
 const router = express.Router();
+
+router.get('/dashboard-stats', employerAuth, async (req, res) => {
+  try {
+    const employerId = req.employer.employerId;
+    const [
+      activeInterviews,
+      candidatesBooked,
+      contractsPending,
+      visasProcessing,
+      totalDeployments,
+      completedContracts,
+      unreadNotifications,
+      pendingPayments,
+      verifiedPayments,
+    ] = await Promise.all([
+      Interview.countDocuments({
+        employerId,
+        interviewStatus: { $in: ['requested', 'accepted'] },
+      }),
+      Deployment.countDocuments({
+        employerId,
+        deploymentStatus: { $ne: 'cancelled' },
+      }),
+      Deployment.countDocuments({
+        employerId,
+        contractStatus: { $in: ['generated', 'candidate_signed', 'employer_signed'] },
+      }),
+      Deployment.countDocuments({
+        employerId,
+        visaStatus: { $in: ['pending', 'awaiting_submission', 'submitted'] },
+      }),
+      Deployment.countDocuments({ employerId }),
+      Deployment.countDocuments({ employerId, contractStatus: 'completed' }),
+      EmployerNotification.countDocuments({ employerId, status: 'unread' }),
+      Deployment.countDocuments({ employerId, paymentStatus: 'pending' }),
+      Deployment.aggregate([
+        { $match: { employerId, paymentStatus: 'verified' } },
+        { $group: { _id: null, total: { $sum: '$deploymentFee' } } },
+      ]),
+    ]);
+
+    return res.json({
+      success: true,
+      data: {
+        activeInterviews,
+        candidatesBooked,
+        contractsPending,
+        visasProcessing,
+        totalDeployments,
+        completedContracts,
+        unreadNotifications,
+        pendingPayments,
+        totalPaymentsProcessed: verifiedPayments[0]?.total || 0,
+        lastUpdated: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    console.error('Employer dashboard stats error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Unable to load employer dashboard stats',
+    });
+  }
+});
 
 router.get('/support/tickets', employerAuth, async (req, res) => {
   try {

@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const Interview = require('../models/Interview');
 const Candidate = require('../models/candidate');
 const employerAuth = require('../middleware/employerAuth');
@@ -9,15 +10,16 @@ const { createNotification } = require('../utils/notificationHelper');
 
 const asyncCandidateLookup = async (candidateId) => {
   if (!candidateId) return null;
-  return Candidate.findOne({
-    $or: [
-      { candidateId },
-      { uniqueCode: candidateId },
-      { phone: candidateId },
-      { email: candidateId },
-      { _id: candidateId },
-    ],
-  });
+  const identifiers = [
+    { candidateId },
+    { uniqueCode: candidateId },
+    { phone: candidateId },
+    { email: candidateId },
+  ];
+  if (mongoose.Types.ObjectId.isValid(candidateId)) {
+    identifiers.push({ _id: candidateId });
+  }
+  return Candidate.findOne({ $or: identifiers });
 };
 
 const createInterviewNotification = async ({
@@ -53,12 +55,11 @@ router.post('/request', employerAuth, async (req, res) => {
       candidateId,
       interviewDate,
       interviewTime,
-      meetingLink,
       notes,
       interviewType = 'video',
     } = req.body;
-    if (!candidateId || !interviewDate) {
-      return res.status(400).json({ success: false, error: 'candidateId and interviewDate are required' });
+    if (!candidateId || !interviewDate || !interviewTime) {
+      return res.status(400).json({ success: false, error: 'candidateId, interviewDate and interviewTime are required' });
     }
 
     const candidate = await asyncCandidateLookup(candidateId);
@@ -86,7 +87,7 @@ router.post('/request', employerAuth, async (req, res) => {
       interviewDate: new Date(interviewDate),
       interviewTime,
       interviewType: normalizedInterviewType,
-      meetingLink: meetingLink || `https://meet.blissconnect.local/${crypto.randomUUID()}`,
+      meetingLink: null,
       notes,
       channelName: rtcSession.channelName,
       agoraToken: rtcSession.token,
@@ -265,7 +266,7 @@ router.post('/:interviewId/decision', employerAuth, async (req, res) => {
     if (candidate) {
       const nextStatus = normalizedDecision === 'passed' ? 'selected' : 'available';
       await Candidate.findOneAndUpdate(
-        { $or: [{ candidateId: interview.candidateId }, { uniqueCode: interview.candidateId }, { _id: interview.candidateId }, { phone: interview.candidateId }, { email: interview.candidateId }] },
+        { _id: candidate._id },
         { $set: { status: nextStatus } },
         { new: true }
       );
