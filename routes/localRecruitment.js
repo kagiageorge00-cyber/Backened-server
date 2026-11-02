@@ -3,6 +3,7 @@ const { randomUUID } = require('crypto');
 const Employer = require('../models/Employer');
 const Candidate = require('../models/candidate');
 const Interview = require('../models/Interview');
+const { normalizeInterviewType } = require('../services/rtcService');
 const Deployment = require('../models/Deployment');
 const Contract = require('../models/Contract');
 const EmploymentRecord = require('../models/EmploymentRecord');
@@ -121,6 +122,10 @@ router.post('/interviews', employerAuth, async (req, res) => {
     if (!candidateId || !interviewDate || !interviewTime || !interviewType) {
       return res.status(400).json({ success: false, error: 'candidateId, interviewDate, interviewTime, and interviewType are required' });
     }
+    const normalizedInterviewType = normalizeInterviewType(interviewType);
+    if (!normalizedInterviewType) {
+      return res.status(400).json({ success: false, error: 'Unsupported interview type' });
+    }
 
     const candidate = await Candidate.findOne({
       $or: [{ candidateId }, { uniqueCode: candidateId }, { _id: candidateId }, { phone: candidateId }, { email: candidateId }],
@@ -141,14 +146,14 @@ router.post('/interviews', employerAuth, async (req, res) => {
       candidateId: candidate.candidateId || candidate.uniqueCode || candidate._id.toString(),
       interviewDate: new Date(interviewDate),
       interviewTime,
-      interviewType,
+      interviewType: normalizedInterviewType,
       meetingLink: meetingLink || '',
       notes,
       location,
       interviewStatus: 'requested',
       meetingStatus: 'scheduled',
       roomId: `room-${randomUUID()}`,
-      channelName: `interview_${interviewId}`,
+      channelName: normalizedInterviewType === 'text' ? null : `interview_${interviewId}`,
     });
 
     const notification = await Notification.create({

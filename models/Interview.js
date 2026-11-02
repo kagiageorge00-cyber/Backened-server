@@ -17,6 +17,7 @@ const interviewSchema = new mongoose.Schema({
   roomId: { type: String, index: true },
   meetingLink: { type: String },
   channelName: { type: String },
+  rtcAppId: { type: String },
   agoraToken: { type: String },
   meetingStatus: { type: String, enum: ['scheduled', 'active', 'ended', 'cancelled'], default: 'scheduled' },
   scheduledDate: { type: Date },

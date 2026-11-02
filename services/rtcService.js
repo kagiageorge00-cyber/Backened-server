@@ -1,54 +1,55 @@
-const axios = require('axios');
+const { RtcRole, RtcTokenBuilder } = require('agora-token');
 
-const buildPlaceholderToken = ({ interviewId, channelName, uid }) => {
-  const suffix = `${interviewId || 'interview'}:${channelName || 'channel'}:${uid || 0}`;
-  return `placeholder-${Buffer.from(suffix).toString('base64')}`;
-};
+function normalizeInterviewType(interviewType) {
+  const normalizedType = String(interviewType || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
 
-async function generateRtcSession({ interviewId, channelName, uid, interviewType }) {
-  const normalizedType = String(interviewType || 'video').toLowerCase();
+  if (['video', 'video_call'].includes(normalizedType)) return 'video';
+  if (['voice', 'voice_call', 'audio', 'audio_call', 'phone'].includes(normalizedType)) {
+    return 'voice';
+  }
+  if (['text', 'chat', 'chat_message', 'message'].includes(normalizedType)) {
+    return 'text';
+  }
+  return null;
+}
+
+async function generateRtcSession({ channelName, uid, interviewType }) {
+  const normalizedType = normalizeInterviewType(interviewType);
+  if (!normalizedType) {
+    const error = new Error('Unsupported interview type.');
+    error.statusCode = 400;
+    throw error;
+  }
   if (normalizedType === 'text') {
-    return { provider: 'none', token: null, channelName, uid };
+    return { provider: 'none', appId: null, token: null, channelName, uid };
   }
 
   const appId = process.env.AGORA_APP_ID;
   const appCertificate = process.env.AGORA_APP_CERTIFICATE;
 
   if (!appId || !appCertificate) {
-    return {
-      provider: 'placeholder',
-      token: buildPlaceholderToken({ interviewId, channelName, uid }),
-      channelName,
-      uid,
-    };
+    const error = new Error(
+      'Video interviews are unavailable because Agora is not configured on the server.',
+    );
+    error.statusCode = 503;
+    throw error;
   }
 
-  try {
-    const response = await axios.post('https://api.agora.io/v1/apps/' + appId + '/cloud_recording/acquire', {}, {
-      headers: {
-        'Authorization': `Basic ${Buffer.from(`${appId}:${appCertificate}`).toString('base64')}`,
-        'Content-Type': 'application/json',
-      },
-    });
+  const tokenExpirationSeconds = 24 * 60 * 60;
+  const token = RtcTokenBuilder.buildTokenWithUid(
+    appId,
+    appCertificate,
+    channelName,
+    uid,
+    RtcRole.PUBLISHER,
+    tokenExpirationSeconds,
+    tokenExpirationSeconds,
+  );
 
-    return {
-      provider: 'agora',
-      token: response?.data?.rtcToken || response?.data?.token || buildPlaceholderToken({ interviewId, channelName, uid }),
-      channelName,
-      uid,
-    };
-  } catch (error) {
-    return {
-      provider: 'placeholder',
-      token: buildPlaceholderToken({ interviewId, channelName, uid }),
-      channelName,
-      uid,
-      error: error.message,
-    };
-  }
+  return { provider: 'agora', appId, token, channelName, uid };
 }
 
-module.exports = {
-  generateRtcSession,
-  buildPlaceholderToken,
-};
+module.exports = { generateRtcSession, normalizeInterviewType };

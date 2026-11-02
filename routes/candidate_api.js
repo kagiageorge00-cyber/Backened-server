@@ -18,7 +18,10 @@ const Job = require('../models/Job');
 
 const jwtAuth = require('../middleware/jwtAuth');
 const { getCandidatePortalGreetingName, getCandidateNameValue } = require('../utils/candidateDisplayName');
-const { generateRtcSession } = require('../services/rtcService');
+const {
+  generateRtcSession,
+  normalizeInterviewType,
+} = require('../services/rtcService');
 
 const JWT_SECRET = process.env.CANDIDATE_JWT_SECRET || 'candidate_secret_key';
 
@@ -526,14 +529,16 @@ router.post('/interviews/:id/accept', jwtAuth, async (req, res) => {
     interview.interviewStatus = 'accepted';
     
     // Generate a RTC channel and token if video/voice interview
-    if (interview.interviewType && ['video', 'voice'].includes(interview.interviewType)) {
+    const interviewType = normalizeInterviewType(interview.interviewType);
+    if (interviewType === 'video' || interviewType === 'voice') {
       const rtcSession = await generateRtcSession({
         interviewId: interview.interviewId,
         channelName: interview.channelName || `interview_${interview.interviewId}`,
         uid: 0,
-        interviewType: interview.interviewType,
+        interviewType,
       });
       interview.channelName = rtcSession.channelName;
+      interview.rtcAppId = rtcSession.appId;
       interview.agoraToken = rtcSession.token;
     }
     

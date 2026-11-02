@@ -5,7 +5,10 @@ const Interview = require('../models/Interview');
 const Candidate = require('../models/candidate');
 const employerAuth = require('../middleware/employerAuth');
 const crypto = require('crypto');
-const { generateRtcSession } = require('../services/rtcService');
+const {
+  generateRtcSession,
+  normalizeInterviewType,
+} = require('../services/rtcService');
 const { createNotification } = require('../utils/notificationHelper');
 
 const asyncCandidateLookup = async (candidateId) => {
@@ -70,15 +73,13 @@ router.post('/request', employerAuth, async (req, res) => {
       return res.status(400).json({ success: false, error: 'Candidate is not verified or currently unavailable for interview' });
     }
 
-    const normalizedInterviewType = ['video', 'voice'].includes(String(interviewType).toLowerCase())
-      ? String(interviewType).toLowerCase()
-      : 'video';
+    const normalizedInterviewType = normalizeInterviewType(interviewType);
+    if (!normalizedInterviewType) {
+      return res.status(400).json({ success: false, error: 'Unsupported interview type' });
+    }
 
     const interviewId = `INT-${Date.now()}`;
     const channelName = `interview_${interviewId}`;
-    const rtcSession = normalizedInterviewType === 'text'
-      ? { provider: 'none', token: null, channelName, uid: 0 }
-      : await generateRtcSession({ interviewId, channelName, uid: 0, interviewType: normalizedInterviewType });
 
     const interview = await Interview.create({
       interviewId,
@@ -89,8 +90,9 @@ router.post('/request', employerAuth, async (req, res) => {
       interviewType: normalizedInterviewType,
       meetingLink: null,
       notes,
-      channelName: rtcSession.channelName,
-      agoraToken: rtcSession.token,
+      channelName: normalizedInterviewType === 'text' ? null : channelName,
+      rtcAppId: null,
+      agoraToken: null,
       meetingStatus: 'scheduled',
       interviewStatus: 'requested',
     });
@@ -202,18 +204,21 @@ router.post('/:interviewId/start', employerAuth, async (req, res) => {
     const interview = await Interview.findOne({ interviewId, employerId: req.employer.employerId });
     if (!interview) return res.status(404).json({ success: false, error: 'Interview not found' });
 
-    interview.meetingStatus = 'active';
-    interview.interviewStatus = 'accepted';
-    if (interview.interviewType && ['video', 'voice'].includes(interview.interviewType)) {
+    const interviewType = normalizeInterviewType(interview.interviewType);
+    if (interviewType === 'video' || interviewType === 'voice') {
       const rtcSession = await generateRtcSession({
         interviewId: interview.interviewId,
         channelName: interview.channelName || `interview_${interview.interviewId}`,
         uid: 0,
-        interviewType: interview.interviewType,
+        interviewType,
       });
       interview.channelName = rtcSession.channelName;
-      interview.agoraToken = interview.agoraToken || rtcSession.token;
+      interview.rtcAppId = rtcSession.appId;
+      interview.agoraToken = rtcSession.token;
     }
+
+    interview.meetingStatus = 'active';
+    interview.interviewStatus = 'accepted';
     await interview.save();
 
     await createInterviewNotification({
@@ -228,7 +233,7 @@ router.post('/:interviewId/start', employerAuth, async (req, res) => {
     return res.json({ success: true, interview });
   } catch (err) {
     console.error('Interview start error:', err);
-    return res.status(500).json({ success: false, error: err.message });
+    return res.status(err.statusCode || 500).json({ success: false, error: err.message });
   }
 });
 

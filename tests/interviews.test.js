@@ -1,5 +1,6 @@
 jest.mock('../models/Interview', () => ({
   create: jest.fn(),
+  findOne: jest.fn(),
 }));
 
 jest.mock('../models/candidate', () => ({
@@ -18,8 +19,10 @@ jest.mock('../middleware/employerAuth', () => jest.fn((req, res, next) => {
 }));
 
 jest.mock('../services/rtcService', () => ({
+  ...jest.requireActual('../services/rtcService'),
   generateRtcSession: jest.fn().mockResolvedValue({
     provider: 'agora',
+    appId: 'agora-app-id',
     token: 'rtc-token',
     channelName: 'interview_INT-1',
     uid: 0,
@@ -66,7 +69,7 @@ describe('Interview booking candidate lookup', () => {
         candidateId: 'CAND-2026-3741',
         interviewDate: '2026-11-02',
         interviewTime: '8:35 AM',
-        interviewType: 'video',
+        interviewType: 'video_call',
         meetingLink: 'https://external-meeting.example',
       });
 
@@ -82,6 +85,7 @@ describe('Interview booking candidate lookup', () => {
     expect(Interview.create).toHaveBeenCalledWith(
       expect.objectContaining({
         interviewTime: '8:35 AM',
+        interviewType: 'video',
         meetingLink: null,
       }),
     );
@@ -125,5 +129,36 @@ describe('Interview booking candidate lookup', () => {
     expect(Candidate.findOne).toHaveBeenCalledWith({
       $or: expect.arrayContaining([{ _id: candidateId }]),
     });
+  });
+
+  test('starts a booked interview and returns fresh RTC credentials', async () => {
+    const interview = {
+      interviewId: 'INT-1',
+      employerId: 'EMP-1',
+      candidateId: 'CAND-1',
+      interviewType: 'video',
+      channelName: 'interview_INT-1',
+      save: jest.fn(),
+    };
+    Interview.findOne.mockResolvedValue(interview);
+
+    const response = await request(app)
+      .post('/api/interviews/INT-1/start')
+      .send({});
+
+    expect(response.status).toBe(200);
+    expect(Interview.findOne).toHaveBeenCalledWith({
+      interviewId: 'INT-1',
+      employerId: 'EMP-1',
+    });
+    expect(interview).toMatchObject({
+      meetingStatus: 'active',
+      interviewStatus: 'accepted',
+      channelName: 'interview_INT-1',
+      rtcAppId: 'agora-app-id',
+      agoraToken: 'rtc-token',
+    });
+    expect(interview.save).toHaveBeenCalled();
+    expect(response.body.interview.rtcAppId).toBe('agora-app-id');
   });
 });

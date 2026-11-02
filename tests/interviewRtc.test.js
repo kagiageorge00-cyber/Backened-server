@@ -1,9 +1,15 @@
-jest.mock('axios', () => ({
-  post: jest.fn(),
+jest.mock('agora-token', () => ({
+  RtcRole: { PUBLISHER: 1 },
+  RtcTokenBuilder: {
+    buildTokenWithUid: jest.fn(() => 'rtc-token-123'),
+  },
 }));
 
-const axios = require('axios');
-const { generateRtcSession } = require('../services/rtcService');
+const { RtcTokenBuilder } = require('agora-token');
+const {
+  generateRtcSession,
+  normalizeInterviewType,
+} = require('../services/rtcService');
 
 describe('Interview RTC session generation', () => {
   beforeEach(() => {
@@ -12,10 +18,17 @@ describe('Interview RTC session generation', () => {
     delete process.env.AGORA_APP_CERTIFICATE;
   });
 
-  test('uses Agora REST token flow when credentials are configured', async () => {
+  test.each([
+    ['video_call', 'video'],
+    ['voice_call', 'voice'],
+    ['chat_message', 'text'],
+  ])('normalizes portal interview type %s', (input, expected) => {
+    expect(normalizeInterviewType(input)).toBe(expected);
+  });
+
+  test('builds a publisher RTC token from the configured Agora credentials', async () => {
     process.env.AGORA_APP_ID = 'demo-app-id';
     process.env.AGORA_APP_CERTIFICATE = 'demo-cert';
-    axios.post.mockResolvedValue({ data: { rtcToken: 'agora-token-123' } });
 
     const session = await generateRtcSession({
       interviewId: 'INT-100',
@@ -25,20 +38,43 @@ describe('Interview RTC session generation', () => {
     });
 
     expect(session.provider).toBe('agora');
-    expect(session.token).toBe('agora-token-123');
-    expect(axios.post).toHaveBeenCalled();
+    expect(session.appId).toBe('demo-app-id');
+    expect(session.token).toBe('rtc-token-123');
+    expect(RtcTokenBuilder.buildTokenWithUid).toHaveBeenCalledWith(
+      'demo-app-id',
+      'demo-cert',
+      'interview_INT-100',
+      42,
+      1,
+      86400,
+      86400,
+    );
   });
 
-  test('falls back to a local placeholder token when RTC credentials are absent', async () => {
-    const session = await generateRtcSession({
+  test('rejects video sessions when Agora credentials are not configured', async () => {
+    await expect(generateRtcSession({
       interviewId: 'INT-200',
       channelName: 'interview_INT-200',
       uid: 7,
       interviewType: 'video',
+    })).rejects.toMatchObject({ statusCode: 503 });
+    expect(RtcTokenBuilder.buildTokenWithUid).not.toHaveBeenCalled();
+  });
+
+  test('does not require RTC credentials for text interviews', async () => {
+    const session = await generateRtcSession({
+      interviewId: 'INT-300',
+      channelName: 'interview_INT-300',
+      uid: 0,
+      interviewType: 'text',
     });
 
-    expect(session.provider).toBe('placeholder');
-    expect(session.token).toMatch(/placeholder/);
-    expect(axios.post).not.toHaveBeenCalled();
+    expect(session).toMatchObject({
+      provider: 'none',
+      appId: null,
+      token: null,
+      channelName: 'interview_INT-300',
+    });
+    expect(RtcTokenBuilder.buildTokenWithUid).not.toHaveBeenCalled();
   });
 });
