@@ -7,6 +7,8 @@ const employerAuth = require('../middleware/employerAuth');
 const multer = require('multer');
 const { createAdaptiveStorage } = require('./upload');
 const { buildDeploymentSummary, calculateDeploymentFees } = require('../services/localRecruitmentService');
+const DeploymentNotificationService = require('../services/deploymentNotificationService');
+const { createNotification } = require('../utils/notificationHelper');
 
 const receiptUpload = multer({
   storage: createAdaptiveStorage(),
@@ -158,6 +160,10 @@ router.post('/:deploymentId/pay', async (req, res) => {
     dep.deploymentFee = fees.totalDue;
     dep.paymentMethod = paymentMethod || 'bank_transfer';
     await dep.save();
+    await DeploymentNotificationService.notifyPaymentSubmitted(
+      deploymentId,
+      employer.employerId,
+    );
 
     return res.json({ success: true, payment: pr, deployment: dep, fees, summary: buildDeploymentSummary({ candidateName: candidateName || dep.candidateName || 'Candidate', grossSalary: grossSalary || dep.deploymentFee || amount, paymentMethod: paymentMethod || 'bank_transfer' }) });
   } catch (err) {
@@ -269,6 +275,10 @@ router.post('/:deploymentId/payment-proof', receiptUpload.single('receiptFile'),
     dep.receiptUrl = receiptPath;
     dep.paymentNotes = notes || '';
     await dep.save();
+    await DeploymentNotificationService.notifyPaymentSubmitted(
+      deploymentId,
+      employer.employerId,
+    );
 
     return res.status(201).json({
       success: true,
@@ -310,14 +320,12 @@ router.post('/:deploymentId/visa', visaUpload.single('visaFile'), employerAuth, 
     await dep.save();
 
     // Create notification for employer
-    const Notification = require('../models/Notification');
-    await Notification.create({
-      notificationId: `NTF-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    await createNotification({
       userId: employer.employerId,
       userType: 'employer',
       title: 'Visa Uploaded',
       message: `Visa for ${dep.candidateName} (${dep.candidateId}) has been uploaded successfully.`,
-      notificationType: 'deployment',
+      type: 'deployment',
       category: 'visa',
       entityType: 'deployment',
       entityId: dep.deploymentId,
@@ -335,13 +343,12 @@ router.post('/:deploymentId/visa', visaUpload.single('visaFile'), employerAuth, 
     });
 
     if (candidateDoc) {
-      await Notification.create({
-        notificationId: `NTF-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      await createNotification({
         userId: candidateDoc._id.toString(),
         userType: 'candidate',
         title: 'Your Employment Visa is Ready',
         message: `Your employment visa for deployment ${dep.deploymentId} has been uploaded. You can now download it from your documents section.`,
-        notificationType: 'deployment',
+        type: 'deployment',
         category: 'visa',
         entityType: 'deployment',
         entityId: dep.deploymentId,

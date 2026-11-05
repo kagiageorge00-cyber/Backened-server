@@ -1,9 +1,43 @@
-const Notification = require('../models/Notification');
 const Deployment = require('../models/Deployment');
-const Candidate = require('../models/candidate');
-const Employer = require('../models/Employer');
+const { createNotification } = require('../utils/notificationHelper');
+
+async function createDeploymentNotification(payload) {
+  const { notificationType, notificationId, createdAt, ...notification } =
+    payload;
+  if (!notification.userId) {
+    console.warn('Skipping deployment notification without a recipient:', notification.title);
+    return null;
+  }
+  return createNotification({
+    ...notification,
+    type: notificationType,
+  });
+}
 
 class DeploymentNotificationService {
+  static async notifyPaymentSubmitted(deploymentId, employerId) {
+    try {
+      const deployment = await Deployment.findOne({ deploymentId });
+      if (!deployment) throw new Error('Deployment not found');
+
+      await createDeploymentNotification({
+        userId: employerId,
+        userType: 'employer',
+        title: 'Payment Proof Received',
+        message:
+            `Your payment for ${deployment.candidateName} has been submitted for verification.`,
+        notificationType: 'info',
+        category: 'payment',
+        priority: 'medium',
+        entityType: 'deployment',
+        entityId: deploymentId,
+        actionUrl: `/employer/deployments/${deploymentId}`,
+      });
+    } catch (err) {
+      console.error('Error notifying payment submission:', err);
+    }
+  }
+
   /**
    * Stage: PAYMENT_RECEIVED
    * Staff receives payment receipt for verification
@@ -13,7 +47,7 @@ class DeploymentNotificationService {
       const deployment = await Deployment.findOne({ deploymentId });
       if (!deployment) throw new Error('Deployment not found');
 
-      await Notification.create({
+      await createDeploymentNotification({
         notificationId: `NTF-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         userId: staffId,
         userType: 'staff',
@@ -42,7 +76,7 @@ class DeploymentNotificationService {
   static async notifyPaymentApproved(deploymentId, candidateName, employerId, candidateId) {
     try {
       // Notify Employer
-      await Notification.create({
+      await createDeploymentNotification({
         notificationId: `NTF-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         userId: employerId,
         userType: 'employer',
@@ -58,7 +92,7 @@ class DeploymentNotificationService {
       });
 
       // Notify Candidate
-      await Notification.create({
+      await createDeploymentNotification({
         notificationId: `NTF-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         userId: candidateId,
         userType: 'candidate',
@@ -96,7 +130,7 @@ class DeploymentNotificationService {
       if (!deployment) throw new Error('Deployment not found');
 
       // Notify Staff
-      await Notification.create({
+      await createDeploymentNotification({
         notificationId: `NTF-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         userId: staffId,
         userType: 'staff',
@@ -116,7 +150,7 @@ class DeploymentNotificationService {
       const otherPartyType = uploaderType === 'employer' ? 'candidate' : 'employer';
 
       if (otherPartyId && otherPartyId !== uploaderIdToSkip) {
-        await Notification.create({
+        await createDeploymentNotification({
           notificationId: `NTF-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           userId: otherPartyId,
           userType: otherPartyType,
@@ -146,7 +180,7 @@ class DeploymentNotificationService {
   static async notifyContractWitnessed(deploymentId, candidateName, staffId, employerId, candidateId) {
     try {
       // Notify Staff
-      await Notification.create({
+      await createDeploymentNotification({
         notificationId: `NTF-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         userId: staffId,
         userType: 'staff',
@@ -162,7 +196,7 @@ class DeploymentNotificationService {
       });
 
       // Notify Employer
-      await Notification.create({
+      await createDeploymentNotification({
         notificationId: `NTF-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         userId: employerId,
         userType: 'employer',
@@ -178,7 +212,7 @@ class DeploymentNotificationService {
       });
 
       // Notify Candidate
-      await Notification.create({
+      await createDeploymentNotification({
         notificationId: `NTF-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         userId: candidateId,
         userType: 'candidate',
@@ -207,7 +241,7 @@ class DeploymentNotificationService {
    */
   static async notifyDocumentsUnlocked(deploymentId, candidateName, employerId) {
     try {
-      await Notification.create({
+      await createDeploymentNotification({
         notificationId: `NTF-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         userId: employerId,
         userType: 'employer',
@@ -244,7 +278,7 @@ class DeploymentNotificationService {
   ) {
     try {
       // Notify Candidate
-      await Notification.create({
+      await createDeploymentNotification({
         notificationId: `NTF-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         userId: candidateId,
         userType: 'candidate',
@@ -260,7 +294,7 @@ class DeploymentNotificationService {
       });
 
       // Notify Staff
-      await Notification.create({
+      await createDeploymentNotification({
         notificationId: `NTF-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         userId: staffId,
         userType: 'staff',
@@ -276,7 +310,7 @@ class DeploymentNotificationService {
       });
 
       // Notify Employer
-      await Notification.create({
+      await createDeploymentNotification({
         notificationId: `NTF-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         userId: employerId,
         userType: 'employer',
@@ -307,7 +341,7 @@ class DeploymentNotificationService {
   static async notifyVisaDocumentsConfirmed(deploymentId, candidateName, candidateId, staffId, employerId) {
     try {
       // Notify Staff
-      await Notification.create({
+      await createDeploymentNotification({
         notificationId: `NTF-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         userId: staffId,
         userType: 'staff',
@@ -323,7 +357,7 @@ class DeploymentNotificationService {
       });
 
       // Notify Employer
-      await Notification.create({
+      await createDeploymentNotification({
         notificationId: `NTF-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         userId: employerId,
         userType: 'employer',
@@ -339,7 +373,7 @@ class DeploymentNotificationService {
       });
 
       // Notify Candidate
-      await Notification.create({
+      await createDeploymentNotification({
         notificationId: `NTF-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         userId: candidateId,
         userType: 'candidate',
@@ -378,7 +412,7 @@ class DeploymentNotificationService {
       const message = `Flight ticket for ${candidateName} has been uploaded. Departure: ${flightDate}. Deployment is approved!`;
 
       // Notify Staff
-      await Notification.create({
+      await createDeploymentNotification({
         notificationId: `NTF-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         userId: staffId,
         userType: 'staff',
@@ -394,7 +428,7 @@ class DeploymentNotificationService {
       });
 
       // Notify Employer
-      await Notification.create({
+      await createDeploymentNotification({
         notificationId: `NTF-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         userId: employerId,
         userType: 'employer',
@@ -410,7 +444,7 @@ class DeploymentNotificationService {
       });
 
       // Notify Candidate
-      await Notification.create({
+      await createDeploymentNotification({
         notificationId: `NTF-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         userId: candidateId,
         userType: 'candidate',

@@ -3,7 +3,7 @@ const router = express.Router();
 const Contract = require('../models/Contract');
 const Deployment = require('../models/Deployment');
 const Candidate = require('../models/candidate');
-const Notification = require('../models/Notification');
+const { createNotification } = require('../utils/notificationHelper');
 const employerAuth = require('../middleware/employerAuth');
 const multer = require('multer');
 const { createAdaptiveStorage } = require('./upload');
@@ -14,6 +14,14 @@ const signatureUpload = multer({
 });
 
 const { generateContractPdf } = require('../services/contractService');
+
+async function createContractNotification(payload) {
+  const { notificationType, ...notification } = payload;
+  return createNotification({
+    ...notification,
+    type: notificationType,
+  });
+}
 
 router.use(employerAuth);
 
@@ -111,7 +119,7 @@ router.post('/generate', async (req, res) => {
     }
 
     // Create notification for employer
-    await Notification.create({
+    await createContractNotification({
       notificationId: `NTF-${Date.now()}-${Math.random()
         .toString(36)
         .slice(2, 8)}`,
@@ -127,7 +135,7 @@ router.post('/generate', async (req, res) => {
     });
 
     // Create notification for candidate
-    await Notification.create({
+    await createContractNotification({
       notificationId: `NTF-${Date.now()}-${Math.random()
         .toString(36)
         .slice(2, 8)}`,
@@ -219,7 +227,7 @@ router.post('/:contractId/sign', signatureUpload.single('signatureFile'), async 
 
     if (signatureType === 'employer' && candidate) {
       // Notify candidate that employer signed
-      await Notification.create({
+      await createContractNotification({
         notificationId: `NTF-${Date.now()}-${Math.random()
           .toString(36)
           .slice(2, 8)}`,
@@ -235,7 +243,7 @@ router.post('/:contractId/sign', signatureUpload.single('signatureFile'), async 
       });
     } else if (signatureType === 'candidate') {
       // Notify employer that candidate signed
-      await Notification.create({
+      await createContractNotification({
         notificationId: `NTF-${Date.now()}-${Math.random()
           .toString(36)
           .slice(2, 8)}`,
@@ -262,7 +270,7 @@ router.post('/:contractId/sign', signatureUpload.single('signatureFile'), async 
         await candidate.save();
 
         // Notify candidate that documents have been released
-        await Notification.create({
+        await createContractNotification({
           notificationId: `NTF-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           userId: candidate._id.toString(),
           userType: 'candidate',
@@ -276,7 +284,7 @@ router.post('/:contractId/sign', signatureUpload.single('signatureFile'), async 
         });
 
         // Notify employer that contract is fully signed
-        await Notification.create({
+        await createContractNotification({
           notificationId: `NTF-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           userId: contract.employerId,
           userType: 'employer',
@@ -344,7 +352,7 @@ router.post('/:contractId/manager-sign', requireRole('admin'), signatureUpload.s
     await contract.save();
 
     // Notify both parties
-    await Notification.create({
+    await createContractNotification({
       notificationId: `NTF-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       userId: contract.employerId,
       userType: 'employer',
@@ -359,7 +367,7 @@ router.post('/:contractId/manager-sign', requireRole('admin'), signatureUpload.s
 
     const candidateDoc = await Candidate.findOne({ $or: [{ candidateId: contract.candidateId }, { uniqueCode: contract.candidateId }] });
     if (candidateDoc) {
-      await Notification.create({
+      await createContractNotification({
         notificationId: `NTF-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         userId: candidateDoc._id.toString(),
         userType: 'candidate',

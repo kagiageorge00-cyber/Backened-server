@@ -3,6 +3,7 @@ const router = express.Router();
 const Candidate = require('../models/candidate');
 const Deployment = require('../models/Deployment');
 const PaymentRecord = require('../models/PaymentRecord');
+const DeploymentNotificationService = require('../services/deploymentNotificationService');
 const Ticket = require('../models/Ticket');
 const mongoose = require('mongoose');
 const authenticateStaff = require('../middleware/staffAuth');
@@ -73,6 +74,12 @@ router.post('/deployments/:deploymentId/payment/approve', async (req, res) => {
     deployment.currentStage = 'Payment';
     await deployment.save();
     await PaymentRecord.updateMany({ deploymentId: deployment.deploymentId }, { paymentStatus: 'verified', paidAt: new Date() });
+    await DeploymentNotificationService.notifyPaymentApproved(
+      deployment.deploymentId,
+      deployment.candidateName,
+      deployment.employerId,
+      deployment.candidateId,
+    );
     return res.json({ success: true, data: deployment });
   } catch (err) {
     console.error('Deployment payment approval error:', err);
@@ -146,6 +153,14 @@ router.post('/deployments/:deploymentId/ticket', authenticateStaff, async (req, 
     deployment.currentStage = 'Ticket';
     deployment.arrivalStatus = 'uploaded';
     await deployment.save();
+    await DeploymentNotificationService.notifyTicketUploaded(
+      deploymentId,
+      deployment.candidateName,
+      departureDate || 'scheduled departure',
+      deployment.candidateId,
+      req.staff.staffId || req.staff.id || req.staff.email || null,
+      deployment.employerId,
+    );
 
     return res.status(201).json({ success: true, data: deployment, ticket });
   } catch (err) {

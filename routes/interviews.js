@@ -3,6 +3,7 @@ const router = express.Router();
 const mongoose = require('mongoose');
 const Interview = require('../models/Interview');
 const Candidate = require('../models/candidate');
+const Employer = require('../models/Employer');
 const employerAuth = require('../middleware/employerAuth');
 const crypto = require('crypto');
 const {
@@ -162,7 +163,21 @@ router.get('/candidate/:candidateId', async (req, res) => {
     if (!candidateId) return res.status(400).json({ success: false, error: 'candidateId required' });
 
     const list = await Interview.find({ candidateId }).sort({ createdAt: -1 });
-    return res.json({ success: true, data: list });
+    const employerIds = [...new Set(list.map((interview) => interview.employerId).filter(Boolean))];
+    const employers = await Employer.find({ employerId: { $in: employerIds } })
+      .select('employerId companyName fullName')
+      .lean();
+    const employerNames = new Map(
+      employers.map((employer) => [
+        employer.employerId,
+        employer.companyName || employer.fullName || 'Employer',
+      ]),
+    );
+    const hydratedInterviews = list.map((interview) => ({
+      ...interview.toObject(),
+      employerName: employerNames.get(interview.employerId) || 'Employer',
+    }));
+    return res.json({ success: true, data: hydratedInterviews });
   } catch (err) {
     console.error('Interview by candidate error:', err);
     return res.status(500).json({ success: false, error: err.message });

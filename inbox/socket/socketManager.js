@@ -1,4 +1,5 @@
 const { Server } = require('socket.io');
+const { verifyEmployerToken } = require('../../services/jwtService');
 
 class SocketManager {
   constructor(server) {
@@ -13,6 +14,18 @@ class SocketManager {
 
   attach() {
     this.io.on('connection', (socket) => {
+      const token = socket.handshake.auth?.token;
+      if (typeof token === 'string' && token.length > 0) {
+        try {
+          const decoded = verifyEmployerToken(token);
+          if (decoded.employerId) {
+            socket.join(String(decoded.employerId));
+          }
+        } catch (error) {
+          console.warn('Socket employer authentication failed:', error.message);
+        }
+      }
+
       socket.on('joinConversation', (conversationId) => {
         if (conversationId) socket.join(conversationId);
       });

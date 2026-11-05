@@ -36,6 +36,7 @@ async function resolveRecipient(userId) {
     { phone: id },
     { email: id },
     { uniqueCode: id },
+    { candidateId: id },
   ];
 
   if (mongoose.Types.ObjectId.isValid(id)) {
@@ -89,6 +90,7 @@ async function createNotification({
   employerName,
   amount,
   currency = 'KES',
+  priority,
   phoneNumber,
   email,
   html,
@@ -112,6 +114,7 @@ async function createNotification({
     message,
     notificationType: type,
     category,
+    priority,
     actionUrl,
     entityType,
     entityId,

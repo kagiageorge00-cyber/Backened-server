@@ -8,6 +8,10 @@ jest.mock('../models/candidate', () => ({
   findOneAndUpdate: jest.fn(),
 }));
 
+jest.mock('../models/Employer', () => ({
+  find: jest.fn(),
+}));
+
 jest.mock('../middleware/employerAuth', () => jest.fn((req, res, next) => {
   req.employer = {
     employerId: 'EMP-1',
@@ -36,6 +40,7 @@ jest.mock('../utils/notificationHelper', () => ({
 const express = require('express');
 const request = require('supertest');
 const Candidate = require('../models/candidate');
+const Employer = require('../models/Employer');
 const Interview = require('../models/Interview');
 const interviewsRouter = require('../routes/interviews');
 
@@ -128,6 +133,40 @@ describe('Interview booking candidate lookup', () => {
     expect(response.status).toBe(201);
     expect(Candidate.findOne).toHaveBeenCalledWith({
       $or: expect.arrayContaining([{ _id: candidateId }]),
+    });
+  });
+
+  test('includes the employer company name in candidate interview records', async () => {
+    Interview.find = jest.fn().mockReturnValue({
+      sort: jest.fn().mockResolvedValue([
+        {
+          employerId: 'EMP-1',
+          toObject: () => ({
+            interviewId: 'INT-1',
+            interviewType: 'video',
+            interviewStatus: 'requested',
+            notes: 'Bring your portfolio',
+          }),
+        },
+      ]),
+    });
+    Employer.find.mockReturnValue({
+      select: jest.fn().mockReturnValue({
+        lean: jest.fn().mockResolvedValue([
+          { employerId: 'EMP-1', companyName: 'Demo Co' },
+        ]),
+      }),
+    });
+
+    const response = await request(app).get('/api/interviews/candidate/CAND-1');
+
+    expect(response.status).toBe(200);
+    expect(response.body.data[0]).toMatchObject({
+      interviewId: 'INT-1',
+      employerName: 'Demo Co',
+      interviewType: 'video',
+      interviewStatus: 'requested',
+      notes: 'Bring your portfolio',
     });
   });
 

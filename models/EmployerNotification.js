@@ -45,6 +45,27 @@ const employerNotificationSchema = new mongoose.Schema(
 
 employerNotificationSchema.post('save', async function sendFcmAfterSave(notification) {
   try {
+    const socketService = require('../inbox/socket/socketService');
+    const payload = {
+      ...notification.toObject(),
+      source: 'employer',
+    };
+    notification.$locals.socketDelivery = {
+      success: socketService.emitToUser(
+        notification.employerId,
+        'notification',
+        payload,
+      ),
+    };
+  } catch (error) {
+    notification.$locals.socketDelivery = {
+      success: false,
+      error: error.message,
+    };
+    console.error('[Socket] Employer notification delivery failed:', error.message);
+  }
+
+  try {
     const { sendPushForEmployerNotification } = require('../services/pushNotificationDelivery');
     notification.$locals.pushDelivery = await sendPushForEmployerNotification(notification);
   } catch (error) {

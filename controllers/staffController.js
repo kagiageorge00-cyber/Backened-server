@@ -859,20 +859,51 @@ async function reviewJob(req, res) {
     }
 
     if (mongoose.connection.readyState === 1) {
+      const currentJob = await Job.findOne({ jobId });
+      if (!currentJob) {
+        return res.status(404).json({ success: false, error: 'Job not found' });
+      }
+      if (
+        status === 'Active' &&
+        !hasMarketplaceJobBanner({ ...currentJob.toObject(), ...changes })
+      ) {
+        return res.status(400).json({
+          success: false,
+          error: 'Add a job banner before approving this job.',
+        });
+      }
       const job = await Job.findOneAndUpdate({ jobId }, changes, { new: true });
-      if (!job) return res.status(404).json({ success: false, error: 'Job not found' });
+      if (!job) {
+        return res.status(404).json({ success: false, error: 'Job not found' });
+      }
       await notifyEmployerOfJobReview(job, status);
       return res.json({ success: true, data: job, message: `Job marked ${status}` });
     }
 
     const job = memoryState.jobs.find((item) => item.jobId === jobId);
     if (!job) return res.status(404).json({ success: false, error: 'Job not found' });
+    if (
+      status === 'Active' &&
+      !hasMarketplaceJobBanner({ ...job, ...changes })
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: 'Add a job banner before approving this job.',
+      });
+    }
     Object.assign(job, changes);
     await notifyEmployerOfJobReview(job, status);
     return res.json({ success: true, data: job, message: `Job marked ${status}` });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
   }
+}
+
+function hasMarketplaceJobBanner(job) {
+  const images = Array.isArray(job.images) ? job.images : [];
+  return [job.coverImage, ...images].some(
+    (image) => typeof image === 'string' && image.trim().length > 0,
+  );
 }
 
 async function notifyEmployerOfJobReview(job, status) {

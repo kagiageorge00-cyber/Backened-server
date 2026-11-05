@@ -2,8 +2,10 @@ const express = require('express');
 const path = require('path');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
 const Employer = require('../models/Employer');
 const EmployerNotification = require('../models/EmployerNotification');
+const Notification = require('../models/Notification');
 const Interview = require('../models/Interview');
 const Deployment = require('../models/Deployment');
 const SupportTicket = require('../models/SupportTicket');
@@ -28,7 +30,8 @@ router.get('/dashboard-stats', employerAuth, async (req, res) => {
       visasProcessing,
       totalDeployments,
       completedContracts,
-      unreadNotifications,
+      unreadEmployerNotifications,
+      unreadPortalNotifications,
       pendingPayments,
       verifiedPayments,
     ] = await Promise.all([
@@ -51,6 +54,7 @@ router.get('/dashboard-stats', employerAuth, async (req, res) => {
       Deployment.countDocuments({ employerId }),
       Deployment.countDocuments({ employerId, contractStatus: 'completed' }),
       EmployerNotification.countDocuments({ employerId, status: 'unread' }),
+      Notification.countDocuments({ userId: employerId, isRead: false }),
       Deployment.countDocuments({ employerId, paymentStatus: 'pending' }),
       Deployment.aggregate([
         { $match: { employerId, paymentStatus: 'verified' } },
@@ -67,7 +71,8 @@ router.get('/dashboard-stats', employerAuth, async (req, res) => {
         visasProcessing,
         totalDeployments,
         completedContracts,
-        unreadNotifications,
+        unreadNotifications:
+            unreadEmployerNotifications + unreadPortalNotifications,
         pendingPayments,
         totalPaymentsProcessed: verifiedPayments[0]?.total || 0,
         lastUpdated: new Date().toISOString(),
@@ -1068,19 +1073,71 @@ router.get('/:employerId/stats', async (req, res) => {
   }
 });
 
-router.get('/:employerId/notifications', async (req, res) => {
+router.get('/:employerId/notifications', employerAuth, async (req, res) => {
   try {
     const { employerId } = req.params;
     if (!employerId) {
       return res.status(400).json({ success: false, error: 'employerId parameter is required' });
     }
+    if (req.employer.employerId !== employerId) {
+      return res.status(403).json({ success: false, error: 'Employer access denied' });
+    }
 
-    const notifications = await EmployerNotification.find({ employerId: sanitizeValue(employerId) }).sort({ createdAt: -1 });
-    return res.json({ success: true, data: notifications });
+    const notifications = await EmployerNotification.find({
+      employerId: sanitizeValue(employerId),
+    }).sort({ createdAt: -1 });
+    return res.json({
+      success: true,
+      data: notifications.map((notification) => ({
+        ...notification.toObject(),
+        source: 'employer',
+      })),
+    });
   } catch (error) {
     console.error('Employer notifications error:', error);
     return res.status(500).json({ success: false, error: error.message });
   }
 });
+
+router.patch(
+  '/:employerId/notifications/:notificationId/read',
+  employerAuth,
+  async (req, res) => {
+    try {
+      const { employerId, notificationId } = req.params;
+      if (req.employer.employerId !== employerId) {
+        return res.status(403).json({
+          success: false,
+          error: 'Employer access denied',
+        });
+      }
+      if (!mongoose.Types.ObjectId.isValid(notificationId)) {
+        return res.status(404).json({
+          success: false,
+          error: 'Notification not found',
+        });
+      }
+
+      const notification = await EmployerNotification.findOneAndUpdate(
+        { _id: notificationId, employerId },
+        { status: 'read' },
+        { new: true },
+      );
+      if (!notification) {
+        return res.status(404).json({
+          success: false,
+          error: 'Notification not found',
+        });
+      }
+      return res.json({
+        success: true,
+        data: { ...notification.toObject(), source: 'employer' },
+      });
+    } catch (error) {
+      console.error('Employer notification read update failed:', error);
+      return res.status(500).json({ success: false, error: error.message });
+    }
+  },
+);
 
 module.exports = router;

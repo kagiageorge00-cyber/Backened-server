@@ -115,18 +115,20 @@ router.post('/send', async (req, res) => {
       phoneNumber,
       email,
       html,
-    }).catch((err) => {
-      console.error('CreateNotification failed in /send:', err.message);
-      return null;
     });
 
     if (note) {
       channels.web.success = true;
       channels.web.notificationId = note.notificationId;
+      channels.inApp = {
+        success: true,
+        notificationId: note.notificationId,
+      };
       const deliveries = note.$locals?.channelDeliveries || {};
       channels.email = deliveries.email || channels.email;
       channels.whatsapp = deliveries.whatsapp || channels.whatsapp;
       const push = note.$locals?.pushDelivery;
+      const socket = note.$locals?.socketDelivery;
       if (push) {
         channels.push = {
           success: push.success === true,
@@ -136,6 +138,7 @@ router.post('/send', async (req, res) => {
           ...(push.errors?.length ? { errors: push.errors } : {}),
         };
       }
+      if (socket) channels.socket = socket;
     }
 
     return res.json({
@@ -210,8 +213,21 @@ router.post('/create', async (req, res) => {
 router.get('/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
-    const notes = await Notification.find({ userId }).sort({ createdAt: -1 });
-    return res.json({ success: true, count: notes.length, data: notes });
+    const page = Math.max(Number.parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.min(
+      Math.max(Number.parseInt(req.query.limit, 10) || 50, 1),
+      100,
+    );
+    const filter = { userId };
+    if (req.query.unreadOnly === 'true') filter.isRead = false;
+    const [notes, count] = await Promise.all([
+      Notification.find(filter)
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit),
+      Notification.countDocuments(filter),
+    ]);
+    return res.json({ success: true, count, page, limit, data: notes });
   } catch (err) {
     console.error('Notification fetch error:', err);
     return res.status(500).json({ success: false, error: err.message });
