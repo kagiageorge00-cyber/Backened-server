@@ -1,6 +1,6 @@
 const logger = require('../../utils/logger');
 const { validateRegisterPayload, validateLoginPayload } = require('../validation/authValidation');
-const { buildBlissId, identifyLoginMethod, hashPassword, comparePassword, signAccessToken, signRefreshToken, randomOtp, randomToken } = require('../services/authService');
+const { buildBlissId, identifyLoginMethod, hashPassword, comparePassword, compareAndUpgradeLegacyPassword, signAccessToken, signRefreshToken, randomOtp, randomToken } = require('../services/authService');
 const AuthRepository = require('../repositories/authRepository');
 const UserModel = require('../../models/BlissCommunicationUser');
 const CandidateModel = require('../../models/candidate');
@@ -398,7 +398,9 @@ async function login(req, res) {
 
     let user = null;
     if (method === 'candidate_id' || method === 'bliss_id' || method === 'email' || method === 'phone') {
-      user = await authRepository.findUserByIdentifier(identifier, UserModel);
+      user = await authRepository.findUserByIdentifier(identifier, UserModel, {
+        includeLegacyPasswordHash: true,
+      });
     }
 
     if (!user) {
@@ -430,7 +432,7 @@ async function login(req, res) {
         user = linkedUser;
       }
     } else {
-      const passwordMatch = await comparePassword(password, user.password || '');
+      const passwordMatch = await compareAndUpgradeLegacyPassword(user, password);
       if (!passwordMatch) {
         return res.status(401).json({ success: false, message: 'Incorrect password.' });
       }

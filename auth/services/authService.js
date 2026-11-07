@@ -31,6 +31,42 @@ async function comparePassword(password, hash) {
   return bcrypt.compare(password, hash);
 }
 
+function isValidBlissAppPasswordHash(hash) {
+  const [salt, expectedHex, extra] = String(hash || '').split(':');
+  return Boolean(
+    salt &&
+    expectedHex &&
+    extra === undefined &&
+    /^[a-f\d]{128}$/i.test(expectedHex),
+  );
+}
+
+async function verifyBlissAppPassword(password, hash) {
+  if (!isValidBlissAppPasswordHash(hash)) return false;
+  const [salt, expectedHex] = hash.split(':');
+  const expected = Buffer.from(expectedHex, 'hex');
+  const actual = await new Promise((resolve, reject) => {
+    crypto.scrypt(password, salt, expected.length, (error, derivedKey) => {
+      if (error) return reject(error);
+      resolve(derivedKey);
+    });
+  });
+
+  return crypto.timingSafeEqual(actual, expected);
+}
+
+async function compareAndUpgradeLegacyPassword(user, password) {
+  if (await comparePassword(password, user.password || '')) return true;
+  if (!user.legacyPasswordHash || !(await verifyBlissAppPassword(password, user.legacyPasswordHash))) {
+    return false;
+  }
+
+  user.password = password;
+  user.legacyPasswordHash = undefined;
+  await user.save();
+  return true;
+}
+
 function signAccessToken(payload) {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: ACCESS_TTL });
 }
@@ -61,6 +97,9 @@ module.exports = {
   identifyLoginMethod,
   hashPassword,
   comparePassword,
+  isValidBlissAppPasswordHash,
+  verifyBlissAppPassword,
+  compareAndUpgradeLegacyPassword,
   signAccessToken,
   signRefreshToken,
   verifyToken,

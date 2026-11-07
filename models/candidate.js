@@ -51,6 +51,7 @@ const candidateSchema = new mongoose.Schema({
     unique: true,
     index: true,
   },
+  legacyBlissAppProfileId: { type: String, unique: true, sparse: true },
   password: String,
   candidateId: {
     type: String,
@@ -60,6 +61,8 @@ const candidateSchema = new mongoose.Schema({
   },
   country: String,
   nationality: String,
+  age: Number,
+  legacyProfileStatus: String,
   gender: String,
   dateOfBirth: String,
   religion: String,

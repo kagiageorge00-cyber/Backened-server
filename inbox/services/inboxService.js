@@ -1,3 +1,5 @@
+const { ingestIncomingBlissAppMessage } = require('../../services/staffOperationsBridge');
+
 class InboxService {
   constructor(repository, notificationService = null, socketService = null) {
     this.repository = repository;
@@ -50,8 +52,12 @@ class InboxService {
       return { success: false, message: 'You are not authorized to access this conversation.' };
     }
 
-    const messages = await this.repository.getMessages(conversationId, pagination);
-    return { success: true, messages, pagination: { page: pagination.page || 1, limit: pagination.limit || 50 } };
+    const result = await this.repository.getMessages(conversationId, pagination);
+    const messages = Array.isArray(result) ? result : result.messages;
+    const messagePagination = Array.isArray(result)
+      ? { page: pagination.page || 1, limit: pagination.limit || 50 }
+      : result.pagination;
+    return { success: true, messages, pagination: messagePagination };
   }
 
   async sendMessage(user, conversationId, payload) {
@@ -64,22 +70,49 @@ class InboxService {
       return { success: false, message: 'You are not authorized to send messages in this conversation.' };
     }
 
-    const messageText = typeof payload.messageText === 'string' ? payload.messageText.trim() : '';
+    const messageText = String(
+      payload.messageText ?? payload.message_text ?? payload.text ?? '',
+    ).trim();
     if (!messageText) {
       return { success: false, message: 'Message text is required.' };
     }
 
+    const messageType = payload.messageType || payload.message_type || 'text';
     const message = await this.repository.createMessage({
       conversationId,
       senderId: user.blissId,
       receiverId: conversation.departmentId,
-      messageType: payload.messageType || 'text',
+      messageType,
       messageText,
+      attachmentUrl: payload.attachmentUrl || payload.attachment_url || null,
+      attachmentName: payload.attachmentName || payload.attachment_name || null,
+      replyTo: payload.replyTo || payload.reply_to || null,
     });
+
+    if (user.blissId) {
+      await ingestIncomingBlissAppMessage({
+        sourceMessageId: message.id,
+        conversationId: `bliss-app-${conversationId}`,
+        conversation_id: conversationId,
+        userId: user.blissId,
+        sender_id: user.blissId,
+        blissId: user.blissId,
+        userType: user.role || user.userType || 'Customer',
+        customerName: user.fullName,
+        customerEmail: user.email,
+        customerPhone: user.phone,
+        country: user.country,
+        department: conversation.departmentName || payload.department || 'Customer Care',
+        message_text: messageText,
+        message_type: messageType,
+        jobTitle: user.jobTitle || '',
+        destination: user.destination || '',
+      });
+    }
 
     if (this.notificationService) {
       await this.notificationService.createNotification({
-        type: payload.messageType || 'text',
+        type: messageType,
         conversationId,
         recipientId: conversation.userId || user.blissId,
       });

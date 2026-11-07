@@ -4,6 +4,8 @@ const bcrypt = require('bcryptjs');
 const blissCommunicationUserSchema = new mongoose.Schema({
   blissId: { type: String, unique: true, index: true },
   candidateId: { type: String, default: null, index: true },
+  legacyBlissAppId: { type: String, unique: true, sparse: true },
+  legacyPasswordHash: { type: String, select: false },
   fullName: { type: String, required: true, trim: true },
   email: { type: String, required: true, unique: true, lowercase: true, trim: true },
   phone: { type: String, required: true, unique: true, trim: true },

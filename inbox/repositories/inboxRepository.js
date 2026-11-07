@@ -13,40 +13,15 @@ class InboxRepository {
   }
 
   async listConversations(user, pagination = {}) {
+    if (!user?.blissId) return [];
     const database = this.getDatabase();
     const storedConversations = database
       ? await database.collection('inbox_conversations').find({ userId: user?.blissId }).sort({ updatedAt: -1 }).toArray()
       : this.memoryConversations.filter((conversation) => conversation.userId === user?.blissId);
-    return [
-      {
-        id: 'conv-recruitment',
-        conversationId: 'conv-recruitment',
-        departmentName: 'Recruitment Department',
-        departmentId: 'dept-recruitment',
-        userId: user?.blissId || 'BLISS-2026-000001',
-        unreadCount: 2,
-        lastMessage: 'Your interview has been scheduled for tomorrow.',
-        updatedAt: new Date().toISOString(),
-        priority: 'High',
-        status: 'active',
-      },
-      {
-        id: 'conv-visa',
-        conversationId: 'conv-visa',
-        departmentName: 'Visa Department',
-        departmentId: 'dept-visa',
-        userId: user?.blissId || 'BLISS-2026-000001',
-        unreadCount: 1,
-        lastMessage: 'Please upload your medical report.',
-        updatedAt: new Date().toISOString(),
-        priority: 'Medium',
-        status: 'active',
-      },
-      ...storedConversations.map((conversation) => ({
-        ...conversation,
-        id: conversation.id || conversation.conversationId,
-      })),
-    ];
+    return storedConversations.map((conversation) => ({
+      ...conversation,
+      id: conversation.id || conversation.conversationId,
+    }));
   }
 
   async getConversation(conversationId) {
@@ -62,103 +37,59 @@ class InboxRepository {
     const storedConversation = this.memoryConversations.find(
       (conversation) => conversation.conversationId === conversationId,
     );
-    if (storedConversation) return storedConversation;
-
-    const conversations = {
-      'conv-recruitment': {
-        id: 'conv-recruitment',
-        conversationId: 'conv-recruitment',
-        departmentName: 'Recruitment Department',
-        departmentId: 'dept-recruitment',
-        userId: 'BLISS-2026-000001',
-        priority: 'High',
-        status: 'active',
-      },
-      'conv-visa': {
-        id: 'conv-visa',
-        conversationId: 'conv-visa',
-        departmentName: 'Visa Department',
-        departmentId: 'dept-visa',
-        userId: 'BLISS-2026-000001',
-        priority: 'Medium',
-        status: 'active',
-      },
-    };
-
-    return conversations[conversationId] || null;
+    return storedConversation || null;
   }
 
   async getMessages(conversationId, pagination = {}) {
+    const limit = Math.min(Math.max(Number(pagination.limit) || 50, 1), 100);
+    const page = Math.max(Number(pagination.page) || 1, 1);
     const database = this.getDatabase();
     if (database) {
       const conversation = await database.collection('inbox_conversations').findOne({
         conversationId,
       });
-      if (conversation) {
-        const limit = Math.min(Number(pagination.limit) || 50, 100);
-        const page = Math.max(Number(pagination.page) || 1, 1);
-        const messages = await database
+      if (!conversation) {
+        return { messages: [], pagination: { page, limit, total: 0, hasMore: false } };
+      }
+
+      const filter = { conversationId };
+      const [total, messages] = await Promise.all([
+        database.collection('inbox_messages').countDocuments(filter),
+        database
           .collection('inbox_messages')
-          .find({ conversationId })
-          .sort({ createdAt: 1 })
+          .find(filter)
+          .sort({ createdAt: -1 })
           .skip((page - 1) * limit)
           .limit(limit)
-          .toArray();
-        return messages.map((message) => ({
-          ...message,
-          id: message.id || message._id.toString(),
-        }));
-      }
-    } else if (
-      this.memoryConversations.some(
-        (conversation) => conversation.conversationId === conversationId,
-      )
-    ) {
-      return this.memoryMessages.filter(
-        (message) => message.conversationId === conversationId,
-      );
+          .toArray(),
+      ]);
+      const orderedMessages = messages.reverse().map((message) => ({
+        ...message,
+        id: message.id || message._id.toString(),
+      }));
+      return {
+        messages: orderedMessages,
+        pagination: { page, limit, total, hasMore: page * limit < total },
+      };
     }
 
-    if (database) {
-      const limit = Math.min(Number(pagination.limit) || 50, 100);
-      const page = Math.max(Number(pagination.page) || 1, 1);
-      const messages = await database
-        .collection('inbox_messages')
-        .find({ conversationId })
-        .sort({ createdAt: 1 })
-        .skip((page - 1) * limit)
-        .limit(limit)
-        .toArray();
-      if (messages.length > 0) {
-        return messages.map((message) => ({ ...message, id: message.id || message._id.toString() }));
-      }
-    } else {
-      const storedMessages = this.memoryMessages.filter(
-        (message) => message.conversationId === conversationId,
-      );
-      if (storedMessages.length > 0) return storedMessages;
+    const conversation = this.memoryConversations.find(
+      (item) => item.conversationId === conversationId,
+    );
+    if (!conversation) {
+      return { messages: [], pagination: { page, limit, total: 0, hasMore: false } };
     }
 
-    return [
-      {
-        id: 'msg-1',
-        conversationId,
-        senderId: 'recruitment',
-        receiverId: 'BLISS-2026-000001',
-        messageType: 'text',
-        messageText: 'Hello, your interview has been scheduled for tomorrow at 09:00.',
-        createdAt: new Date().toISOString(),
-      },
-      {
-        id: 'msg-2',
-        conversationId,
-        senderId: 'BLISS-2026-000001',
-        receiverId: 'recruitment',
-        messageType: 'text',
-        messageText: 'Thank you. I will be available.',
-        createdAt: new Date().toISOString(),
-      },
-    ];
+    const allMessages = this.memoryMessages
+      .filter((message) => message.conversationId === conversationId)
+      .sort((left, right) => new Date(left.createdAt) - new Date(right.createdAt));
+    const total = allMessages.length;
+    const endIndex = Math.max(0, total - (page - 1) * limit);
+    const startIndex = Math.max(0, endIndex - limit);
+    return {
+      messages: allMessages.slice(startIndex, endIndex),
+      pagination: { page, limit, total, hasMore: startIndex > 0 },
+    };
   }
 
   async createMessage(payload) {

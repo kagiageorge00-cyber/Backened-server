@@ -7,6 +7,7 @@ const staffMessageSchema = new mongoose.Schema(
     senderName: { type: String, default: '' },
     text: { type: String, default: '' },
     type: { type: String, default: 'text' },
+    sourceMessageId: { type: String, unique: true, sparse: true },
     createdAt: { type: Date, default: Date.now },
     read: { type: Boolean, default: false },
   },

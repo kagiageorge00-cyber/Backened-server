@@ -16,6 +16,7 @@ const {
   ingestIncomingBlissAppMessage,
   backfillStaffConversationQueues,
   setCustomerPresence,
+  syncStaffReplyToBlissApp,
 } = require('../services/staffOperationsBridge');
 const { createNotification } = require('../utils/notificationHelper');
 const { permissionsFor } = require('../middleware/staffPermissions');
@@ -1205,6 +1206,11 @@ async function sendMessage(req, res) {
     const message = mongoose.connection.readyState === 1
       ? await StaffMessage.create({ conversationId, sender: 'staff', senderName: authenticatedSender, text, type: 'text' })
       : { conversationId, sender: 'staff', senderName: authenticatedSender, text, type: 'text', read: false, createdAt: new Date().toISOString() };
+    const appInboxDelivery = await syncStaffReplyToBlissApp({ conversationId, message })
+      .catch((error) => {
+        console.error('Staff reply could not be synced to the Bliss app inbox:', error.message);
+        return { success: false, error: error.message };
+      });
 
     if (mongoose.connection.readyState !== 1) {
       memoryState.messages.push(message);
@@ -1237,6 +1243,7 @@ async function sendMessage(req, res) {
       success: true,
       data: message,
       channels: {
+        appInbox: appInboxDelivery,
         inApp: offlineDeliveries?.inApp || { success: false, skipped: true },
         email: offlineDeliveries?.email || { success: false, skipped: true },
         push: offlineDeliveries?.push || { success: false, skipped: true },
@@ -1263,6 +1270,11 @@ async function sendMultichannelMessage(req, res) {
     const message = mongoose.connection.readyState === 1
       ? await StaffMessage.create({ conversationId, sender: 'staff', senderName: sender, text: body, type: 'text' })
       : { conversationId, sender: 'staff', senderName: sender, text: body, type: 'text', read: false, createdAt: new Date().toISOString() };
+    const appInboxDelivery = await syncStaffReplyToBlissApp({ conversationId, message })
+      .catch((error) => {
+        console.error('Staff reply could not be synced to the Bliss app inbox:', error.message);
+        return { success: false, error: error.message };
+      });
     if (mongoose.connection.readyState === 1) {
       await StaffConversation.findOneAndUpdate({ conversationId }, { lastMessage: body, lastActive: 'Just now', status: 'Waiting Candidate' });
     } else {
@@ -1271,6 +1283,7 @@ async function sendMultichannelMessage(req, res) {
     }
 
     const deliveries = {};
+    deliveries.appInbox = appInboxDelivery;
     if (channels.app === true) {
       const pushIds = [conversation.blissId, conversationId].map((value) => String(value || '').trim()).filter(Boolean);
       deliveries.app = await sendPushForNotification({

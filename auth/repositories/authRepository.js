@@ -5,7 +5,7 @@ class AuthRepository {
     this.store = store;
   }
 
-  async findUserByIdentifier(identifier, model) {
+  async findUserByIdentifier(identifier, model, options = {}) {
     const normalized = String(identifier || '').trim();
     if (!normalized) return null;
     const search = [];
@@ -13,7 +13,10 @@ class AuthRepository {
     if (normalized.startsWith('BLISS-')) search.push({ blissId: normalized });
     if (normalized.startsWith('CAND-')) search.push({ candidateId: normalized });
     search.push({ email: lower }, { phone: normalized });
-    return model.findOne({ $or: search });
+    const query = model.findOne({ $or: search });
+    return options.includeLegacyPasswordHash && typeof query.select === 'function'
+      ? query.select('+legacyPasswordHash')
+      : query;
   }
 
   async createUser(model, payload) {
