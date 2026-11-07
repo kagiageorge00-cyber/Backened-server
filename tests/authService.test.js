@@ -6,6 +6,7 @@ const {
 } = require('../auth/services/authService');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
+const CustomerUser = require('../models/BlissCommunicationUser');
 
 describe('auth service helpers', () => {
   it('detects bliss ids, candidate ids, emails and phone numbers', () => {
@@ -18,6 +19,30 @@ describe('auth service helpers', () => {
   it('builds a bliss id in the expected format', () => {
     const value = buildBlissId(2026, 1);
     expect(value).toBe('BLISS-2026-000001');
+  });
+
+  it('hashes customer passwords in the Mongoose save hook', async () => {
+    const password = 'Secure-Customer-Password1';
+    const user = new CustomerUser({
+      blissId: 'BLISS-2026-000001',
+      fullName: 'Test Customer',
+      email: 'customer@example.test',
+      phone: '+254700000000',
+      country: 'Kenya',
+      password,
+    });
+    const insert = jest
+      .spyOn(CustomerUser.collection, 'insertOne')
+      .mockResolvedValue({ acknowledged: true, insertedId: user._id });
+
+    try {
+      await user.save();
+    } finally {
+      insert.mockRestore();
+    }
+
+    expect(user.password).not.toBe(password);
+    await expect(bcrypt.compare(password, user.password)).resolves.toBe(true);
   });
 
   it('verifies Bliss App scrypt hashes and rejects malformed hashes', async () => {

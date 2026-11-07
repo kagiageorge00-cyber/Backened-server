@@ -33,16 +33,11 @@ const blissCommunicationUserSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now },
 });
 
-blissCommunicationUserSchema.pre('save', async function (next) {
+blissCommunicationUserSchema.pre('save', async function () {
   this.updatedAt = new Date();
-  if (!this.isModified('password')) return next();
-  try {
-    const salt = await bcrypt.genSalt(10);
-    this.password = await bcrypt.hash(this.password, salt);
-    next();
-  } catch (error) {
-    next(error);
-  }
+  if (!this.isModified('password')) return;
+  const salt = await bcrypt.genSalt(10);
+  this.password = await bcrypt.hash(this.password, salt);
 });
 
 blissCommunicationUserSchema.methods.comparePassword = async function (candidatePassword) {
