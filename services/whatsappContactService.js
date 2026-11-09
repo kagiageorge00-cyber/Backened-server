@@ -116,7 +116,17 @@ function validatePhoneNumber(phoneNumber, defaultCountry = 'KE') {
  */
 async function createOrUpdateContact(contactData) {
   try {
-    const { fullName, phoneNumber, source = 'manual', tags = [], optedIn = false } = contactData;
+    const {
+      fullName,
+      phoneNumber,
+      source = 'manual',
+      tags = [],
+      optedIn = false,
+      marketingOptIn,
+    } = contactData;
+    const resolvedMarketingOptIn = typeof marketingOptIn === 'boolean'
+      ? marketingOptIn
+      : optedIn === true;
 
     // Validate phone number
     const validation = validatePhoneNumber(phoneNumber);
@@ -136,6 +146,10 @@ async function createOrUpdateContact(contactData) {
         contact.optedIn = true;
         contact.optedOut = false;
       }
+      if (typeof marketingOptIn === 'boolean' || optedIn === true) {
+        contact.marketingOptIn = resolvedMarketingOptIn;
+        contact.marketingOptInAt = resolvedMarketingOptIn ? new Date() : null;
+      }
       await contact.save();
       return { contact, isNew: false };
     } else {
@@ -148,6 +162,8 @@ async function createOrUpdateContact(contactData) {
         // A phone number alone is not marketing consent.
         optedIn: optedIn === true,
         optedOut: false,
+        marketingOptIn: resolvedMarketingOptIn,
+        marketingOptInAt: resolvedMarketingOptIn ? new Date() : null,
       });
       await contact.save();
       return { contact, isNew: true };

@@ -216,7 +216,14 @@ async function queueCampaign(campaignId, options = {}) {
     }
 
     // Get audience based on tags (ensure opted-in and not opted-out)
-    let query = { optedOut: false, optedIn: true };
+    let query = {
+      optedOut: false,
+      optedIn: true,
+      $or: [
+        { marketingOptIn: true },
+        { marketingOptIn: { $exists: false } },
+      ],
+    };
     if (campaign.audienceTags.length > 0) {
       query.tags = { $in: campaign.audienceTags };
     }

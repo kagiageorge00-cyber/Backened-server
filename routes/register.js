@@ -159,6 +159,7 @@ router.post("/", async (req, res) => {
     }
   try {
     let {
+      candidateId,
       fullName,
       email,
       country,
@@ -226,7 +227,21 @@ router.post("/", async (req, res) => {
       }
     }
 
-    let candidate = await Candidate.findOne({ phone });
+    let candidate = candidateId
+      ? await Candidate.findOne({
+          $or: [{ candidateId }, { uniqueCode: candidateId }],
+        })
+      : null;
+    if (!candidate && phone) {
+      candidate = await Candidate.findOne({ phone });
+    }
+    if (!candidate && email) {
+      candidate = await Candidate.findOne({ email });
+    }
+
+    phone = phone || normalizePhone(candidate?.phone);
+    email = email || candidate?.email;
+    fullName = fullName || candidate?.fullName || candidate?.name;
 
     // ======================
     // VALIDATION (allow existing candidate's stored docs)

@@ -23,8 +23,8 @@ describe('Staff operations app-inbound bridge', () => {
     expect(result.conversationId).toBe('bliss-app-conv-001');
     expect(result.message.sender).toBe('customer');
     expect(result.message.text).toBe('I need help with my upcoming visa interview.');
-    expect(result.notification.title).toBe('Bliss app message received');
-    expect(result.notification.body).toContain('Jane Wanjiku');
+    expect(result.notification.title).toBe('Jane Wanjiku sent a message');
+    expect(result.notification.body).toBe(payload.message_text);
   });
 
   test('does not duplicate staff messages or notifications when a source message is retried', async () => {

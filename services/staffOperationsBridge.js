@@ -3,6 +3,7 @@ const StaffConversation = require('../models/StaffConversation');
 const StaffMessage = require('../models/StaffMessage');
 const StaffNotification = require('../models/StaffNotification');
 const Staff = require('../models/Staff');
+const Notification = require('../models/Notification');
 const BlissCommunicationUser = require('../models/BlissCommunicationUser');
 const { classifyStaffChat } = require('./staffChatRouting');
 
@@ -27,6 +28,51 @@ async function pickLeastLoadedStaff(department) {
     String(left._id).localeCompare(String(right._id))
   );
   return staff[0].email;
+}
+
+async function createStaffPushNotifications(conversation, message, customerName) {
+  if (mongoose.connection.readyState !== 1) return [];
+
+  let recipients = [];
+  const assignedTo = String(conversation.assignedTo || '').trim();
+  if (assignedTo) {
+    const assignedStaff = await Staff.findOne({
+      $or: [{ email: assignedTo }, { fullName: assignedTo }],
+    }).select('email').lean();
+    if (assignedStaff?.email) recipients = [assignedStaff.email];
+  }
+
+  if (!recipients.length) {
+    const staff = await Staff.find({
+      department: conversation.department,
+      isActive: { $ne: false },
+    }).select('email').lean();
+    recipients = staff.map((entry) => entry.email).filter(Boolean);
+  }
+
+  const uniqueRecipients = [...new Set(
+    recipients.map((email) => String(email).trim().toLowerCase()).filter(Boolean),
+  )];
+  const deliveries = await Promise.allSettled(uniqueRecipients.map((userId) =>
+    Notification.create({
+      notificationId: `CHAT-${message._id?.toString() || Date.now()}-${userId}`,
+      userId,
+      userType: 'staff',
+      title: `${customerName} sent a message`,
+      message: message.text,
+      notificationType: 'bliss_app_message',
+      category: 'message',
+      actionUrl: process.env.STAFF_PORTAL_URL || '',
+      entityType: 'conversation',
+      entityId: conversation.conversationId,
+    }),
+  ));
+  for (const delivery of deliveries) {
+    if (delivery.status === 'rejected') {
+      console.error('Staff push notification could not be saved:', delivery.reason?.message || delivery.reason);
+    }
+  }
+  return deliveries;
 }
 
 async function backfillStaffConversationQueues() {
@@ -214,11 +260,16 @@ async function ingestIncomingBlissAppMessage(payload = {}) {
     });
 
     const notification = await StaffNotification.create({
-      title: 'Bliss app message received',
-      body: `${customerName} sent: ${messageText}`,
+      title: `${customerName} sent a message`,
+      body: messageText,
       type: 'chat',
       read: false,
     });
+    try {
+      await createStaffPushNotifications(conversation, message, customerName);
+    } catch (error) {
+      console.error('Staff push notification delivery failed:', error.message);
+    }
 
     return {
       success: true,
@@ -318,8 +369,8 @@ async function ingestIncomingBlissAppMessage(payload = {}) {
   memoryState.messages.push(persistedMessage);
 
   const notification = {
-    title: 'Bliss app message received',
-    body: `${customerName} sent: ${messageText}`,
+    title: `${customerName} sent a message`,
+    body: messageText,
     type: 'chat',
     read: false,
     createdAt: new Date().toISOString(),
@@ -334,6 +385,15 @@ async function ingestIncomingBlissAppMessage(payload = {}) {
     notification,
     conversationId,
   };
+}
+
+async function connectStaffOperationsDatabase(uri) {
+  if (mongoose.connection.readyState === 1) return;
+  if (mongoose.connection.readyState === 2) {
+    await mongoose.connection.asPromise();
+    return;
+  }
+  await mongoose.connect(uri, { serverSelectionTimeoutMS: 5000 });
 }
 
 async function setCustomerPresence(blissId, online) {
@@ -412,6 +472,7 @@ async function syncStaffReplyToBlissApp({ conversationId, message }) {
 
 module.exports = {
   ingestIncomingBlissAppMessage,
+  connectStaffOperationsDatabase,
   backfillStaffConversationQueues,
   setCustomerPresence,
   syncStaffReplyToBlissApp,

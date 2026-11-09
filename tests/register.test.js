@@ -96,4 +96,46 @@ describe('User Registration', () => {
     await expect(bcrypt.compare(res.body.password, existingCandidate.password))
       .resolves.toBe(true);
   });
+
+  it('should register an existing candidate using saved contact details', async () => {
+    const existingCandidate = {
+      _id: 'cand_saved_details',
+      fullName: 'Saved Candidate',
+      email: 'saved@example.com',
+      phone: '254700000003',
+      uniqueCode: 'CAND-2026-5678',
+      password: '$2b$10$existing-hash',
+      documents: {},
+      skills: [],
+      languages: [],
+      isVerified: false,
+      status: 'in_process',
+      paymentStatus: 'Paid',
+      save: jest.fn(async () => {}),
+      toObject() {
+        return { ...this };
+      },
+    };
+    Candidate.findOne.mockResolvedValueOnce(existingCandidate);
+
+    const res = await request(app)
+      .post('/api/register')
+      .send({
+        candidateId: 'CAND-2026-5678',
+        passportUrl: 'https://example.com/passport.pdf',
+      });
+
+    expect(res.statusCode).toBe(201);
+    expect(res.body.success).toBe(true);
+    expect(res.body.uniqueCode).toBe('CAND-2026-5678');
+    expect(res.body.password).toMatch(/^BLISS\d{4}$/);
+    expect(existingCandidate.email).toBe('saved@example.com');
+    expect(existingCandidate.phone).toBe('254700000003');
+    expect(Candidate.findOne).toHaveBeenCalledWith({
+      $or: [
+        { candidateId: 'CAND-2026-5678' },
+        { uniqueCode: 'CAND-2026-5678' },
+      ],
+    });
+  });
 });
