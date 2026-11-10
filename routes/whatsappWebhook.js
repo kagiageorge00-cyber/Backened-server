@@ -10,6 +10,7 @@ const WhatsAppMessageLog = require('../models/WhatsAppMessageLog');
 const WhatsAppQueue = require('../models/WhatsAppQueue');
 const contactService = require('../services/whatsappContactService');
 const mongoose = require('mongoose');
+const { ingestIncomingBlissAppMessage } = require('../services/staffOperationsBridge');
 
 const WEBHOOK_APP_SECRET = process.env.META_APP_SECRET || process.env.WHATSAPP_APP_SECRET || process.env.WHATSAPP_WEBHOOK_APP_SECRET || '';
 
@@ -126,9 +127,42 @@ function extractOptOutReason(messageText) {
 /**
  * Handle incoming message
  */
-async function handleIncomingMessage(message, phoneNumber, timestamp) {
-  try {
-    const messageText = message.text?.body || '';
+function incomingMessageText(message) {
+  const text = message.text?.body ||
+    message.interactive?.button_reply?.title ||
+    message.interactive?.list_reply?.title ||
+    message.button?.text ||
+    message.image?.caption ||
+    message.video?.caption ||
+    message.document?.caption ||
+    message.audio?.caption ||
+    '';
+  if (text.trim()) return text.trim();
+  if (message.type === 'location' && message.location) {
+    const { latitude, longitude, name, address } = message.location;
+    return [name, address, latitude != null && longitude != null ? `${latitude}, ${longitude}` : '']
+      .filter(Boolean)
+      .join(' — ') || 'Location received';
+  }
+  return `[${String(message.type || 'unknown').replace(/^\w/, (letter) => letter.toUpperCase())} received]`;
+}
+
+async function handleIncomingMessage(message, phoneNumber, timestamp, contactName = '') {
+    const messageText = incomingMessageText(message);
+    const normalizedPhone = String(phoneNumber || '').replace(/\D/g, '');
+    if (!normalizedPhone) throw new Error('WhatsApp sender phone number is missing.');
+
+    const logMessage = async (status, eventType) => WhatsAppMessageLog.create({
+      phoneNumber,
+      direction: 'inbound',
+      messageType: message.type || 'text',
+      content: messageText,
+      providerMessageId: message.id || '',
+      status,
+      eventType,
+      createdAt: timestamp ? new Date(Number(timestamp) * 1000) : new Date(),
+    });
+
     console.log(`📨 Incoming message from ${phoneNumber}: ${messageText}`);
 
     // Check for opt-out keywords
@@ -136,34 +170,22 @@ async function handleIncomingMessage(message, phoneNumber, timestamp) {
       const reason = extractOptOutReason(messageText);
       console.log(`⛔ Opt-out detected from ${phoneNumber}: ${reason}`);
 
-      // Mark contact as opted out
       await contactService.markContactAsOptedOut(phoneNumber, reason, messageText);
-
-      // Log the message
-      await WhatsAppMessageLog.create({
-        phoneNumber,
-        direction: 'inbound',
-        messageType: 'text',
-        content: messageText,
-        status: 'opted_out',
-        eventType: 'opt_out_detection',
-      });
-
-      return;
+      await logMessage('opted_out', 'opt_out_detection');
+    } else {
+      await logMessage('received', 'message_received');
     }
 
-    // Log normal incoming message
-    await WhatsAppMessageLog.create({
-      phoneNumber,
-      direction: 'inbound',
-      messageType: message.type,
-      content: messageText,
-      status: 'received',
-      eventType: 'message_received',
+    await ingestIncomingBlissAppMessage({
+      sourceMessageId: message.id || '',
+      conversationId: `whatsapp-${normalizedPhone}`,
+      customerName: contactName || `WhatsApp ${phoneNumber}`,
+      customerPhone: phoneNumber,
+      userType: 'WhatsApp customer',
+      message_text: messageText,
+      message_type: message.type || 'text',
+      channel: 'whatsapp',
     });
-  } catch (error) {
-    console.error('Error handling incoming message:', error);
-  }
 }
 
 /**
@@ -238,13 +260,10 @@ router.post('/webhook', async (req, res) => {
       console.warn('[whatsapp-webhook] signature validation failed or skipped; acknowledging event');
     }
 
-    // Acknowledge receipt immediately
-    res.sendStatus(200);
-
     // Check if this is a valid webhook object
     if (!body.object || body.object !== 'whatsapp_business_account') {
       console.log('Invalid webhook object');
-      return;
+      return res.sendStatus(200);
     }
 
     // Process all entries
@@ -258,10 +277,14 @@ router.post('/webhook', async (req, res) => {
             // Handle incoming messages
             if (changeValue.messages && Array.isArray(changeValue.messages)) {
               for (const message of changeValue.messages) {
+                const contact = (changeValue.contacts || []).find((item) =>
+                  String(item.wa_id || '') === String(message.from || ''),
+                );
                 await handleIncomingMessage(
                   message,
                   message.from,
-                  message.timestamp
+                  message.timestamp,
+                  contact?.profile?.name || '',
                 );
               }
             }
@@ -293,9 +316,10 @@ router.post('/webhook', async (req, res) => {
         }
       }
     }
+    return res.sendStatus(200);
   } catch (error) {
     console.error('Webhook error:', error);
-    res.sendStatus(500);
+    if (!res.headersSent) return res.sendStatus(500);
   }
 });
 

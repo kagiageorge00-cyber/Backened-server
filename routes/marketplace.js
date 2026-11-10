@@ -1,4 +1,5 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const Candidate = require('../models/candidate');
 const Bookmark = require('../models/Bookmark');
 const Notification = require('../models/Notification');
@@ -205,12 +206,15 @@ router.get('/candidates/:candidateId', async (req, res) => {
       return res.status(400).json({ success: false, error: 'candidateId is required' });
     }
 
-    const query = { uniqueCode: candidateId };
+    const identifiers = [{ uniqueCode: candidateId }];
+    if (mongoose.Types.ObjectId.isValid(candidateId)) {
+      identifiers.push({ _id: candidateId });
+    }
 
     const candidate = await Candidate.findOne({
-      ...query,
+      $or: identifiers,
       isVerified: true,
-      status: 'available',
+      status: { $in: ['available', 'in_process', 'approved'] },
     }).select('-password');
     if (!candidate) {
       return res.status(404).json({ success: false, error: 'Candidate not found' });

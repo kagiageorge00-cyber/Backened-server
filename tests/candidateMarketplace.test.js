@@ -58,4 +58,20 @@ describe('candidate marketplace scoring', () => {
     expect(profile.candidateId).toBe('CND-2026-5124');
     expect(profile.candidateCode).toBe('');
   });
+
+  test('does not invent work, education, certificate, or summary data', () => {
+    const profile = buildCandidateMarketplaceProfile({
+      _id: '507f1f77bcf86cd799439011',
+      fullName: 'Grace Akinyi',
+      skills: ['Nursing'],
+      education: [],
+      certificates: [],
+    });
+
+    expect(profile.professionalSummary).toBe('');
+    expect(profile.workExperience).toEqual([]);
+    expect(profile.education).toEqual([]);
+    expect(profile.certificates).toEqual([]);
+    expect(profile.employmentHistory).toEqual([]);
+  });
 });

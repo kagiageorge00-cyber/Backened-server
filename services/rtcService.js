@@ -32,7 +32,7 @@ async function generateRtcSession({ channelName, uid, interviewType }) {
 
   if (!appId || !appCertificate) {
     const error = new Error(
-      'Video interviews are unavailable because Agora is not configured on the server.',
+      'Agora calls are unavailable because RTC is not configured on the server.',
     );
     error.statusCode = 503;
     throw error;

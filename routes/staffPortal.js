@@ -46,6 +46,7 @@ router.get('/chats/:id', authenticateStaff, staffController.getChatById);
 router.post('/chats/app-inbound', authenticateStaff, staffController.receiveBlissAppMessage);
 router.post('/chats/send', authenticateStaff, staffController.sendMessage);
 router.post('/chats/send-multichannel', authenticateStaff, staffController.sendMultichannelMessage);
+router.put('/chats/call-status', authenticateStaff, staffController.updateSupportCallStatus);
 router.put('/chats/status', authenticateStaff, staffController.updateChatStatus);
 router.post('/chats/upload', authenticateStaff, staffController.uploadFile);
 router.put('/chats/assign', authenticateStaff, staffController.assignConversation);

@@ -204,12 +204,18 @@ async function ingestIncomingBlissAppMessage(payload = {}) {
         existingConversation = await StaffConversation.findOne({ $or: identityMatches }).lean();
       }
     }
+    const staffConversationId = existingConversation?.conversationId || conversationId;
+    const blissAppConversationId = payload.blissAppConversationId ||
+      (payload.channel !== 'whatsapp' && conversationId.startsWith('bliss-app-')
+        ? conversationId.slice('bliss-app-'.length)
+        : existingConversation?.blissAppConversationId || '');
     const autoAssignee = existingConversation?.assignedTo
       ? ''
       : await pickLeastLoadedStaff(route.department);
 
     const conversationPayload = {
-      conversationId,
+      conversationId: staffConversationId,
+      blissAppConversationId,
       customerName,
       customerEmail,
       customerPhone,
@@ -253,8 +259,13 @@ async function ingestIncomingBlissAppMessage(payload = {}) {
     const message = await StaffMessage.create({
       conversationId: conversation.conversationId || conversationId,
       sender: 'customer',
+      senderName: customerName,
       text: messageText,
       type: payload.message_type || payload.type || 'text',
+      channel: payload.channel || 'bliss_app',
+      attachmentUrl: payload.attachmentUrl || payload.attachment_url || '',
+      attachmentName: payload.attachmentName || payload.attachment_name || '',
+      attachmentMimeType: payload.attachmentMimeType || payload.attachment_mime_type || '',
       read: false,
       ...(sourceMessageId ? { sourceMessageId } : {}),
     });
@@ -305,11 +316,17 @@ async function ingestIncomingBlissAppMessage(payload = {}) {
       (customerEmail && item.customerEmail === customerEmail) ||
       (blissId && item.blissId === blissId)
   );
+  const memoryConversationId = existingConversation?.conversationId || conversationId;
+  const memoryBlissAppConversationId = payload.blissAppConversationId ||
+    (payload.channel !== 'whatsapp' && conversationId.startsWith('bliss-app-')
+      ? conversationId.slice('bliss-app-'.length)
+      : existingConversation?.blissAppConversationId || '');
   const autoAssignee = existingConversation?.assignedTo
     ? ''
     : await pickLeastLoadedStaff(route.department);
 
   if (existingConversation) {
+    existingConversation.blissAppConversationId = memoryBlissAppConversationId;
     existingConversation.customerName = customerName;
     existingConversation.customerEmail = customerEmail;
     existingConversation.customerPhone = customerPhone;
@@ -336,7 +353,8 @@ async function ingestIncomingBlissAppMessage(payload = {}) {
     existingConversation.lastCustomerActiveAt = new Date();
   } else {
     memoryState.conversations.push({
-      conversationId,
+      conversationId: memoryConversationId,
+      blissAppConversationId: memoryBlissAppConversationId,
       customerName,
       customerEmail,
       customerPhone,
@@ -357,10 +375,15 @@ async function ingestIncomingBlissAppMessage(payload = {}) {
   }
 
   const persistedMessage = {
-    conversationId,
+    conversationId: memoryConversationId,
     sender: 'customer',
+    senderName: customerName,
     text: messageText,
     type: payload.message_type || payload.type || 'text',
+    channel: payload.channel || 'bliss_app',
+    attachmentUrl: payload.attachmentUrl || payload.attachment_url || '',
+    attachmentName: payload.attachmentName || payload.attachment_name || '',
+    attachmentMimeType: payload.attachmentMimeType || payload.attachment_mime_type || '',
     read: false,
     createdAt: new Date().toISOString(),
     ...(sourceMessageId ? { sourceMessageId } : {}),
@@ -383,7 +406,7 @@ async function ingestIncomingBlissAppMessage(payload = {}) {
     conversation: existingConversation || memoryState.conversations[memoryState.conversations.length - 1],
     message: persistedMessage,
     notification,
-    conversationId,
+    conversationId: memoryConversationId,
   };
 }
 
@@ -416,58 +439,104 @@ async function setCustomerPresence(blissId, online) {
   return updated;
 }
 
-async function syncStaffReplyToBlissApp({ conversationId, message }) {
+async function syncStaffReplyToBlissApp({ conversationId, conversation, message }) {
   const prefix = 'bliss-app-';
-  if (!conversationId?.startsWith(prefix)) {
+  const customerConversationId = conversation?.blissAppConversationId ||
+    (conversationId?.startsWith(prefix) ? conversationId.slice(prefix.length) : '');
+  if (!customerConversationId) {
     return { success: false, skipped: true, reason: 'not_a_bliss_app_conversation' };
   }
   if (mongoose.connection.readyState !== 1) {
     return { success: false, skipped: true, reason: 'database_unavailable' };
   }
 
-  const customerConversationId = conversationId.slice(prefix.length);
   const database = mongoose.connection.db;
-  const conversation = await database.collection('inbox_conversations').findOne({
+  const appConversation = await database.collection('inbox_conversations').findOne({
     conversationId: customerConversationId,
   });
-  if (!conversation) {
-    return { success: false, skipped: true, reason: 'customer_conversation_not_found' };
-  }
 
   const messageId = message?._id?.toString?.() || message?.id;
   if (!messageId) throw new Error('Staff reply is missing its message identifier.');
   const id = `staff-reply-${messageId}`;
   const createdAt = message.createdAt || new Date();
   const text = String(message.text || '');
-  const result = await database.collection('inbox_messages').updateOne(
-    { _id: id },
-    {
-      $setOnInsert: {
-        _id: id,
-        id,
-        conversationId: customerConversationId,
-        senderId: 'staff',
-        receiverId: conversation.userId,
-        senderName: message.senderName || 'Bliss Connect',
-        messageType: message.type || 'text',
-        messageText: text,
-        read: false,
-        createdAt,
-        updatedAt: createdAt,
+  let insertedInboxMessage = false;
+  if (appConversation) {
+    const inboxResult = await database.collection('inbox_messages').updateOne(
+      { _id: id },
+      {
+        $setOnInsert: {
+          _id: id,
+          id,
+          conversationId: customerConversationId,
+          senderId: 'staff',
+          receiverId: appConversation.userId,
+          senderName: message.senderName || 'Bliss Connect',
+          messageType: message.type || 'text',
+          messageText: text,
+          attachmentUrl: message.attachmentUrl || '',
+          attachmentName: message.attachmentName || '',
+          attachmentMimeType: message.attachmentMimeType || '',
+          read: false,
+          createdAt,
+          updatedAt: createdAt,
+        },
       },
-    },
-    { upsert: true },
-  );
-  if (result.upsertedCount) {
+      { upsert: true },
+    );
+    insertedInboxMessage = inboxResult.upsertedCount > 0;
+  }
+
+  const Conversation = require('../models/Conversation');
+  const Message = require('../models/Message');
+  const legacyConversation = mongoose.Types.ObjectId.isValid(customerConversationId)
+    ? await Conversation.findById(customerConversationId).lean()
+    : null;
+  let insertedLegacyMessage = false;
+  if (legacyConversation) {
+    const legacyResult = await Message.updateOne(
+      { sourceMessageId: id },
+      {
+        $setOnInsert: {
+          conversationId: customerConversationId,
+          senderId: 'support',
+          receiverId: legacyConversation.participants?.find((id) => !['support', 'staff'].includes(String(id))) || '',
+          senderType: 'support',
+          message: text || (message.attachmentName ? `Shared ${message.attachmentName}` : 'Attachment'),
+          messageType: message.type || 'text',
+          attachmentUrl: message.attachmentUrl || '',
+          attachmentName: message.attachmentName || '',
+          attachmentMimeType: message.attachmentMimeType || '',
+          sourceMessageId: id,
+          createdAt,
+        },
+      },
+      { upsert: true },
+    );
+    insertedLegacyMessage = legacyResult.upsertedCount > 0;
+    if (insertedLegacyMessage) {
+      await Conversation.updateOne(
+        { _id: legacyConversation._id },
+        { $set: { updatedAt: createdAt } },
+      );
+    }
+  }
+  if (insertedInboxMessage && appConversation) {
     await database.collection('inbox_conversations').updateOne(
-      { _id: conversation._id },
+      { _id: appConversation._id },
       {
         $set: { lastMessage: text, updatedAt: createdAt },
         $inc: { unreadCount: 1 },
       },
     );
   }
-  return { success: true, duplicate: result.upsertedCount === 0, messageId: id };
+  return {
+    success: Boolean(appConversation || legacyConversation),
+    duplicate: !insertedInboxMessage && !insertedLegacyMessage,
+    messageId: id,
+    legacyConversationSynced: Boolean(legacyConversation),
+    inboxConversationSynced: Boolean(appConversation),
+  };
 }
 
 module.exports = {

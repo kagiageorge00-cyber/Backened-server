@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const multer = require('multer');
@@ -13,6 +14,9 @@ const Document = require('../models/Document');
 const Notification = require('../models/Notification');
 const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
+const Staff = require('../models/Staff');
+const StaffConversation = require('../models/StaffConversation');
+const StaffNotification = require('../models/StaffNotification');
 const Employer = require('../models/Employer');
 const Job = require('../models/Job');
 
@@ -22,6 +26,9 @@ const {
   generateRtcSession,
   normalizeInterviewType,
 } = require('../services/rtcService');
+const { emitToUser } = require('../inbox/socket/socketService');
+const inboxUpload = require('../inbox/middlewares/uploadMiddleware');
+const { ingestIncomingBlissAppMessage } = require('../services/staffOperationsBridge');
 
 const JWT_SECRET = process.env.CANDIDATE_JWT_SECRET || 'candidate_secret_key';
 
@@ -774,17 +781,295 @@ router.post('/conversations', jwtAuth, async (req, res) => {
   }
 });
 
+router.get('/conversations/:id/messages', jwtAuth, async (req, res) => {
+  try {
+    const candidateId = req.candidate._id.toString();
+    const conversation = await Conversation.findById(req.params.id).lean();
+    if (!conversation || !conversation.participants.some((id) => String(id) === candidateId)) {
+      return res.status(404).json({ success: false, error: 'Conversation not found' });
+    }
+    const messages = await Message.find({ conversationId: conversation._id.toString() })
+      .sort({ createdAt: 1 })
+      .lean();
+    return res.json({ success: true, data: messages });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/conversations/:id/attachments', jwtAuth, inboxUpload.single('file'), async (req, res) => {
+  try {
+    const candidateId = req.candidate._id.toString();
+    const conversation = await Conversation.findById(req.params.id).lean();
+    if (!conversation || !conversation.participants.some((id) => String(id) === candidateId)) {
+      return res.status(404).json({ success: false, error: 'Conversation not found' });
+    }
+    if (!req.file?.path) {
+      return res.status(400).json({ success: false, error: 'Please select a file to upload.' });
+    }
+    return res.status(201).json({
+      success: true,
+      data: {
+        url: req.file.path,
+        name: req.file.originalname || req.file.filename || 'Attachment',
+        mimeType: req.file.mimetype || '',
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 router.post('/conversations/:id/messages', jwtAuth, async (req, res) => {
   try {
     const candidate = req.candidate;
     const conv = await Conversation.findById(req.params.id);
-    if (!conv || !conv.participants.includes(candidate._id.toString())) return res.status(404).json({ success: false, error: 'Conversation not found' });
-    const { text } = req.body;
-    const receiverId = conv.participants.find(p => p.toString() !== candidate._id.toString());
-    const msg = await Message.create({ conversationId: conv._id, senderId: candidate._id.toString(), receiverId: receiverId || '', message: text });
+    const candidateId = candidate._id.toString();
+    if (!conv || !conv.participants.some((id) => String(id) === candidateId)) {
+      return res.status(404).json({ success: false, error: 'Conversation not found' });
+    }
+    const text = String(req.body.text || '').trim();
+    const attachmentUrl = String(req.body.attachmentUrl || '').trim();
+    const attachmentName = String(req.body.attachmentName || '').trim();
+    const attachmentMimeType = String(req.body.attachmentMimeType || '').trim();
+    if (!text && !attachmentUrl) {
+      return res.status(400).json({ success: false, error: 'A message or attachment is required.' });
+    }
+    const receiverId = conv.participants.find((id) => String(id) !== candidateId);
+    const sourceMessageId = String(req.body.clientMessageId || crypto.randomUUID());
+    let msg = await Message.findOne({ sourceMessageId });
+    if (msg && msg.conversationId !== conv._id.toString()) {
+      return res.status(409).json({ success: false, error: 'Message identifier is already in use.' });
+    }
+    if (!msg) {
+      msg = await Message.create({
+        conversationId: conv._id.toString(),
+        senderId: candidateId,
+        receiverId: String(receiverId || ''),
+        senderType: 'candidate',
+        message: text || (attachmentName ? `Shared ${attachmentName}` : 'Attachment'),
+        messageType: attachmentMimeType.startsWith('image/')
+          ? 'image'
+          : attachmentMimeType.startsWith('video/')
+            ? 'video'
+            : attachmentUrl ? 'document' : 'text',
+        attachmentUrl,
+        attachmentName,
+        attachmentMimeType,
+        sourceMessageId,
+      });
+    }
     conv.updatedAt = Date.now();
     await conv.save();
-    return res.json({ success: true, data: msg });
+    const isSupportConversation = conv.participants.some((id) => ['support', 'staff'].includes(String(id).toLowerCase()));
+    if (isSupportConversation) {
+      await ingestIncomingBlissAppMessage({
+        sourceMessageId,
+        conversationId: `bliss-app-${candidateId}`,
+        blissAppConversationId: conv._id.toString(),
+        userId: candidateId,
+        blissId: candidate.uniqueCode || candidate.candidateId || candidateId,
+        userType: 'Candidate',
+        customerName: getCandidateNameValue(candidate),
+        customerEmail: candidate.email,
+        customerPhone: candidate.phone,
+        country: candidate.country,
+        message_text: text || msg.message,
+        message_type: msg.messageType,
+        channel: 'bliss_app',
+        attachmentUrl,
+        attachmentName,
+        attachmentMimeType,
+      });
+    }
+    return res.status(201).json({ success: true, data: msg });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/conversations/:id/call', jwtAuth, async (req, res) => {
+  try {
+    const candidate = req.candidate;
+    const candidateId = candidate._id.toString();
+    const conversation = await Conversation.findById(req.params.id).lean();
+    if (
+      !conversation ||
+      !conversation.participants.some((id) => String(id) === candidateId) ||
+      !conversation.participants.some((id) => ['support', 'staff'].includes(String(id).toLowerCase()))
+    ) {
+      return res.status(404).json({ success: false, error: 'Support conversation not found' });
+    }
+
+    const customerName = getCandidateNameValue(candidate);
+    let staffConversation = await StaffConversation.findOne({
+      blissAppConversationId: String(conversation._id),
+    });
+    if (!staffConversation) {
+      const identity = [];
+      if (candidate.phone) identity.push({ customerPhone: candidate.phone });
+      if (candidate.email) identity.push({ customerEmail: candidate.email });
+      if (candidate.uniqueCode || candidate.candidateId) {
+        identity.push({ blissId: candidate.uniqueCode || candidate.candidateId });
+      }
+      if (identity.length) staffConversation = await StaffConversation.findOne({ $or: identity });
+    }
+    if (!staffConversation) {
+      staffConversation = await StaffConversation.create({
+        conversationId: `bliss-app-${candidateId}`,
+        blissAppConversationId: String(conversation._id),
+        customerName,
+        customerEmail: candidate.email || '',
+        customerPhone: candidate.phone || '',
+        blissId: candidate.uniqueCode || candidate.candidateId || candidateId,
+        userType: 'Candidate',
+        country: candidate.country || '',
+        status: 'New',
+        priority: 'Normal',
+        department: 'Customer Care',
+        queueType: 'Unclassified',
+        queueName: 'Unclassified',
+        unreadCount: 0,
+        lastMessage: '',
+        lastActive: 'Just now',
+      });
+    } else if (staffConversation.blissAppConversationId !== String(conversation._id)) {
+      staffConversation.blissAppConversationId = String(conversation._id);
+      await staffConversation.save();
+    }
+
+    const channelName = `bliss_support_${crypto.randomUUID().replace(/-/g, '')}`;
+    const customerUid = crypto.randomInt(1, 2147483647);
+    let staffUid = crypto.randomInt(1, 2147483647);
+    if (staffUid === customerUid) staffUid = staffUid === 2147483647 ? 1 : staffUid + 1;
+    const [customerRtc, staffRtc] = await Promise.all([
+      generateRtcSession({ channelName, uid: customerUid, interviewType: 'voice' }),
+      generateRtcSession({ channelName, uid: staffUid, interviewType: 'voice' }),
+    ]);
+
+    const assignedTo = String(staffConversation.assignedTo || '').trim();
+    let staffAccounts = assignedTo
+      ? await Staff.find({ $or: [{ email: assignedTo }, { fullName: assignedTo }], isActive: { $ne: false } })
+          .select('email')
+          .lean()
+      : [];
+    if (!staffAccounts.length) {
+      staffAccounts = await Staff.find({
+        department: staffConversation.department || 'Customer Care',
+        isActive: { $ne: false },
+      }).select('email').lean();
+    }
+    const recipients = [...new Set(staffAccounts.map((staff) => String(staff.email || '').trim()).filter(Boolean))];
+    if (!recipients.length) {
+      return res.status(503).json({ success: false, error: 'No support staff are currently available for calls.' });
+    }
+
+    const callId = crypto.randomUUID();
+    const call = {
+      callId,
+      conversationId: staffConversation.conversationId,
+      candidateUserId: candidateId,
+      customerName,
+      channelName,
+      appId: staffRtc.appId,
+      token: staffRtc.token,
+      uid: staffRtc.uid,
+      videoEnabled: false,
+      createdAt: new Date().toISOString(),
+    };
+    staffConversation.activeCall = {
+      callId,
+      candidateUserId: candidateId,
+      status: 'ringing',
+      channelName,
+      createdAt: call.createdAt,
+    };
+    await staffConversation.save();
+    await StaffNotification.create({
+      title: 'Incoming voice call',
+      body: `${customerName} is calling Bliss support.`,
+      type: 'call',
+      conversationId: staffConversation.conversationId,
+    });
+    for (const recipient of recipients) {
+      emitToUser(recipient, 'incomingCall', call);
+      await Notification.create({
+        notificationId: `CALL-${callId}-${recipient}`,
+        userId: recipient,
+        userType: 'staff',
+        title: 'Incoming voice call',
+        message: `${customerName} is calling Bliss support.`,
+        notificationType: 'support_call',
+        category: 'message',
+        entityType: 'conversation',
+        entityId: staffConversation.conversationId,
+      });
+    }
+    return res.status(201).json({
+      success: true,
+      data: {
+        callId,
+        conversationId: staffConversation.conversationId,
+        channelName: customerRtc.channelName,
+        appId: customerRtc.appId,
+        token: customerRtc.token,
+        uid: customerRtc.uid,
+      },
+    });
+  } catch (err) {
+    return res.status(err.statusCode || 500).json({ success: false, error: err.message });
+  }
+});
+
+router.put('/conversations/:id/call-status', jwtAuth, async (req, res) => {
+  try {
+    const candidateId = req.candidate._id.toString();
+    const conversation = await Conversation.findById(req.params.id).lean();
+    if (
+      !conversation ||
+      !conversation.participants.some((id) => String(id) === candidateId) ||
+      !conversation.participants.some((id) => ['support', 'staff'].includes(String(id).toLowerCase()))
+    ) {
+      return res.status(404).json({ success: false, error: 'Support conversation not found' });
+    }
+    const { callId, status } = req.body || {};
+    if (!callId || status !== 'ended') {
+      return res.status(400).json({ success: false, error: 'A callId and ended status are required.' });
+    }
+    const staffConversation = await StaffConversation.findOne({
+      blissAppConversationId: String(conversation._id),
+      'activeCall.candidateUserId': candidateId,
+      'activeCall.callId': callId,
+    });
+    if (!staffConversation) {
+      return res.status(404).json({ success: false, error: 'Voice call not found' });
+    }
+    staffConversation.activeCall = {
+      ...staffConversation.activeCall,
+      status: 'ended',
+      updatedAt: new Date().toISOString(),
+    };
+    await staffConversation.save();
+    const assignedTo = String(staffConversation.assignedTo || '').trim();
+    let recipients = assignedTo
+      ? await Staff.find({ $or: [{ email: assignedTo }, { fullName: assignedTo }], isActive: { $ne: false } })
+          .select('email')
+          .lean()
+      : [];
+    if (!recipients.length) {
+      recipients = await Staff.find({
+        department: staffConversation.department || 'Customer Care',
+        isActive: { $ne: false },
+      }).select('email').lean();
+    }
+    for (const recipient of recipients) {
+      if (recipient.email) emitToUser(String(recipient.email).trim().toLowerCase(), 'callStatus', {
+        callId,
+        conversationId: staffConversation.conversationId,
+        status: 'ended',
+      });
+    }
+    return res.json({ success: true, data: staffConversation.activeCall });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });
   }

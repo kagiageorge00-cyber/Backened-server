@@ -1204,9 +1204,13 @@ async function sendMessage(req, res) {
 
     const authenticatedSender = req.staff.fullName || req.staff.email || 'Staff';
     const message = mongoose.connection.readyState === 1
-      ? await StaffMessage.create({ conversationId, sender: 'staff', senderName: authenticatedSender, text, type: 'text' })
-      : { conversationId, sender: 'staff', senderName: authenticatedSender, text, type: 'text', read: false, createdAt: new Date().toISOString() };
-    const appInboxDelivery = await syncStaffReplyToBlissApp({ conversationId, message })
+      ? await StaffMessage.create({ conversationId, sender: 'staff', senderName: authenticatedSender, text, type: 'text', channel: 'staff' })
+      : { conversationId, sender: 'staff', senderName: authenticatedSender, text, type: 'text', channel: 'staff', read: false, createdAt: new Date().toISOString() };
+    const appInboxDelivery = await syncStaffReplyToBlissApp({
+      conversationId,
+      conversation: accessibleConversation,
+      message,
+    })
       .catch((error) => {
         console.error('Staff reply could not be synced to the Bliss app inbox:', error.message);
         return { success: false, error: error.message };
@@ -1268,9 +1272,13 @@ async function sendMultichannelMessage(req, res) {
 
     const sender = req.staff.fullName || req.staff.email || 'Bliss Connect';
     const message = mongoose.connection.readyState === 1
-      ? await StaffMessage.create({ conversationId, sender: 'staff', senderName: sender, text: body, type: 'text' })
-      : { conversationId, sender: 'staff', senderName: sender, text: body, type: 'text', read: false, createdAt: new Date().toISOString() };
-    const appInboxDelivery = await syncStaffReplyToBlissApp({ conversationId, message })
+      ? await StaffMessage.create({ conversationId, sender: 'staff', senderName: sender, text: body, type: 'text', channel: 'staff' })
+      : { conversationId, sender: 'staff', senderName: sender, text: body, type: 'text', channel: 'staff', read: false, createdAt: new Date().toISOString() };
+    const appInboxDelivery = await syncStaffReplyToBlissApp({
+      conversationId,
+      conversation,
+      message,
+    })
       .catch((error) => {
         console.error('Staff reply could not be synced to the Bliss app inbox:', error.message);
         return { success: false, error: error.message };
@@ -1451,6 +1459,39 @@ async function uploadFile(req, res) {
   }
 }
 
+async function updateSupportCallStatus(req, res) {
+  try {
+    const { conversationId, callId, status } = req.body || {};
+    if (!conversationId || !callId || !['accepted', 'declined', 'ended'].includes(status)) {
+      return res.status(400).json({ success: false, error: 'conversationId, callId, and a valid status are required.' });
+    }
+    const conversation = await findAccessibleConversation(req, conversationId);
+    if (!conversation) return res.status(404).json({ success: false, error: 'Conversation not found' });
+    const activeCall = conversation.activeCall;
+    if (!activeCall || activeCall.callId !== callId || activeCall.status !== 'ringing' && status !== 'ended') {
+      return res.status(409).json({ success: false, error: 'This voice call is no longer active.' });
+    }
+    const nextActiveCall = { ...activeCall, status, updatedAt: new Date().toISOString() };
+    if (mongoose.connection.readyState === 1) {
+      await StaffConversation.updateOne(
+        { conversationId, 'activeCall.callId': callId },
+        { $set: { activeCall: nextActiveCall } },
+      );
+    } else {
+      conversation.activeCall = nextActiveCall;
+    }
+    const { emitToUser } = require('../inbox/socket/socketService');
+    emitToUser(`candidate:${activeCall.candidateUserId}`, 'callStatus', {
+      callId,
+      conversationId,
+      status,
+    });
+    return res.json({ success: true, data: nextActiveCall });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+}
+
 async function assignConversation(req, res) {
   try {
     const { conversationId, assignedTo, department, queueType: requestedQueueType } = req.body;
@@ -1608,6 +1649,7 @@ module.exports = {
   receiveBlissAppMessage,
   sendMessage,
   sendMultichannelMessage,
+  updateSupportCallStatus,
   uploadFile,
   assignConversation,
   updateChatStatus,

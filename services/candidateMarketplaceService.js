@@ -72,16 +72,10 @@ function buildCandidateMarketplaceProfile(candidate, employerRequirements = {}) 
   const languages = Array.isArray(candidateObj.languages) ? candidateObj.languages : [];
   const workExperience = Array.isArray(candidateObj.workExperience) && candidateObj.workExperience.length
     ? candidateObj.workExperience
-    : [{ companyName: 'Open to opportunities', position: 'Professional', country: sanitizeText(candidateObj.destinationCountry || candidateObj.country, 'Global'), startDate: '2020', endDate: 'Present', responsibilities: 'Ready for new opportunities.' }];
-  const education = Array.isArray(candidateObj.education) && candidateObj.education.length
-    ? candidateObj.education
-    : [{ institution: sanitizeText(candidateObj.education || 'Professional Training', 'Professional Training'), course: 'Career Development', qualification: 'Certified', yearCompleted: '2023' }];
-  const certificates = Array.isArray(candidateObj.certificates) && candidateObj.certificates.length
-    ? candidateObj.certificates
-    : ['Driving License', 'First Aid', 'Professional Certificate'];
-  const employmentHistory = Array.isArray(candidateObj.employmentHistory) && candidateObj.employmentHistory.length
-    ? candidateObj.employmentHistory
-    : [{ company: 'Previous Employer', country: sanitizeText(candidateObj.destinationCountry || candidateObj.country, 'Global'), position: sanitizeText(candidateObj.jobPosition || 'Skilled Professional', 'Skilled Professional'), duration: '2+ Years' }];
+    : candidateObj.experience || [];
+  const education = candidateObj.education || [];
+  const certificates = Array.isArray(candidateObj.certificates) ? candidateObj.certificates : [];
+  const employmentHistory = Array.isArray(candidateObj.employmentHistory) ? candidateObj.employmentHistory : [];
   const photos = Array.isArray(candidateObj.photos) && candidateObj.photos.length
     ? candidateObj.photos
     : (photoUrl ? [{ url: photoUrl, caption: 'Profile photo' }] : []);
@@ -109,8 +103,8 @@ function buildCandidateMarketplaceProfile(candidate, employerRequirements = {}) 
     skills,
     languages,
     yearsOfExperience: normalizeExperience(candidateObj.experience),
-    professionalSummary: sanitizeText(candidateObj.professionalSummary || 'Verified professional ready for new opportunities.', 'Verified professional ready for new opportunities.'),
-    careerObjective: sanitizeText(candidateObj.careerObjective || 'Seeking a role that matches my skills and experience.', 'Seeking a role that matches my skills and experience.'),
+    professionalSummary: sanitizeText(candidateObj.professionalSummary, ''),
+    careerObjective: sanitizeText(candidateObj.careerObjective, ''),
     workExperience,
     education,
     certificates,

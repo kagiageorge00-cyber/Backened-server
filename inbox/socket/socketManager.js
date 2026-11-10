@@ -1,4 +1,5 @@
 const { Server } = require('socket.io');
+const jwt = require('jsonwebtoken');
 const { verifyEmployerToken } = require('../../services/jwtService');
 
 class SocketManager {
@@ -16,18 +17,35 @@ class SocketManager {
     this.io.on('connection', (socket) => {
       const token = socket.handshake.auth?.token;
       if (typeof token === 'string' && token.length > 0) {
+        let authenticated = false;
         try {
           const decoded = verifyEmployerToken(token);
           if (decoded.employerId) {
             socket.join(String(decoded.employerId));
+            authenticated = true;
           }
         } catch (error) {
-          console.warn('Socket employer authentication failed:', error.message);
+          try {
+            const staff = jwt.verify(token, process.env.JWT_SECRET || 'bliss-staff-secret');
+            if (staff.email) socket.join(String(staff.email).trim().toLowerCase());
+            socket.data.staff = staff;
+            authenticated = true;
+          } catch (staffError) {
+            try {
+              const candidate = jwt.verify(token, process.env.CANDIDATE_JWT_SECRET || 'candidate_secret_key');
+              if (candidate.id) socket.join(`candidate:${candidate.id}`);
+              socket.data.candidate = candidate;
+              authenticated = true;
+            } catch (candidateError) {
+              console.warn('Socket authentication failed:', candidateError.message);
+            }
+          }
         }
+        socket.data.authenticated = authenticated;
       }
 
       socket.on('joinConversation', (conversationId) => {
-        if (conversationId) socket.join(conversationId);
+        if (socket.data.authenticated && conversationId) socket.join(conversationId);
       });
 
       socket.on('typing', ({ conversationId, userId, typing }) => {

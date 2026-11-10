@@ -92,9 +92,42 @@ describe('Marketplace routes', () => {
       religion: 'Christian',
     });
     expect(Candidate.findOne).toHaveBeenCalledWith({
-      uniqueCode: 'CAND-2026-0102',
+      $or: [{ uniqueCode: 'CAND-2026-0102' }],
       isVerified: true,
-      status: 'available',
+      status: { $in: ['available', 'in_process', 'approved'] },
+    });
+  });
+
+  test('GET /api/marketplace/candidates/:candidateId resolves Mongo IDs', async () => {
+    Candidate.findOne.mockReturnValue({
+      select: jest.fn().mockResolvedValue({
+        _id: '507f1f77bcf86cd799439011',
+        uniqueCode: 'CAND-2026-0102',
+        fullName: 'Grace Akinyi',
+        status: 'available',
+        isVerified: true,
+      }),
+    });
+
+    const app = express();
+    app.use('/api/marketplace', marketplaceRoutes);
+
+    const res = await request(app)
+      .get('/api/marketplace/candidates/507f1f77bcf86cd799439011');
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toMatchObject({
+      id: '507f1f77bcf86cd799439011',
+      candidateCode: 'CAND-2026-0102',
+      fullName: 'Grace Akinyi',
+    });
+    expect(Candidate.findOne).toHaveBeenCalledWith({
+      $or: [
+        { uniqueCode: '507f1f77bcf86cd799439011' },
+        { _id: '507f1f77bcf86cd799439011' },
+      ],
+      isVerified: true,
+      status: { $in: ['available', 'in_process', 'approved'] },
     });
   });
 
@@ -111,9 +144,9 @@ describe('Marketplace routes', () => {
     expect(res.status).toBe(404);
     expect(res.body.success).toBe(false);
     expect(Candidate.findOne).toHaveBeenCalledWith({
-      uniqueCode: 'CND-2026-0999',
+      $or: [{ uniqueCode: 'CND-2026-0999' }],
       isVerified: true,
-      status: 'available',
+      status: { $in: ['available', 'in_process', 'approved'] },
     });
   });
 });

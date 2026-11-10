@@ -3,7 +3,7 @@ const { createAdaptiveStorage } = require('../../routes/upload');
 
 const upload = multer({
   storage: createAdaptiveStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 },
+  limits: { fileSize: 100 * 1024 * 1024 },
 });
 
 module.exports = upload;

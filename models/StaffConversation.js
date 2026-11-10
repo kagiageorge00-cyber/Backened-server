@@ -3,6 +3,10 @@ const mongoose = require('mongoose');
 const staffConversationSchema = new mongoose.Schema(
   {
     conversationId: { type: String, required: true, unique: true },
+    blissAppConversationId: { type: String, default: '' },
+    customerEmail: { type: String, default: '' },
+    customerPhone: { type: String, default: '' },
+    activeCall: { type: mongoose.Schema.Types.Mixed, default: null },
     customerName: { type: String, required: true },
     customerEmail: { type: String, default: '' },
     customerPhone: { type: String, default: '' },

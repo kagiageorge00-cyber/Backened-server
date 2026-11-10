@@ -32,7 +32,7 @@ async function resolveRecipient(userId) {
     };
   }
 
-  const query = [
+  const candidateQuery = [
     { phone: id },
     { email: id },
     { uniqueCode: id },
@@ -40,10 +40,10 @@ async function resolveRecipient(userId) {
   ];
 
   if (mongoose.Types.ObjectId.isValid(id)) {
-    query.push({ _id: id });
+    candidateQuery.push({ _id: id });
   }
 
-  const candidate = await Candidate.findOne({ $or: query }).lean();
+  const candidate = await Candidate.findOne({ $or: candidateQuery }).lean();
   if (candidate) {
     return {
       phoneNumber: normalizePhone(candidate.phone),
@@ -51,7 +51,12 @@ async function resolveRecipient(userId) {
     };
   }
 
-  const user = await User.findOne({ $or: query }).lean();
+  const userQuery = [{ phone: id }, { email: id }];
+  if (mongoose.Types.ObjectId.isValid(id)) {
+    userQuery.push({ _id: id }, { candidateId: id });
+  }
+
+  const user = await User.findOne({ $or: userQuery }).lean();
   if (user) {
     return {
       phoneNumber: normalizePhone(user.phone),
