@@ -7,6 +7,7 @@ jest.mock('../models/Deployment', () => ({
 
 jest.mock('../models/PaymentRecord', () => ({
   create: jest.fn(),
+  findOneAndUpdate: jest.fn(),
 }));
 
 jest.mock('../models/Contract', () => ({
@@ -76,7 +77,7 @@ describe('Deployment flow end to end', () => {
     };
     Deployment.findOne.mockResolvedValue(depRecord);
     Candidate.findOne.mockResolvedValue({ candidateId: 'CAN-1', status: 'available', isVerified: true, fullName: 'Test Candidate', save: jest.fn().mockResolvedValue(true) });
-    PaymentRecord.create.mockResolvedValue({ paymentId: 'PAY-123', deploymentId: 'DEP-123' });
+    PaymentRecord.findOneAndUpdate.mockResolvedValue({ paymentId: 'PAY-123', deploymentId: 'DEP-123' });
     Contract.create.mockResolvedValue({ contractId: 'CTR-123', deploymentId: 'DEP-123' });
 
     const createRes = await request(app)
@@ -86,7 +87,11 @@ describe('Deployment flow end to end', () => {
     expect(createRes.status).toBe(201);
     expect(createRes.body.success).toBe(true);
     expect(createRes.body.data.deploymentId).toBe('DEP-123');
-    expect(Deployment.create).toHaveBeenCalledWith({ deploymentId: expect.any(String), employerId: 'EMP-1', candidateId: 'CAN-1' });
+    expect(Deployment.create).toHaveBeenCalledWith(expect.objectContaining({
+      deploymentId: expect.any(String),
+      employerId: 'EMP-1',
+      candidateId: 'CAN-1',
+    }));
 
     const listRes = await request(app)
       .get('/api/deployments/employer/EMP-1');
@@ -105,12 +110,30 @@ describe('Deployment flow end to end', () => {
 
     const payRes = await request(app)
       .post('/api/deployments/DEP-123/pay')
-      .send({ employerId: 'EMP-1', amount: 1200, paymentMethod: 'bank' });
+      .send({
+        employerId: 'EMP-1',
+        amount: 1200,
+        paymentMethod: 'bank',
+        referenceNumber: 'TXN-123',
+        receiptUrl: 'https://example.com/receipt.pdf',
+      });
 
     expect(payRes.status).toBe(200);
     expect(payRes.body.success).toBe(true);
     expect(payRes.body.payment).toBeDefined();
-    expect(payRes.body.contract).toBeDefined();
     expect(depRecord.save).toHaveBeenCalled();
+    expect(PaymentRecord.findOneAndUpdate).toHaveBeenCalledWith(
+      { deploymentId: 'DEP-123' },
+      expect.objectContaining({
+        $set: expect.objectContaining({
+          employerId: 'EMP-1',
+          paymentStatus: 'submitted',
+          transactionReference: expect.any(String),
+          expiresAt: expect.any(Date),
+        }),
+        $setOnInsert: { paymentId: expect.any(String) },
+      }),
+      { new: true, upsert: true, setDefaultsOnInsert: true },
+    );
   });
 });

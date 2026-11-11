@@ -7,6 +7,7 @@ const Deployment = require('../models/Deployment');
 const Candidate = require('../models/candidate');
 const Employer = require('../models/Employer');
 const Notification = require('../models/Notification');
+const Interview = require('../models/Interview');
 const employerAuth = require('../middleware/employerAuth');
 
 // Blocked patterns for security
@@ -155,11 +156,20 @@ router.post('/send', employerAuth, async (req, res) => {
       return res.status(404).json({ success: false, error: 'Conversation not found' });
     }
 
-    const hasDeployment = await canMessage(senderId, candidateIds);
-    if (!hasDeployment) {
+    const [hasDeployment, activeInterview] = await Promise.all([
+      canMessage(senderId, candidateIds),
+      Interview.findOne({
+        employerId: senderId,
+        candidateId: { $in: candidateIds },
+        chatChannelId: conversation._id.toString(),
+        interviewStatus: 'accepted',
+        meetingStatus: 'active',
+      }),
+    ]);
+    if (!hasDeployment && !activeInterview) {
       return res.status(403).json({
         success: false,
-        error: 'Cannot message this candidate. Deploy them first.',
+        error: 'Messaging is available during an active interview or approved deployment.',
         requiresDeployment: true,
       });
     }

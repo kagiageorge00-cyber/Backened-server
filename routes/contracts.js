@@ -94,7 +94,10 @@ router.post('/generate', async (req, res) => {
       contractUrl: `/uploads/contracts/${contractId}.pdf`,
     });
 
+    const { fileName } = await generateContractPdf(contract.toObject());
+    contract.contractUrl = `/uploads/contracts/${fileName}`;
     await contract.save();
+
     deployment.currentStage = 'Contract';
     deployment.contractStatus = 'generated';
     await deployment.save();
@@ -107,15 +110,6 @@ router.post('/generate', async (req, res) => {
       await ActivityLog.create({ actorId: employer.employerId, actorType: 'employer', action: 'generate_contract', entityType: 'contract', entityId: contractId, details: { deploymentId } });
     } catch (e) {
       console.warn('Audit create failed:', e.message || e);
-    }
-
-    // Generate PDF file for contract and update contractUrl if successful
-    try {
-      const { filePath, fileName } = await generateContractPdf(contract.toObject());
-      contract.contractUrl = `/uploads/contracts/${fileName}`;
-      await contract.save();
-    } catch (pdfErr) {
-      console.warn('Contract PDF generation failed:', pdfErr.message || pdfErr);
     }
 
     // Create notification for employer

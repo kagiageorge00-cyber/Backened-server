@@ -7,6 +7,10 @@ const {
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const CustomerUser = require('../models/BlissCommunicationUser');
+const {
+  buildUserPayload,
+  validateCustomerProfile,
+} = require('../auth/controllers/authController');
 
 describe('auth service helpers', () => {
   it('detects bliss ids, candidate ids, emails and phone numbers', () => {
@@ -19,6 +23,63 @@ describe('auth service helpers', () => {
   it('builds a bliss id in the expected format', () => {
     const value = buildBlissId(2026, 1);
     expect(value).toBe('BLISS-2026-000001');
+  });
+
+  it('allows registration without selecting services and still completes the profile', () => {
+    const validation = validateCustomerProfile({
+      fullName: 'Test Customer',
+      location: 'Nairobi, Kenya',
+      phone: '+254700000000',
+      whatsapp: '+254700000001',
+      email: 'customer@example.test',
+      services: [],
+      termsAccepted: true,
+    });
+
+    expect(validation.isValid).toBe(true);
+    expect(validation.profile.services).toEqual([]);
+    expect(
+      buildUserPayload({
+        ...validation.profile,
+        _id: { toString: () => 'customer-1' },
+        blissId: 'BLISS-2026-000001',
+        termsAccepted: true,
+      }),
+    ).toMatchObject({
+      profileComplete: true,
+      services: [],
+      marketingConsent: false,
+      notificationsConsent: false,
+      notificationChannels: [],
+    });
+  });
+
+  it('records campaign channel consent only when the customer opts in', () => {
+    const validation = validateCustomerProfile({
+      fullName: 'Test Customer',
+      location: 'Nairobi, Kenya',
+      phone: '+254700000000',
+      whatsapp: '+254700000001',
+      email: 'customer@example.test',
+      termsAccepted: true,
+      notificationsConsent: true,
+    });
+
+    expect(validation.isValid).toBe(true);
+    expect(
+      buildUserPayload({
+        ...validation.profile,
+        _id: { toString: () => 'customer-1' },
+        blissId: 'BLISS-2026-000001',
+        termsAccepted: true,
+        marketingConsent: true,
+      }),
+    ).toMatchObject({
+      profileComplete: true,
+      marketingConsent: true,
+      notificationsConsent: true,
+      notificationChannels: ['whatsapp', 'email', 'in_app', 'fcm'],
+    });
   });
 
   it('hashes customer passwords in the Mongoose save hook', async () => {

@@ -10,13 +10,43 @@ async function generateContractPdf(contract) {
 
       const fileName = `${contract.contractId}.pdf`;
       const filePath = path.join(uploadsDir, fileName);
+      const backgroundPath = path.join(
+        __dirname,
+        '..',
+        '..',
+        'assets',
+        'images',
+        'background1.png'
+      );
+      if (!fs.existsSync(backgroundPath)) {
+        throw new Error(`Contract background image not found: ${backgroundPath}`);
+      }
 
       const doc = new PDFDocument({ size: 'A4', margin: 50 });
       const stream = fs.createWriteStream(filePath);
       doc.pipe(stream);
 
+      const drawPageBackground = () => {
+        doc.save();
+        doc.opacity(0.16);
+        doc.image(backgroundPath, 0, 0, {
+          width: doc.page.width,
+          height: doc.page.height,
+        });
+        doc.restore();
+      };
+      doc.on('pageAdded', drawPageBackground);
+      drawPageBackground();
+
       // Header
-      doc.image(path.join(__dirname, '..', 'assets', 'images', 'logo.png'), 50, 45, { width: 120 }).moveDown(2);
+      const logoPaths = [
+        path.join(__dirname, '..', 'assets', 'images', 'logo.png'),
+        path.join(__dirname, '..', '..', 'assets', 'images', 'logo.png'),
+      ];
+      const logoPath = logoPaths.find((candidate) => fs.existsSync(candidate));
+      if (logoPath) {
+        doc.image(logoPath, 50, 45, { width: 120 }).moveDown(2);
+      }
       doc.fontSize(20).text('Bliss Connect Employment Contract', { align: 'center' });
       doc.moveDown();
 

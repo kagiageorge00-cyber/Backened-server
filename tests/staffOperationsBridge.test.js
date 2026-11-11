@@ -71,6 +71,9 @@ describe('Staff operations app-inbound bridge', () => {
     expect(whatsappMessage.conversationId).toBe(appMessage.conversationId);
     expect(whatsappMessage.message.channel).toBe('whatsapp');
     expect(whatsappMessage.message.senderName).toBe('Customer');
+    expect(whatsappMessage.conversation.channels).toEqual(
+      expect.arrayContaining(['bliss_app', 'whatsapp']),
+    );
     expect(whatsappMessage.conversation.blissAppConversationId).toBe(appConversationId);
   });
 });

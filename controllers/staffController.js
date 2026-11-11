@@ -1124,10 +1124,22 @@ async function listChats(req, res) {
     const conversations = mongoose.connection.readyState === 1
       ? await StaffConversation.find(staffChatScope(req.staff)).sort({ updatedAt: -1 }).lean()
       : memoryState.conversations.filter((conversation) => staffCanAccessConversation(req.staff, conversation));
+    const whatsappConversationIds = mongoose.connection.readyState === 1
+      ? new Set(await StaffMessage.distinct('conversationId', {
+          channel: 'whatsapp',
+          conversationId: { $in: conversations.map((item) => item.conversationId) },
+        }))
+      : new Set(memoryState.messages
+          .filter((message) => message.channel === 'whatsapp')
+          .map((message) => message.conversationId));
     return res.json({
       success: true,
       data: conversations.map((conversation) => ({
         ...conversation,
+        channels: [...new Set([
+          ...(conversation.channels || []),
+          ...(whatsappConversationIds.has(conversation.conversationId) ? ['whatsapp'] : []),
+        ])],
         online: isCustomerOnline(conversation),
       })),
     });

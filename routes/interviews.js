@@ -4,7 +4,9 @@ const mongoose = require('mongoose');
 const Interview = require('../models/Interview');
 const Candidate = require('../models/candidate');
 const Employer = require('../models/Employer');
+const Conversation = require('../models/Conversation');
 const employerAuth = require('../middleware/employerAuth');
+const candidateAuth = require('../middleware/jwtAuth');
 const crypto = require('crypto');
 const {
   generateRtcSession,
@@ -24,6 +26,20 @@ const asyncCandidateLookup = async (candidateId) => {
     identifiers.push({ _id: candidateId });
   }
   return Candidate.findOne({ $or: identifiers });
+};
+
+const getOrCreateInterviewConversation = async (employerId, candidateId) => {
+  const participants = [employerId, candidateId];
+  const existing = await Conversation.findOne({
+    participants: { $all: participants },
+    $expr: { $eq: [{ $size: '$participants' }, participants.length] },
+  });
+  if (existing) return existing;
+
+  return Conversation.create({
+    conversationId: `CONV-${Date.now()}-${crypto.randomUUID()}`,
+    participants,
+  });
 };
 
 const createInterviewNotification = async ({
@@ -81,6 +97,10 @@ router.post('/request', employerAuth, async (req, res) => {
 
     const interviewId = `INT-${Date.now()}`;
     const channelName = `interview_${interviewId}`;
+    const conversation = await getOrCreateInterviewConversation(
+      employer.employerId,
+      candidate._id.toString(),
+    );
 
     const interview = await Interview.create({
       interviewId,
@@ -96,6 +116,7 @@ router.post('/request', employerAuth, async (req, res) => {
       agoraToken: null,
       meetingStatus: 'scheduled',
       interviewStatus: 'requested',
+      chatChannelId: conversation._id.toString(),
     });
 
     await createInterviewNotification({
@@ -132,6 +153,7 @@ router.get('/', employerAuth, async (req, res) => {
       return {
         ...item.toObject(),
         candidateName: candidate?.fullName || candidate?.candidateName || 'Candidate',
+        candidateMongoId: candidate?._id?.toString() || '',
       };
     }));
     return res.json({ success: true, data: hydrated });
@@ -185,23 +207,33 @@ router.get('/candidate/:candidateId', async (req, res) => {
 });
 
 // Candidate responds to an interview (accept/decline)
-router.post('/:interviewId/respond', async (req, res) => {
+router.post('/:interviewId/respond', candidateAuth, async (req, res) => {
   try {
     const { interviewId } = req.params;
-    const { candidateId, response } = req.body; // response: 'accepted' | 'declined'
-    if (!interviewId || !candidateId || !response) return res.status(400).json({ success: false, error: 'interviewId, candidateId and response required' });
+    const { response } = req.body;
+    if (!interviewId || !['accepted', 'declined'].includes(response)) {
+      return res.status(400).json({ success: false, error: 'interviewId and a valid response are required' });
+    }
 
-    const interview = await Interview.findOne({ interviewId });
+    const candidateIds = [
+      req.candidate._id?.toString(),
+      req.candidate.candidateId,
+      req.candidate.uniqueCode,
+    ].filter(Boolean);
+    const interview = await Interview.findOne({
+      interviewId,
+      candidateId: { $in: candidateIds },
+    });
     if (!interview) return res.status(404).json({ success: false, error: 'Interview not found' });
 
-    interview.interviewStatus = response === 'accepted' ? 'accepted' : 'declined';
+    interview.interviewStatus = response;
     await interview.save();
 
     await createInterviewNotification({
       userId: interview.employerId,
       userType: 'employer',
       title: `Interview ${interview.interviewStatus}`,
-      message: `Candidate ${candidateId} has ${interview.interviewStatus} the interview.`,
+      message: `Candidate ${req.candidate.fullName || req.candidate.uniqueCode || 'Candidate'} has ${interview.interviewStatus} the interview.`,
       interview,
       actionUrl: `/employer/interviews/${interview.interviewId}`,
     });

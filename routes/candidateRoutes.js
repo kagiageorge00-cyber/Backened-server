@@ -10,6 +10,7 @@ const Candidate = require('../models/candidate');
 const { sendEmail } = require('../email');
 const { FRONTEND_URL } = require('../config');
 const { getCandidateDisplayName, getCandidateNameValue } = require('../utils/candidateDisplayName');
+const { candidateMarketplaceEligibilityFilter } = require('../utils/candidateMarketplaceEligibility');
 
 if (process.env.CLOUDINARY_URL) {
   cloudinary.config(process.env.CLOUDINARY_URL);
@@ -343,7 +344,7 @@ router.get('/marketplace', async (req, res) => {
     const candidates = await Candidate.find({
       isVerified: true,
       status: 'available',
-      uniqueCode: { $type: 'string', $regex: /\S/ },
+      ...candidateMarketplaceEligibilityFilter(),
     }).sort({ createdAt: -1 });
     return res.json({
       success: true,
@@ -367,6 +368,7 @@ router.get('/marketplace/profile/:candidateId', async (req, res) => {
       uniqueCode: candidateId,
       isVerified: true,
       status: 'available',
+      ...candidateMarketplaceEligibilityFilter(),
     });
 
     if (!candidate) {

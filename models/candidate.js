@@ -85,6 +85,8 @@ const candidateSchema = new mongoose.Schema({
   county: String,
   jobPosition: String,
   jobType: String,
+  applicationType: String,
+  jobData: mongoose.Schema.Types.Mixed,
   isInternational: {
     type: Boolean,
     default: false,

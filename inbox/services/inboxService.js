@@ -25,6 +25,28 @@ class InboxService {
         ? payload.department.trim()
         : 'Customer Care';
     const conversation = await this.repository.createConversation(user, department);
+    const serviceInterest = typeof payload.serviceInterest === 'string'
+      ? payload.serviceInterest.trim()
+      : '';
+    if (serviceInterest) {
+      if (serviceInterest.length > 200) {
+        throw new Error('Service interest is too long.');
+      }
+      const firstName =
+        String(user.fullName || '').trim().split(/\s+/)[0] || 'there';
+      await this.repository.createMessage({
+        conversationId: conversation.id || conversation.conversationId,
+        senderId: conversation.departmentId || 'dept-customer-care',
+        receiverId: user.blissId,
+        senderType: 'support',
+        messageType: 'text',
+        messageText:
+          `Hi ${firstName}! Thanks for enquiring about ${serviceInterest}. ` +
+          "You're in the right place. Our Bliss Connect team is here to " +
+          "guide you through the next steps. Tell us a little more about " +
+          "what you need, and we'll be happy to help.",
+      });
+    }
     return { success: true, data: { conversation } };
   }
 

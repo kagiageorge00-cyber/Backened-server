@@ -7,6 +7,7 @@ router.post('/register', authController.register);
 router.post('/customer/register', authController.registerCustomer);
 router.post('/customer/google', authController.googleCustomerSignIn);
 router.post('/customer/complete-profile', authenticateToken, authController.completeCustomerProfile);
+router.put('/customer/services', authenticateToken, authController.updateCustomerServices);
 router.post('/login', authController.login);
 router.get('/profile', authenticateToken, authController.profile);
 router.post('/verify-email', authController.verifyEmail);

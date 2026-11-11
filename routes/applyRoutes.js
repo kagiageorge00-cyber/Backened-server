@@ -168,20 +168,20 @@ router.post('/', async (req, res) => {
       nationalIdBackUrl,
       documents,
       candidateFormLink,
+      applicationType,
+      jobData,
     } = req.body || {};
 
-    if (!email || !phone) {
-      return sendError(res, 400, 'email and phone are required');
+    if (!phone) {
+      return sendError(res, 400, 'phone is required');
     }
 
-    let candidate = await Candidate.findOne({
-      $or: [
-        { email },
-        { phone },
-        { candidateId },
-        { uniqueCode: candidateId },
-      ],
-    });
+    const candidateLookup = [{ phone }];
+    if (email) candidateLookup.push({ email });
+    if (candidateId) {
+      candidateLookup.push({ candidateId }, { uniqueCode: candidateId });
+    }
+    let candidate = await Candidate.findOne({ $or: candidateLookup });
 
     let hashedPassword = candidate?.password;
     if (password) {
@@ -221,8 +221,10 @@ router.post('/', async (req, res) => {
     const payload = {
       fullName: resolveFieldValue(fullName, resolveFieldValue(name, candidate?.fullName || '')),
       name: resolveFieldValue(name, resolveFieldValue(fullName, candidate?.name || '')),
-      email,
+      email: resolveFieldValue(email, candidate?.email || ''),
       phone,
+      applicationType: resolveFieldValue(applicationType, candidate?.applicationType || ''),
+      jobData: resolveFieldValue(jobData, candidate?.jobData),
       candidateId: candidate?.candidateId || candidateId || generateCandidateReferenceId(),
       uniqueCode: candidate?.uniqueCode || (password ? generateCandidatePortalCode() : undefined),
       country: resolveFieldValue(country, candidate?.country || ''),
@@ -230,8 +232,12 @@ router.post('/', async (req, res) => {
       religion: resolveFieldValue(religion, candidate?.religion || ''),
       education: resolveFieldValue(education, candidate?.education || ''),
       educationalLevel: resolveFieldValue(normalizeEducationalLevel(educationalLevel), normalizeEducationalLevel(candidate?.educationalLevel)),
-      skills: Array.isArray(skills) ? skills : (skills ? [skills] : candidate?.skills || []),
-      languages: Array.isArray(languages) ? languages : (languages ? [languages] : candidate?.languages || []),
+      skills: Array.isArray(skills)
+        ? (skills.length > 0 ? skills : candidate?.skills || [])
+        : (skills ? [skills] : candidate?.skills || []),
+      languages: Array.isArray(languages)
+        ? (languages.length > 0 ? languages : candidate?.languages || [])
+        : (languages ? [languages] : candidate?.languages || []),
       experience: resolveFieldValue(experience, candidate?.experience || ''),
       gender: resolveFieldValue(gender, candidate?.gender || ''),
       dateOfBirth: resolveFieldValue(dateOfBirth, candidate?.dateOfBirth || ''),

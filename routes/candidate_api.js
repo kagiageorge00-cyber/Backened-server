@@ -10,6 +10,7 @@ const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const Candidate = require('../models/candidate');
 const Application = require('../models/Application');
 const Interview = require('../models/Interview');
+const Deployment = require('../models/Deployment');
 const Document = require('../models/Document');
 const Notification = require('../models/Notification');
 const Conversation = require('../models/Conversation');
@@ -204,9 +205,21 @@ const upload = multer({ storage });
 router.post('/auth/login', async (req, res) => {
   try {
     const { candidateId, password } = req.body;
-    if (!candidateId || !password) return res.status(400).json({ success: false, error: 'candidateId and password required' });
+    const loginId = typeof candidateId === 'string' ? candidateId.trim() : '';
+    if (!loginId || typeof password !== 'string' || !password) {
+      return res.status(400).json({ success: false, error: 'candidateId and password required' });
+    }
 
-    const candidate = await Candidate.findOne({ $or: [{ uniqueCode: candidateId }, { phone: candidateId }, { email: candidateId }] });
+    const escapedLoginId = loginId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const candidateCode = new RegExp(`^${escapedLoginId}$`, 'i');
+    const candidate = await Candidate.findOne({
+      $or: [
+        { uniqueCode: candidateCode },
+        { candidateId: candidateCode },
+        { phone: loginId },
+        { email: loginId },
+      ],
+    });
     if (!candidate) return res.status(401).json({ success: false, error: 'Candidate not found' });
 
     const match = await bcrypt.compare(password, candidate.password || '');
@@ -723,17 +736,35 @@ router.get('/conversations', jwtAuth, async (req, res) => {
   try {
     const candidate = req.candidate;
     const convos = await Conversation.find({ participants: candidate._id.toString() }).sort({ updatedAt: -1 });
+    const employerIds = Array.from(new Set(convos.flatMap((conversation) =>
+      conversation.participants
+        .map((participant) => String(participant))
+        .filter((participant) => participant.startsWith('EMP-')),
+    )));
+    const employers = employerIds.length
+      ? await Employer.find({ employerId: { $in: employerIds } })
+        .select('employerId companyName fullName')
+        .lean()
+      : [];
+    const employerNames = new Map(employers.map((employer) => [
+      employer.employerId,
+      employer.companyName || employer.fullName || 'Employer',
+    ]));
     const enriched = await Promise.all(convos.map(async (conv) => {
       const otherParticipant = conv.participants.find(
         (p) => p.toString() !== candidate._id.toString(),
       );
       let name = 'Conversation';
+      let conversationType = 'conversation';
       if (otherParticipant === 'support') {
         name = 'Support Team';
+        conversationType = 'support';
       } else if (otherParticipant === 'employer') {
         name = 'Employer';
+        conversationType = 'employer';
       } else if (typeof otherParticipant === 'string' && otherParticipant.startsWith('EMP-')) {
-        name = 'Employer';
+        name = employerNames.get(otherParticipant) || 'Employer';
+        conversationType = 'employer';
       } else if (typeof otherParticipant === 'string' && otherParticipant) {
         name = `Chat with ${otherParticipant}`;
       }
@@ -741,6 +772,7 @@ router.get('/conversations', jwtAuth, async (req, res) => {
       return {
         ...conv.toObject(),
         name,
+        conversationType,
         lastMessage: lastMessage?.message || '',
       };
     }));
@@ -841,6 +873,36 @@ router.post('/conversations/:id/messages', jwtAuth, async (req, res) => {
     if (msg && msg.conversationId !== conv._id.toString()) {
       return res.status(409).json({ success: false, error: 'Message identifier is already in use.' });
     }
+    const isNewMessage = !msg;
+    const employerId = isNewMessage
+      ? conv.participants.find((id) =>
+        String(id) !== candidateId && String(id).startsWith('EMP-'),
+      )
+      : null;
+    if (employerId) {
+      const candidateIdentifiers = getCandidateIdentifiers(candidate);
+      const [hasDeployment, activeInterview] = await Promise.all([
+        Deployment.findOne({
+          employerId: String(employerId),
+          candidateId: { $in: candidateIdentifiers },
+          currentStage: { $in: ['Contract', 'Visa', 'Active', 'Deployed'] },
+          adminVerified: true,
+        }),
+        Interview.findOne({
+          employerId: String(employerId),
+          candidateId: { $in: candidateIdentifiers },
+          chatChannelId: conv._id.toString(),
+          interviewStatus: 'accepted',
+          meetingStatus: 'active',
+        }),
+      ]);
+      if (!hasDeployment && !activeInterview) {
+        return res.status(403).json({
+          success: false,
+          error: 'Messaging is available during an active interview or approved deployment.',
+        });
+      }
+    }
     if (!msg) {
       msg = await Message.create({
         conversationId: conv._id.toString(),
@@ -880,6 +942,21 @@ router.post('/conversations/:id/messages', jwtAuth, async (req, res) => {
         attachmentUrl,
         attachmentName,
         attachmentMimeType,
+      });
+    } else if (employerId) {
+      await Notification.create({
+        notificationId: `NTF-${Date.now()}-${Math.random().toString(36).slice(2, 10).toUpperCase()}`,
+        userId: String(employerId),
+        userType: 'employer',
+        entityType: 'message',
+        entityId: msg._id.toString(),
+        notificationType: 'message',
+        category: 'message',
+        title: 'New Message from Candidate',
+        message: `You have a new message from ${getCandidateNameValue(candidate)}.`,
+        actionUrl: `/employer/messages/${conv._id.toString()}`,
+        isRead: false,
+        createdAt: new Date(),
       });
     }
     return res.status(201).json({ success: true, data: msg });

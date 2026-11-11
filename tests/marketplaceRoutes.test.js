@@ -12,6 +12,7 @@ const express = require('express');
 const request = require('supertest');
 const Candidate = require('../models/candidate');
 const marketplaceRoutes = require('../routes/marketplace');
+const { candidateMarketplaceEligibilityFilter } = require('../utils/candidateMarketplaceEligibility');
 
 describe('Marketplace routes', () => {
   beforeEach(() => {
@@ -56,6 +57,11 @@ describe('Marketplace routes', () => {
       nationality: 'Kenyan',
       religion: 'Christian',
     });
+    expect(Candidate.find).toHaveBeenCalledWith({
+      isVerified: true,
+      status: { $in: ['available', 'in_process', 'approved'] },
+      ...candidateMarketplaceEligibilityFilter(),
+    });
   });
 
   test('GET /api/marketplace/candidates/:candidateId returns a candidate card with sanitized name', async () => {
@@ -95,6 +101,7 @@ describe('Marketplace routes', () => {
       $or: [{ uniqueCode: 'CAND-2026-0102' }],
       isVerified: true,
       status: { $in: ['available', 'in_process', 'approved'] },
+      ...candidateMarketplaceEligibilityFilter(),
     });
   });
 
@@ -128,6 +135,7 @@ describe('Marketplace routes', () => {
       ],
       isVerified: true,
       status: { $in: ['available', 'in_process', 'approved'] },
+      ...candidateMarketplaceEligibilityFilter(),
     });
   });
 
@@ -147,6 +155,21 @@ describe('Marketplace routes', () => {
       $or: [{ uniqueCode: 'CND-2026-0999' }],
       isVerified: true,
       status: { $in: ['available', 'in_process', 'approved'] },
+      ...candidateMarketplaceEligibilityFilter(),
     });
+  });
+
+  test('marketplace eligibility requires approved payment, credentials, and an uploaded document', () => {
+    const filter = candidateMarketplaceEligibilityFilter();
+
+    expect(filter).toMatchObject({
+      paymentStatus: /^paid$/i,
+      uniqueCode: { $type: 'string', $regex: /\S/ },
+      password: { $type: 'string', $regex: /\S/ },
+    });
+    expect(filter.$and[0].$or).toEqual(expect.arrayContaining([
+      { passportUrl: { $type: 'string', $regex: /\S/ } },
+      { 'documents.uploads.0': { $exists: true } },
+    ]));
   });
 });

@@ -4,6 +4,7 @@ const express = require("express");
 const path = require("path");
 const router = express.Router();
 const bcrypt = require("bcryptjs");
+const mongoose = require('mongoose');
 
 const Candidate = require("../models/candidate");
 const { FRONTEND_URL } = require("../config");
@@ -177,6 +178,9 @@ router.post("/", async (req, res) => {
       jobPosition,
       jobAppliedFor,
       jobType,
+      applicationType,
+      isInternational,
+      jobData,
       destinationCountry,
       destinationPreference,
       preferredDestination,
@@ -184,11 +188,16 @@ router.post("/", async (req, res) => {
       expectedSalary,
       photoUrl,
       videoUrl,
+      introductionVideoUrl,
       passportUrl,
       medicalUrl,
       conductUrl,
+      goodConductUrl,
       resumeUrl,
       additionalUrl,
+      otherDocumentUrl,
+      nationalIdFrontUrl,
+      nationalIdBackUrl,
       appliedJobId,
       appliedJobTitle,
       appliedEmployerId,
@@ -227,10 +236,18 @@ router.post("/", async (req, res) => {
       }
     }
 
-    let candidate = candidateId
-      ? await Candidate.findOne({
-          $or: [{ candidateId }, { uniqueCode: candidateId }],
-        })
+    const candidateIdentifiers = [];
+    if (candidateId) {
+      if (mongoose.Types.ObjectId.isValid(candidateId)) {
+        candidateIdentifiers.push({ _id: candidateId });
+      }
+      candidateIdentifiers.push(
+        { candidateId },
+        { uniqueCode: candidateId },
+      );
+    }
+    let candidate = candidateIdentifiers.length
+      ? await Candidate.findOne({ $or: candidateIdentifiers })
       : null;
     if (!candidate && phone) {
       candidate = await Candidate.findOne({ phone });
@@ -246,10 +263,7 @@ router.post("/", async (req, res) => {
     // ======================
     // VALIDATION (allow existing candidate's stored docs)
     // ======================
-    const requiredFields = [
-      { key: 'phone', value: phone },
-      { key: 'email', value: email },
-    ];
+    const requiredFields = [{ key: 'phone', value: phone }];
 
     const looksLikeVideoFile = (str) => {
       if (!str || typeof str !== 'string') return false;
@@ -321,12 +335,12 @@ router.post("/", async (req, res) => {
       candidate.educationalLevel = normalizeEducationalLevel(educationalLevel) || normalizeEducationalLevel(candidate.educationalLevel);
       candidate.experience = experience || candidate.experience;
       candidate.skills = Array.isArray(skills)
-        ? skills
+        ? (skills.length > 0 ? skills : candidate.skills)
         : skills
           ? toArrayField(skills)
           : candidate.skills;
       candidate.languages = Array.isArray(languages)
-        ? languages
+        ? (languages.length > 0 ? languages : candidate.languages)
         : languages
           ? toArrayField(languages)
           : candidate.languages;
@@ -336,6 +350,12 @@ router.post("/", async (req, res) => {
       candidate.numberOfChildren = numberOfChildren !== undefined ? numberOfChildren : candidate.numberOfChildren;
       candidate.jobPosition = jobPosition || jobAppliedFor || candidate.jobPosition || candidate.jobAppliedFor;
       candidate.jobType = jobType || candidate.jobType;
+      candidate.applicationType = applicationType || candidate.applicationType;
+      candidate.isInternational =
+        typeof isInternational === 'boolean'
+          ? isInternational
+          : candidate.isInternational;
+      candidate.jobData = jobData || candidate.jobData;
       candidate.destinationCountry = destinationCountry || candidate.destinationCountry;
       candidate.destinationPreference = Array.isArray(destinationPreference || preferredDestination || preferredDestinations)
         ? (destinationPreference || preferredDestination || preferredDestinations)
@@ -344,12 +364,23 @@ router.post("/", async (req, res) => {
           : candidate.destinationPreference);
       candidate.expectedSalary = expectedSalary || candidate.expectedSalary;
       candidate.photoUrl = photoUrl || candidate.photoUrl;
-      candidate.videoUrl = videoUrl || candidate.videoUrl;
+      candidate.videoUrl =
+        videoUrl || introductionVideoUrl || candidate.videoUrl;
+      candidate.introductionVideoUrl =
+        introductionVideoUrl || videoUrl || candidate.introductionVideoUrl;
       candidate.passportUrl = passportUrl || candidate.passportUrl;
       candidate.medicalUrl = medicalUrl || candidate.medicalUrl;
-      candidate.conductUrl = conductUrl || candidate.conductUrl;
+      candidate.goodConductUrl =
+        goodConductUrl || conductUrl || candidate.goodConductUrl;
       candidate.resumeUrl = resumeUrl || candidate.resumeUrl;
-      candidate.additionalUrl = additionalUrl || candidate.additionalUrl;
+      candidate.additionalUrl =
+        additionalUrl || otherDocumentUrl || candidate.additionalUrl;
+      candidate.otherDocumentUrl =
+        otherDocumentUrl || additionalUrl || candidate.otherDocumentUrl;
+      candidate.nationalIdFrontUrl =
+        nationalIdFrontUrl || candidate.nationalIdFrontUrl;
+      candidate.nationalIdBackUrl =
+        nationalIdBackUrl || candidate.nationalIdBackUrl;
       candidate.jobAppliedFor = jobAppliedFor || candidate.jobAppliedFor;
       candidate.appliedJobId = appliedJobId || candidate.appliedJobId;
       candidate.appliedJobTitle = appliedJobTitle || candidate.appliedJobTitle;
@@ -367,6 +398,10 @@ router.post("/", async (req, res) => {
       candidate.documents = {
         ...(candidate.documents || {}),
         passportPhoto: passportUrl || candidate.documents?.passportPhoto || candidate.passportUrl,
+        nationalId:
+          nationalIdFrontUrl ||
+          nationalIdBackUrl ||
+          candidate.documents?.nationalId,
         cv: resumeUrl || candidate.documents?.cv || candidate.resumeUrl,
         coverLetter: additionalUrl || candidate.documents?.coverLetter || candidate.additionalUrl,
         certificates: candidate.documents?.certificates || [],
@@ -414,18 +449,25 @@ router.post("/", async (req, res) => {
         numberOfChildren,
         jobPosition: jobPosition || jobAppliedFor || null,
         jobType,
+        applicationType,
+        isInternational,
+        jobData,
         destinationCountry,
         destinationPreference: Array.isArray(destinationPreference || preferredDestination || preferredDestinations)
           ? (destinationPreference || preferredDestination || preferredDestinations)
           : toArrayField(destinationPreference || preferredDestination || preferredDestinations),
         expectedSalary,
         photoUrl,
-        videoUrl,
+        videoUrl: videoUrl || introductionVideoUrl,
+        introductionVideoUrl: introductionVideoUrl || videoUrl,
         passportUrl,
         medicalUrl,
-        conductUrl,
+        goodConductUrl: goodConductUrl || conductUrl,
         resumeUrl,
-        additionalUrl,
+        additionalUrl: additionalUrl || otherDocumentUrl,
+        otherDocumentUrl: otherDocumentUrl || additionalUrl,
+        nationalIdFrontUrl,
+        nationalIdBackUrl,
         jobAppliedFor,
         appliedJobId,
         appliedJobTitle,
@@ -455,6 +497,12 @@ router.post("/", async (req, res) => {
         numberOfChildren,
         jobPosition: jobPosition || jobAppliedFor || null,
         jobType,
+        applicationType,
+        jobData,
+        isInternational: typeof isInternational === 'boolean'
+          ? isInternational
+          : /international/i.test(String(jobType || applicationType || '')) ||
+            Boolean(destinationCountry),
         destinationCountry,
         destinationPreference: Array.isArray(destinationPreference || preferredDestination || preferredDestinations)
           ? (destinationPreference || preferredDestination || preferredDestinations)
@@ -462,11 +510,15 @@ router.post("/", async (req, res) => {
         expectedSalary,
         photoUrl,
         videoUrl,
+        introductionVideoUrl: introductionVideoUrl || videoUrl,
         passportUrl,
         medicalUrl,
-        conductUrl,
+        goodConductUrl: goodConductUrl || conductUrl,
         resumeUrl,
-        additionalUrl,
+        additionalUrl: additionalUrl || otherDocumentUrl,
+        otherDocumentUrl: otherDocumentUrl || additionalUrl,
+        nationalIdFrontUrl,
+        nationalIdBackUrl,
         jobAppliedFor,
         appliedJobId,
         appliedJobTitle,
@@ -477,6 +529,7 @@ router.post("/", async (req, res) => {
         profileCompletion: profileCompletionValue,
         documents: {
           passportPhoto: passportUrl || null,
+          nationalId: nationalIdFrontUrl || nationalIdBackUrl || null,
           cv: resumeUrl || null,
           coverLetter: additionalUrl || null,
           certificates: [],

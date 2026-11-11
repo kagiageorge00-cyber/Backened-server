@@ -212,6 +212,8 @@ async function ingestIncomingBlissAppMessage(payload = {}) {
     const autoAssignee = existingConversation?.assignedTo
       ? ''
       : await pickLeastLoadedStaff(route.department);
+    const channel = String(payload.channel || 'bliss_app').toLowerCase();
+    const channels = [...new Set([...(existingConversation?.channels || []), channel])];
 
     const conversationPayload = {
       conversationId: staffConversationId,
@@ -228,6 +230,7 @@ async function ingestIncomingBlissAppMessage(payload = {}) {
       ...route,
       unreadCount: (existingConversation?.unreadCount || 0) + 1,
       lastMessage: messageText,
+      channels,
       lastActive: 'Just now',
       online: true,
       lastCustomerActiveAt: new Date(),
@@ -262,7 +265,7 @@ async function ingestIncomingBlissAppMessage(payload = {}) {
       senderName: customerName,
       text: messageText,
       type: payload.message_type || payload.type || 'text',
-      channel: payload.channel || 'bliss_app',
+      channel,
       attachmentUrl: payload.attachmentUrl || payload.attachment_url || '',
       attachmentName: payload.attachmentName || payload.attachment_name || '',
       attachmentMimeType: payload.attachmentMimeType || payload.attachment_mime_type || '',
@@ -324,6 +327,7 @@ async function ingestIncomingBlissAppMessage(payload = {}) {
   const autoAssignee = existingConversation?.assignedTo
     ? ''
     : await pickLeastLoadedStaff(route.department);
+  const channel = String(payload.channel || 'bliss_app').toLowerCase();
 
   if (existingConversation) {
     existingConversation.blissAppConversationId = memoryBlissAppConversationId;
@@ -348,6 +352,9 @@ async function ingestIncomingBlissAppMessage(payload = {}) {
     if (!existingConversation.assignedTo) existingConversation.assignedTo = autoAssignee;
     existingConversation.unreadCount = Number(existingConversation.unreadCount || 0) + 1;
     existingConversation.lastMessage = messageText;
+    existingConversation.channels = [
+      ...new Set([...(existingConversation.channels || []), channel]),
+    ];
     existingConversation.lastActive = 'Just now';
     existingConversation.online = true;
     existingConversation.lastCustomerActiveAt = new Date();
@@ -367,6 +374,7 @@ async function ingestIncomingBlissAppMessage(payload = {}) {
       ...route,
       unreadCount: 1,
       lastMessage: messageText,
+      channels: [channel],
       lastActive: 'Just now',
       online: true,
       lastCustomerActiveAt: new Date(),
@@ -380,7 +388,7 @@ async function ingestIncomingBlissAppMessage(payload = {}) {
     senderName: customerName,
     text: messageText,
     type: payload.message_type || payload.type || 'text',
-    channel: payload.channel || 'bliss_app',
+    channel,
     attachmentUrl: payload.attachmentUrl || payload.attachment_url || '',
     attachmentName: payload.attachmentName || payload.attachment_name || '',
     attachmentMimeType: payload.attachmentMimeType || payload.attachment_mime_type || '',

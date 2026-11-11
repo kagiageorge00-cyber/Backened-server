@@ -123,6 +123,7 @@ async function createOrUpdateContact(contactData) {
       tags = [],
       optedIn = false,
       marketingOptIn,
+      serviceNotificationOptIn,
     } = contactData;
     const resolvedMarketingOptIn = typeof marketingOptIn === 'boolean'
       ? marketingOptIn
@@ -150,6 +151,12 @@ async function createOrUpdateContact(contactData) {
         contact.marketingOptIn = resolvedMarketingOptIn;
         contact.marketingOptInAt = resolvedMarketingOptIn ? new Date() : null;
       }
+      if (typeof serviceNotificationOptIn === 'boolean') {
+        contact.serviceNotificationOptIn = serviceNotificationOptIn;
+        contact.serviceNotificationOptInAt = serviceNotificationOptIn
+          ? new Date()
+          : null;
+      }
       await contact.save();
       return { contact, isNew: false };
     } else {
@@ -164,6 +171,10 @@ async function createOrUpdateContact(contactData) {
         optedOut: false,
         marketingOptIn: resolvedMarketingOptIn,
         marketingOptInAt: resolvedMarketingOptIn ? new Date() : null,
+        serviceNotificationOptIn: serviceNotificationOptIn === true,
+        serviceNotificationOptInAt: serviceNotificationOptIn === true
+          ? new Date()
+          : null,
       });
       await contact.save();
       return { contact, isNew: true };

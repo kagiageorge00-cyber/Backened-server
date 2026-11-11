@@ -24,6 +24,15 @@ jest.mock('../models/PushToken', () => ({
   findOneAndUpdate: jest.fn().mockResolvedValue({}),
 }));
 
+jest.mock('../services/fcmService', () => ({
+  sendToTokens: jest.fn().mockResolvedValue({
+    sent: 1,
+    failed: 0,
+    total: 1,
+    errors: [],
+  }),
+}));
+
 jest.mock('../models/RegistrationEvent', () => ({
   create: jest.fn().mockResolvedValue({ id: 'REG-TEST-1' }),
 }));
@@ -32,10 +41,14 @@ jest.mock('../models/AdminAction', () => ({
   create: jest.fn().mockResolvedValue({ id: 'AUDIT-TEST-1' }),
 }));
 
+const PushToken = require('../models/PushToken');
+const fcmService = require('../services/fcmService');
+
 describe('notification and audit endpoints', () => {
   let app;
 
   beforeEach(() => {
+    jest.clearAllMocks();
     app = express();
     app.use(express.json());
     app.use('/api/notifications', require('../routes/notifications'));
@@ -59,6 +72,60 @@ describe('notification and audit endpoints', () => {
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.channels).toBeDefined();
+  });
+
+  it('registers a browser token for the selected user', async () => {
+    const res = await request(app)
+      .post('/api/notifications/register-token')
+      .send({
+        userId: 'CAND-TEST-1',
+        userType: 'candidate',
+        token: 'fcm-test-token',
+        platform: 'web',
+        marketingOptIn: true,
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(PushToken.findOneAndUpdate).toHaveBeenCalledWith(
+      { userId: 'CAND-TEST-1', token: 'fcm-test-token' },
+      {
+        $set: expect.objectContaining({
+          userId: 'CAND-TEST-1',
+          userType: 'candidate',
+          token: 'fcm-test-token',
+          platform: 'web',
+          marketingOptIn: true,
+          marketingOptInAt: expect.any(Date),
+        }),
+      },
+      { upsert: true },
+    );
+  });
+
+  it('sends a push through FCM to the registered device token', async () => {
+    const tokens = [{ token: 'fcm-test-token' }];
+    PushToken.find.mockResolvedValue(tokens);
+
+    const res = await request(app)
+      .post('/api/notifications/send-push')
+      .send({
+        userId: 'CAND-TEST-1',
+        title: 'Test notification',
+        message: 'Push delivery test',
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      success: true,
+      sent: 1,
+      failed: 0,
+      total: 1,
+    });
+    expect(fcmService.sendToTokens).toHaveBeenCalledWith(tokens, {
+      title: 'Test notification',
+      message: 'Push delivery test',
+    });
   });
 
   it('stores registration audit events', async () => {

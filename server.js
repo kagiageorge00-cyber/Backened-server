@@ -1220,6 +1220,7 @@ async function startServer() {
       await mongoose.connect(mongoUri, {
         serverSelectionTimeoutMS: 5000,
       });
+      await require('./services/paymentRetentionService').initializePaymentRetention();
       logger.info('MongoDB Connected');
       await startWhatsAppQueueWorker();
     }

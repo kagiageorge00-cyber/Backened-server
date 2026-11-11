@@ -9,6 +9,8 @@ const Employer = require("../models/Employer");
 const Agent = require("../models/Agent");
 const EmployerNotification = require("../models/EmployerNotification");
 const Payment = require("../models/Payment");
+const PaymentRecord = require("../models/PaymentRecord");
+const Deployment = require("../models/Deployment");
 const Notification = require("../models/Notification");
 const { createNotification } = require("../utils/notificationHelper");
 const {
@@ -228,15 +230,50 @@ router.post("/login", async (req, res) => {
 // ======================
 // GET PAYMENTS
 // ======================
+const PAYMENT_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+
+async function findUnapprovedPayments(Model, statusField, approvedStatuses) {
+  const now = new Date();
+  const cutoff = new Date(now.getTime() - PAYMENT_RETENTION_MS);
+  const unapprovedFilter = { $nin: approvedStatuses };
+
+  const recentPayments = await Model.find({
+    [statusField]: unapprovedFilter,
+    createdAt: { $gt: cutoff },
+  }).sort({ createdAt: -1 });
+
+  for (const payment of recentPayments) {
+    if (payment.createdAt && typeof payment.save === 'function') {
+      const expectedExpiry = new Date(payment.createdAt.getTime() + PAYMENT_RETENTION_MS);
+      if (!payment.expiresAt || payment.expiresAt < expectedExpiry) {
+        payment.expiresAt = expectedExpiry;
+        await payment.save();
+      }
+    }
+  }
+
+  await Model.deleteMany({
+    [statusField]: unapprovedFilter,
+    $or: [
+      { createdAt: { $lte: cutoff } },
+      { expiresAt: { $lte: now } },
+    ],
+  });
+
+  const payments = await Model.find({
+    [statusField]: unapprovedFilter,
+    expiresAt: { $gt: now },
+  }).sort({ createdAt: -1 });
+
+  return payments;
+}
+
 async function getPendingPayments(req, res) {
   try {
-    const requestedStatus = req.query.status || "pending";
-    const statusFilter = requestedStatus === "pending"
-      ? { $in: ["pending", "processing"] }
-      : requestedStatus === "approved"
-        ? { $in: ["approved", "paid", "completed"] }
-        : requestedStatus;
-    const payments = await Payment.find({ status: statusFilter }).sort({ createdAt: -1 });
+    const approvedStatuses = ['approved', 'paid', 'completed'];
+    const payments = req.query.status === 'approved'
+      ? await Payment.find({ status: { $in: approvedStatuses } }).sort({ createdAt: -1 })
+      : await findUnapprovedPayments(Payment, 'status', approvedStatuses);
 
     const candidates = await Candidate.find(buildCandidateQueryForPayments(payments))
       .select('candidateId uniqueCode fullName name email phone');
@@ -274,6 +311,83 @@ async function getPendingPayments(req, res) {
 router.get("/payments/pending", requireAdminAuth, getPendingPayments);
 router.get("/payments", requireAdminAuth, getPendingPayments);
 
+router.get('/deployments/payments/pending', requireAdminAuth, async (req, res) => {
+  try {
+    const payments = await findUnapprovedPayments(
+      PaymentRecord,
+      'paymentStatus',
+      ['verified', 'completed'],
+    );
+    const deploymentIds = payments.map((payment) => payment.deploymentId).filter(Boolean);
+    const deployments = deploymentIds.length
+      ? await Deployment.find({ deploymentId: { $in: deploymentIds } })
+      : [];
+    const deploymentById = new Map(
+      deployments.map((deployment) => [deployment.deploymentId, deployment]),
+    );
+
+    const data = payments.map((payment) => {
+      const payload = payment.toObject ? payment.toObject() : { ...payment };
+      const deployment = deploymentById.get(payload.deploymentId);
+      return {
+        ...payload,
+        candidateId: deployment?.candidateId || '',
+        candidateName: deployment?.candidateName || 'Candidate',
+        jobPosition: deployment?.jobPosition || '',
+        receiptUrl: deployment?.receiptUrl || '',
+      };
+    });
+
+    return res.json({ success: true, data });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post(
+  '/deployments/payments/:paymentId/approve',
+  requireAdminAuth,
+  async (req, res) => {
+    try {
+      const payment = await PaymentRecord.findOne({ paymentId: req.params.paymentId });
+      if (!payment) {
+        return res.status(404).json({ success: false, error: 'Deployment payment not found' });
+      }
+      if (['verified', 'completed'].includes(payment.paymentStatus)) {
+        return res.status(409).json({ success: false, error: 'Deployment payment is not awaiting approval' });
+      }
+
+      const deployment = await Deployment.findOne({ deploymentId: payment.deploymentId });
+      if (!deployment || deployment.employerId !== payment.employerId) {
+        return res.status(404).json({ success: false, error: 'Matching deployment not found' });
+      }
+
+      const verifiedAt = payment.paidAt || new Date();
+      payment.paymentStatus = 'verified';
+      payment.paidAt = verifiedAt;
+      payment.expiresAt = null;
+      deployment.paymentStatus = 'verified';
+      deployment.adminVerified = true;
+      deployment.verifiedAt = verifiedAt;
+      deployment.verifiedBy = req.admin?.username || 'admin';
+      deployment.documentsReleased = true;
+      deployment.documentsReleasedAt = deployment.documentsReleasedAt || verifiedAt;
+      deployment.currentStage = 'Documents';
+
+      await payment.save();
+      await deployment.save();
+
+      return res.json({
+        success: true,
+        message: 'Deployment payment approved; candidate documents are released',
+        data: { payment, deployment },
+      });
+    } catch (err) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  },
+);
+
 // ======================
 // APPROVE PAYMENT (FIXED CLEAN VERSION)
 // ======================
@@ -294,6 +408,7 @@ router.post(
 
       payment.status = "approved";
       payment.approvedAt = new Date();
+      payment.expiresAt = null;
 
       const candidate = await findCandidateForPayment(Candidate, payment);
 

@@ -14,6 +14,7 @@ const request = require('supertest');
 
 const candidateRoutes = require('../routes/candidateRoutes');
 const Candidate = require('../models/candidate');
+const { candidateMarketplaceEligibilityFilter } = require('../utils/candidateMarketplaceEligibility');
 
 describe('Candidate portal routes', () => {
   beforeEach(() => {
@@ -107,7 +108,7 @@ describe('Candidate portal routes', () => {
     expect(Candidate.find).toHaveBeenCalledWith({
       isVerified: true,
       status: 'available',
-      uniqueCode: { $type: 'string', $regex: /\S/ },
+      ...candidateMarketplaceEligibilityFilter(),
     });
   });
 
@@ -139,6 +140,7 @@ describe('Candidate portal routes', () => {
       uniqueCode: 'CAND-2026-0004',
       isVerified: true,
       status: 'available',
+      ...candidateMarketplaceEligibilityFilter(),
     });
   });
 

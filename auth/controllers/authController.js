@@ -7,6 +7,9 @@ const CandidateModel = require('../../models/candidate');
 const VerificationTokenModel = require('../../models/BlissVerificationToken');
 const PhoneOtpModel = require('../../models/BlissPhoneOtp');
 const LoginHistoryModel = require('../../models/LoginHistory');
+const WhatsAppOptOutModel = require('../../models/WhatsAppOptOut');
+const whatsappCloudService = require('../../services/whatsappCloudService');
+const whatsappContactService = require('../../services/whatsappContactService');
 const axios = require('axios');
 const crypto = require('crypto');
 
@@ -18,9 +21,7 @@ function buildUserPayload(user) {
     user.location &&
       user.phone &&
       user.whatsapp &&
-      services.length > 0 &&
-      user.termsAccepted &&
-      user.notificationsConsent,
+      user.termsAccepted,
   );
   return {
     id: user._id?.toString?.() || user.id,
@@ -33,6 +34,12 @@ function buildUserPayload(user) {
     location: user.location || '',
     country: user.country,
     services,
+    notificationChannels: Array.isArray(user.notificationChannels) &&
+      user.notificationChannels.length > 0
+      ? user.notificationChannels
+      : user.notificationsConsent
+        ? CUSTOMER_NOTIFICATION_CHANNELS
+        : [],
     profileComplete,
     termsAccepted: Boolean(user.termsAccepted),
     notificationsConsent: Boolean(user.notificationsConsent),
@@ -40,6 +47,7 @@ function buildUserPayload(user) {
     authProvider: user.authProvider || 'password',
     emailVerified: Boolean(user.emailVerified),
     phoneVerified: Boolean(user.phoneVerified),
+    whatsappVerified: Boolean(user.whatsappVerified),
     status: user.status || 'active',
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
@@ -58,6 +66,102 @@ const CUSTOMER_SERVICES = new Set([
   'Candidate and employer marketplace',
   'Office appointments and customer support',
 ]);
+const CUSTOMER_NOTIFICATION_CHANNELS = Object.freeze([
+  'whatsapp',
+  'email',
+  'in_app',
+  'fcm',
+]);
+
+function normalizeWhatsAppNumber(value) {
+  const phone = String(value || '').trim().replace(/[\s().-]/g, '');
+  if (phone.startsWith('00')) return phone.substring(2);
+  return phone.replace(/^\+/, '');
+}
+
+async function subscribeCustomerToWhatsApp(user) {
+  if (!user.notificationsConsent || !user.marketingConsent || !user.whatsapp) {
+    return null;
+  }
+  try {
+    const { contact } = await whatsappContactService.createOrUpdateContact({
+      fullName: user.fullName,
+      phoneNumber: user.whatsapp,
+      source: 'bliss_connect_registration',
+      tags: ['bliss-connect-customer'],
+      optedIn: true,
+      marketingOptIn: true,
+      serviceNotificationOptIn: true,
+    });
+    await WhatsAppOptOutModel.deleteOne({ phoneNumber: contact.phoneNumber });
+    return true;
+  } catch (error) {
+    logger.error('Customer WhatsApp campaign opt-in could not be saved', {
+      blissId: user.blissId,
+      error: error.message,
+    });
+    return false;
+  }
+}
+
+async function sendCustomerWhatsAppOtp(user, { phoneNumber } = {}) {
+  const recipient = normalizeWhatsAppNumber(
+    phoneNumber || user.whatsapp || user.phone,
+  );
+  const templateName = process.env.WHATSAPP_OTP_TEMPLATE_NAME;
+  if (!recipient || !templateName) {
+    return {
+      sent: false,
+      error: !recipient
+        ? 'No valid WhatsApp number is available.'
+        : 'WhatsApp OTP template is not configured.',
+    };
+  }
+
+  let record;
+  try {
+    const otp = await randomOtp();
+    record = await authRepository.createOtp(PhoneOtpModel, {
+      userId: user._id,
+      phone: recipient,
+      otp,
+      expiresAt: new Date(Date.now() + 1000 * 60 * 5),
+      verifiedAt: null,
+    });
+    const result = await whatsappCloudService.sendTemplateMessage(
+      recipient,
+      templateName,
+      [otp],
+      process.env.WHATSAPP_OTP_TEMPLATE_LANGUAGE || 'en',
+    );
+    if (!result.success) {
+      record.verifiedAt = new Date();
+      await record.save();
+      logger.error('Customer WhatsApp OTP delivery failed', {
+        blissId: user.blissId,
+        error: result.error,
+      });
+      return {
+        sent: false,
+        error: result.error || 'WhatsApp could not deliver the verification code.',
+      };
+    }
+    return { sent: true };
+  } catch (error) {
+    if (record) {
+      record.verifiedAt = new Date();
+      await record.save();
+    }
+    logger.error('Customer WhatsApp OTP delivery failed', {
+      blissId: user.blissId,
+      error: error.message,
+    });
+    return {
+      sent: false,
+      error: error.message || 'WhatsApp could not deliver the verification code.',
+    };
+  }
+}
 
 function createCustomerBlissId() {
   return buildBlissId(new Date().getFullYear(), crypto.randomInt(1, 1000000));
@@ -83,12 +187,10 @@ function validateCustomerProfile(body, { requirePassword = false } = {}) {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.push('A valid email is required.');
   if (!phonePattern.test(normalizedPhone)) errors.push('A valid mobile number is required.');
   if (!phonePattern.test(normalizedWhatsapp)) errors.push('A valid WhatsApp number is required.');
-  if (services.length === 0) errors.push('Choose at least one service of interest.');
   if (services.some((service) => !CUSTOMER_SERVICES.has(service))) {
     errors.push('Choose services from the available Bliss Connect service list.');
   }
   if (body.termsAccepted !== true) errors.push('You must agree to the Terms and Privacy Policy.');
-  if (body.notificationsConsent !== true) errors.push('You must agree to receive service notifications.');
   if (requirePassword) {
     if (password.length < 10) errors.push('Password must be at least 10 characters long.');
     if (
@@ -105,12 +207,22 @@ function validateCustomerProfile(body, { requirePassword = false } = {}) {
   return {
     isValid: errors.length === 0,
     errors,
-    profile: { fullName, location, phone: normalizedPhone, whatsapp: normalizedWhatsapp, email, services },
+    profile: {
+      fullName,
+      location,
+      phone: normalizedPhone,
+      whatsapp: normalizedWhatsapp,
+      email,
+      services,
+      notificationsConsent: body.notificationsConsent === true,
+    },
   };
 }
 
 function buildCustomerUser(profile, extras = {}) {
   const country = profile.location.split(',').pop().trim() || profile.location;
+  const marketingConsent =
+    profile.notificationsConsent && extras.marketingConsent === true;
   return {
     ...extras,
     blissId: createCustomerBlissId(),
@@ -124,10 +236,13 @@ function buildCustomerUser(profile, extras = {}) {
     termsAccepted: true,
     termsVersion: CUSTOMER_TERMS_VERSION,
     termsAcceptedAt: new Date(),
-    notificationsConsent: true,
-    notificationsConsentAt: new Date(),
-    marketingConsent: extras.marketingConsent === true,
-    marketingConsentAt: extras.marketingConsent === true ? new Date() : null,
+    notificationsConsent: profile.notificationsConsent,
+    notificationsConsentAt: profile.notificationsConsent ? new Date() : null,
+    notificationChannels: profile.notificationsConsent
+      ? CUSTOMER_NOTIFICATION_CHANNELS
+      : [],
+    marketingConsent,
+    marketingConsentAt: marketingConsent ? new Date() : null,
     userType: 'customer',
     emailVerified: false,
     phoneVerified: false,
@@ -175,8 +290,11 @@ async function registerCustomer(req, res) {
       buildCustomerUser(validation.profile, {
         password: req.body.password,
         authProvider: 'password',
+        marketingConsent: req.body.marketingConsent === true,
       }),
     );
+    const campaignSubscribed = await subscribeCustomerToWhatsApp(user);
+    const otpDelivery = await sendCustomerWhatsAppOtp(user);
     const tokens = issueCustomerTokens(user);
     logger.info('Customer registration success', {
       blissId: user.blissId,
@@ -187,6 +305,9 @@ async function registerCustomer(req, res) {
       message: 'Customer account created successfully.',
       ...tokens,
       user: buildUserPayload(user),
+      whatsappCampaignSubscribed: campaignSubscribed,
+      whatsappOtpSent: otpDelivery.sent,
+      ...(otpDelivery.error ? { whatsappOtpError: otpDelivery.error } : {}),
     });
   } catch (error) {
     if (error.code === 11000) {
@@ -314,17 +435,62 @@ async function completeCustomerProfile(req, res) {
     }));
     user.termsVersion = CUSTOMER_TERMS_VERSION;
     await user.save();
+    const campaignSubscribed = await subscribeCustomerToWhatsApp(user);
+    const otpDelivery = await sendCustomerWhatsAppOtp(user);
     return res.json({
       success: true,
       message: 'Customer profile completed.',
       ...issueCustomerTokens(user),
       user: buildUserPayload(user),
+      whatsappCampaignSubscribed: campaignSubscribed,
+      whatsappOtpSent: otpDelivery.sent,
+      ...(otpDelivery.error ? { whatsappOtpError: otpDelivery.error } : {}),
     });
   } catch (error) {
     logger.error('Customer profile completion error', { error: error.message });
     return res.status(500).json({
       success: false,
       message: 'Customer profile could not be completed.',
+    });
+  }
+}
+
+async function updateCustomerServices(req, res) {
+  try {
+    const submitted = req.body?.services;
+    if (
+      !Array.isArray(submitted) ||
+      submitted.some(
+        (service) =>
+          typeof service !== 'string' ||
+          !CUSTOMER_SERVICES.has(service.trim()),
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Choose services from the available Bliss Connect service list.',
+      });
+    }
+
+    const services = [...new Set(submitted.map((service) => service.trim()))];
+    const user = await UserModel.findById(req.user.sub);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Account not found.' });
+    }
+    user.services = services;
+    await user.save();
+    return res.json({
+      success: true,
+      message: 'Service interests updated.',
+      user: buildUserPayload(user),
+    });
+  } catch (error) {
+    logger.error('Customer service-interest update error', {
+      error: error.message,
+    });
+    return res.status(500).json({
+      success: false,
+      message: 'Service interests could not be updated.',
     });
   }
 }
@@ -518,20 +684,24 @@ async function sendOtp(req, res) {
       return res.status(400).json({ success: false, message: 'Phone number is required.' });
     }
 
-    const user = await UserModel.findOne({ phone });
+    const normalizedPhone = normalizeWhatsAppNumber(phone);
+    const user = await UserModel.findOne({
+      $or: [{ phone }, { whatsapp: phone }, { phone: `+${normalizedPhone}` }, { whatsapp: `+${normalizedPhone}` }],
+    });
     if (!user) {
       return res.status(404).json({ success: false, message: 'Account not found.' });
     }
-
-    const otp = await randomOtp();
-    await authRepository.createOtp(PhoneOtpModel, {
-      userId: user._id,
-      otp,
-      expiresAt: new Date(Date.now() + 1000 * 60 * 5),
-      verified: false,
+    const delivery = await sendCustomerWhatsAppOtp(user, { phoneNumber: phone });
+    if (!delivery.sent) {
+      return res.status(502).json({
+        success: false,
+        message: delivery.error || 'WhatsApp could not deliver the verification code.',
+      });
+    }
+    return res.json({
+      success: true,
+      message: 'Verification code sent to your WhatsApp.',
     });
-
-    return res.json({ success: true, message: 'OTP sent successfully.', otp });
   } catch (error) {
     return res.status(500).json({ success: false, message: 'OTP sending failed.', error: error.message });
   }
@@ -544,7 +714,12 @@ async function verifyOtp(req, res) {
       return res.status(400).json({ success: false, message: 'Phone and OTP are required.' });
     }
 
-    const record = await PhoneOtpModel.findOne({ otp, verified: false }).sort({ createdAt: -1 });
+    const normalizedPhone = normalizeWhatsAppNumber(phone);
+    const record = await PhoneOtpModel.findOne({
+      phone: normalizedPhone,
+      otp: String(otp),
+      verifiedAt: null,
+    }).sort({ createdAt: -1 });
     if (!record) {
       return res.status(404).json({ success: false, message: 'OTP not found.' });
     }
@@ -557,9 +732,15 @@ async function verifyOtp(req, res) {
       return res.status(404).json({ success: false, message: 'User not found.' });
     }
 
-    user.phoneVerified = true;
+    if (normalizeWhatsAppNumber(user.whatsapp) === normalizedPhone) {
+      user.whatsappVerified = true;
+    } else if (normalizeWhatsAppNumber(user.phone) === normalizedPhone) {
+      user.phoneVerified = true;
+    } else {
+      return res.status(400).json({ success: false, message: 'The WhatsApp number does not match this account.' });
+    }
     await user.save();
-    record.verified = true;
+    record.verifiedAt = new Date();
     await record.save();
 
     return res.json({ success: true, message: 'Phone verified successfully.', user: buildUserPayload(user) });
@@ -629,6 +810,11 @@ module.exports = {
   registerCustomer,
   googleCustomerSignIn,
   completeCustomerProfile,
+  updateCustomerServices,
+  validateCustomerProfile,
+  buildUserPayload,
+  sendCustomerWhatsAppOtp,
+  subscribeCustomerToWhatsApp,
   login,
   profile,
   verifyEmail,

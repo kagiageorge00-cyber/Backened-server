@@ -1,6 +1,33 @@
 const InboxService = require('../inbox/services/inboxService');
 
 describe('InboxService', () => {
+  it('creates a personalized support welcome when a customer starts a service enquiry', async () => {
+    const repository = {
+      createConversation: jest.fn().mockResolvedValue({
+        id: 'conv-1',
+        departmentId: 'dept-customer-care',
+      }),
+      createMessage: jest.fn().mockResolvedValue({ id: 'message-1' }),
+    };
+    const service = new InboxService(repository);
+
+    await service.createConversation(
+      { blissId: 'BLISS-2026-000001', fullName: 'Ada Lovelace' },
+      { department: 'Customer Care', serviceInterest: 'Visa processing' },
+    );
+
+    expect(repository.createMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: 'conv-1',
+        senderType: 'support',
+        receiverId: 'BLISS-2026-000001',
+        messageText: expect.stringContaining(
+          'Hi Ada! Thanks for enquiring about Visa processing.',
+        ),
+      }),
+    );
+  });
+
   it('returns conversations for an authorized user', async () => {
     const repo = {
       listConversations: jest.fn().mockResolvedValue([

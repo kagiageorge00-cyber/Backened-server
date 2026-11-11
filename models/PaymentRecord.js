@@ -10,6 +10,9 @@ const paymentSchema = new mongoose.Schema({
   paymentMethod: { type: String },
   paymentStatus: { type: String, enum: ['pending', 'submitted', 'verified', 'completed', 'failed'], default: 'pending' },
   paidAt: { type: Date },
+  expiresAt: { type: Date, default: null },
 }, { timestamps: true });
+
+paymentSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 module.exports = mongoose.models.PaymentRecord || mongoose.model('PaymentRecord', paymentSchema);

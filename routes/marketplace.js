@@ -5,6 +5,7 @@ const Bookmark = require('../models/Bookmark');
 const Notification = require('../models/Notification');
 const employerAuth = require('../middleware/employerAuth');
 const { getCandidateNameValue } = require('../utils/candidateDisplayName');
+const { candidateMarketplaceEligibilityFilter } = require('../utils/candidateMarketplaceEligibility');
 const { buildCandidateMarketplaceProfile } = require('../services/candidateMarketplaceService');
 const router = express.Router();
 
@@ -38,7 +39,7 @@ function marketplaceCandidateFilter() {
   return {
     isVerified: true,
     status: { $in: ['available', 'in_process', 'approved'] },
-    uniqueCode: { $type: 'string', $regex: /\S/ },
+    ...candidateMarketplaceEligibilityFilter(),
   };
 }
 
@@ -215,6 +216,7 @@ router.get('/candidates/:candidateId', async (req, res) => {
       $or: identifiers,
       isVerified: true,
       status: { $in: ['available', 'in_process', 'approved'] },
+      ...candidateMarketplaceEligibilityFilter(),
     }).select('-password');
     if (!candidate) {
       return res.status(404).json({ success: false, error: 'Candidate not found' });

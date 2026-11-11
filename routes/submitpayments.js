@@ -216,6 +216,7 @@ async function handleSubmitPayment(req, res) {
       title: "Application Payment",
       paymentMethod: paymentMethod || "mpesa",
       status: "pending",
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
       transactionId: transactionKey,
       metadata: { name, email, phone: detectedPhone, candidateId: candidateId || candidate_id || userId },
     });

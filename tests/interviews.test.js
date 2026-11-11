@@ -12,12 +12,27 @@ jest.mock('../models/Employer', () => ({
   find: jest.fn(),
 }));
 
+jest.mock('../models/Conversation', () => ({
+  findOne: jest.fn(),
+  create: jest.fn(),
+}));
+
 jest.mock('../middleware/employerAuth', () => jest.fn((req, res, next) => {
   req.employer = {
     employerId: 'EMP-1',
     status: 'active',
     verificationStatus: 'verified_employer',
     companyName: 'Demo Co',
+  };
+  next();
+}));
+
+jest.mock('../middleware/jwtAuth', () => jest.fn((req, res, next) => {
+  req.candidate = {
+    _id: 'mongo-candidate-id',
+    candidateId: 'CAND-2026-3741',
+    uniqueCode: 'CAND-2026-3741',
+    fullName: 'Demo Candidate',
   };
   next();
 }));
@@ -42,6 +57,7 @@ const request = require('supertest');
 const Candidate = require('../models/candidate');
 const Employer = require('../models/Employer');
 const Interview = require('../models/Interview');
+const Conversation = require('../models/Conversation');
 const interviewsRouter = require('../routes/interviews');
 
 describe('Interview booking candidate lookup', () => {
@@ -52,6 +68,8 @@ describe('Interview booking candidate lookup', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    Conversation.findOne.mockResolvedValue(null);
+    Conversation.create.mockResolvedValue({ _id: 'conversation-1' });
   });
 
   test('looks up candidate codes without treating them as Mongo object IDs', async () => {
@@ -92,8 +110,39 @@ describe('Interview booking candidate lookup', () => {
         interviewTime: '8:35 AM',
         interviewType: 'video',
         meetingLink: null,
+        chatChannelId: 'conversation-1',
       }),
     );
+  });
+
+  test('creates a shared conversation for a text interview', async () => {
+    Candidate.findOne.mockResolvedValue({
+      _id: 'mongo-candidate-id',
+      candidateId: 'CAND-1',
+      isVerified: true,
+      status: 'available',
+    });
+    Interview.create.mockImplementation(async (interview) => interview);
+
+    const response = await request(app)
+      .post('/api/interviews/request')
+      .send({
+        candidateId: 'CAND-1',
+        interviewDate: '2026-11-02',
+        interviewTime: '8:35 AM',
+        interviewType: 'chat_message',
+      });
+
+    expect(response.status).toBe(201);
+    expect(Conversation.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        participants: ['EMP-1', 'mongo-candidate-id'],
+      }),
+    );
+    expect(response.body.interview).toMatchObject({
+      interviewType: 'text',
+      chatChannelId: 'conversation-1',
+    });
   });
 
   test('requires an interview time when booking', async () => {
@@ -199,5 +248,26 @@ describe('Interview booking candidate lookup', () => {
     });
     expect(interview.save).toHaveBeenCalled();
     expect(response.body.interview.rtcAppId).toBe('agora-app-id');
+  });
+
+  test('only lets the invited candidate respond to an interview', async () => {
+    const interview = {
+      interviewId: 'INT-1',
+      candidateId: 'CAND-2026-3741',
+      employerId: 'EMP-1',
+      save: jest.fn(),
+    };
+    Interview.findOne.mockResolvedValue(interview);
+
+    const response = await request(app)
+      .post('/api/interviews/INT-1/respond')
+      .send({ candidateId: 'untrusted-id', response: 'accepted' });
+
+    expect(response.status).toBe(200);
+    expect(Interview.findOne).toHaveBeenCalledWith({
+      interviewId: 'INT-1',
+      candidateId: { $in: ['mongo-candidate-id', 'CAND-2026-3741', 'CAND-2026-3741'] },
+    });
+    expect(interview.interviewStatus).toBe('accepted');
   });
 });

@@ -20,6 +20,32 @@ const visaUpload = multer({
   limits: { fileSize: 20 * 1024 * 1024 },
 });
 
+async function saveDeploymentPaymentRecord({
+  deploymentId,
+  employerId,
+  amount,
+  currency,
+  paymentMethod,
+  referenceNumber,
+}) {
+  return PaymentRecord.findOneAndUpdate(
+    { deploymentId },
+    {
+      $set: {
+        employerId,
+        amount: Number(amount),
+        currency,
+        paymentMethod,
+        transactionReference: referenceNumber,
+        paymentStatus: 'submitted',
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      },
+      $setOnInsert: { paymentId: `PAY-${Date.now()}` },
+    },
+    { new: true, upsert: true, setDefaultsOnInsert: true },
+  );
+}
+
 router.use(employerAuth);
 
 router.post('/create', async (req, res) => {
@@ -126,7 +152,6 @@ router.post('/:deploymentId/pay', async (req, res) => {
       return res.status(403).json({ success: false, error: 'Employer access denied' });
     }
 
-    const PaymentRecord = require('../models/PaymentRecord');
     const isInternational = req.body.isInternational === true || req.body.isInternational === 'true';
     const isHousemaid = /house\s*maid|domestic worker|domestic helper/i.test(dep.jobPosition || '');
     if (paymentMethod === 'paypal' && isInternational && !isHousemaid) {
@@ -140,16 +165,13 @@ router.post('/:deploymentId/pay', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Payment reference and receipt URL are required' });
     }
 
-    const paymentId = `PAY-${Date.now()}`;
-    const pr = await PaymentRecord.create({
-      paymentId,
+    const pr = await saveDeploymentPaymentRecord({
       deploymentId,
       employerId: employer.employerId,
-      amount: Number(amount || fees.totalDue),
+      amount: amount || fees.totalDue,
       currency: fees.currency,
       paymentMethod: paymentMethod || 'bank_transfer',
-      paymentStatus: 'submitted',
-      transactionReference: referenceNumber,
+      referenceNumber,
     });
 
     dep.paid = false;
@@ -275,6 +297,14 @@ router.post('/:deploymentId/payment-proof', receiptUpload.single('receiptFile'),
     dep.receiptUrl = receiptPath;
     dep.paymentNotes = notes || '';
     await dep.save();
+    const payment = await saveDeploymentPaymentRecord({
+      deploymentId,
+      employerId: employer.employerId,
+      amount: dep.deploymentFee,
+      currency: dep.isInternational ? 'USD' : 'KES',
+      paymentMethod,
+      referenceNumber,
+    });
     await DeploymentNotificationService.notifyPaymentSubmitted(
       deploymentId,
       employer.employerId,
@@ -284,6 +314,7 @@ router.post('/:deploymentId/payment-proof', receiptUpload.single('receiptFile'),
       success: true,
       message: 'Payment proof submitted for verification',
       data: dep,
+      payment,
     });
   } catch (err) {
     console.error('Payment proof submission error:', err);

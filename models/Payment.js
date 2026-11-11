@@ -48,6 +48,10 @@ const paymentSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    expiresAt: {
+      type: Date,
+      default: null,
+    },
     checkoutId: {
       type: String,
       trim: true,
@@ -86,6 +90,7 @@ const paymentSchema = new mongoose.Schema(
 
 paymentSchema.index({ candidateId: 1, status: 1 });
 paymentSchema.index({ phone: 1, status: 1 });
+paymentSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 const Payment = mongoose.models.Payment || mongoose.model('Payment', paymentSchema);
 
