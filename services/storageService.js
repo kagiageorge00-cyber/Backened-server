@@ -32,6 +32,37 @@ async function uploadFile(filePath, folder) {
   return result.secure_url;
 }
 
+async function uploadBuffer(buffer, { filename, folder = 'bliss/whatsapp-inbox' } = {}) {
+  if (!cloudinaryConfigured) {
+    throw new Error('Cloudinary is not configured');
+  }
+  if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
+    throw new Error('A non-empty file buffer is required');
+  }
+
+  const result = await new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder,
+        resource_type: 'auto',
+        ...(filename ? { filename_override: filename } : {}),
+      },
+      (error, uploaded) => {
+        if (error) return reject(error);
+        if (!uploaded?.secure_url) {
+          return reject(new Error('Cloudinary did not return a preview URL'));
+        }
+        resolve(uploaded);
+      },
+    );
+    stream.on('error', reject);
+    stream.end(buffer);
+  });
+
+  return result.secure_url;
+}
+
 module.exports = {
   uploadFile,
+  uploadBuffer,
 };

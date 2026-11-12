@@ -76,4 +76,25 @@ describe('Staff operations app-inbound bridge', () => {
     );
     expect(whatsappMessage.conversation.blissAppConversationId).toBe(appConversationId);
   });
+
+  test('persists incoming WhatsApp attachment metadata for staff previews', async () => {
+    const result = await ingestIncomingBlissAppMessage({
+      sourceMessageId: `wa-media-${Date.now()}`,
+      conversationId: `whatsapp-media-${Date.now()}`,
+      customerName: 'Customer',
+      customerPhone: '+254700000222',
+      message_text: '[Image received]',
+      message_type: 'image',
+      channel: 'whatsapp',
+      attachmentUrl: 'https://res.cloudinary.com/bliss/image/upload/sample.jpg',
+      attachmentName: 'sample.jpg',
+      attachmentMimeType: 'image/jpeg',
+    });
+
+    expect(result.message.channel).toBe('whatsapp');
+    expect(result.message.type).toBe('image');
+    expect(result.message.attachmentUrl).toContain('sample.jpg');
+    expect(result.message.attachmentName).toBe('sample.jpg');
+    expect(result.message.attachmentMimeType).toBe('image/jpeg');
+  });
 });

@@ -21,6 +21,8 @@ const {
 const { createNotification } = require('../utils/notificationHelper');
 const { permissionsFor } = require('../middleware/staffPermissions');
 const { sendWhatsAppMessage } = require('../whatsapp');
+const whatsappCloudService = require('../services/whatsappCloudService');
+const WhatsAppMessageLog = require('../models/WhatsAppMessageLog');
 const { sendPushForNotification } = require('../services/pushNotificationDelivery');
 const { sendEmail } = require('../email');
 
@@ -1207,17 +1209,21 @@ async function receiveBlissAppMessage(req, res) {
 
 async function sendMessage(req, res) {
   try {
-    const { conversationId, text } = req.body;
+    const { conversationId, text } = req.body || {};
+    const channel = String(req.body?.channel || 'bliss_app').toLowerCase();
     if (!conversationId || !text || !text.trim()) {
       return res.status(400).json({ success: false, error: 'conversationId and text are required' });
+    }
+    if (!['bliss_app', 'whatsapp'].includes(channel)) {
+      return res.status(400).json({ success: false, error: 'channel must be bliss_app or whatsapp' });
     }
     const accessibleConversation = await findAccessibleConversation(req, conversationId);
     if (!accessibleConversation) return res.status(404).json({ success: false, error: 'Conversation not found' });
 
     const authenticatedSender = req.staff.fullName || req.staff.email || 'Staff';
     const message = mongoose.connection.readyState === 1
-      ? await StaffMessage.create({ conversationId, sender: 'staff', senderName: authenticatedSender, text, type: 'text', channel: 'staff' })
-      : { conversationId, sender: 'staff', senderName: authenticatedSender, text, type: 'text', channel: 'staff', read: false, createdAt: new Date().toISOString() };
+      ? await StaffMessage.create({ conversationId, sender: 'staff', senderName: authenticatedSender, text, type: 'text', channel, read: false })
+      : { conversationId, sender: 'staff', senderName: authenticatedSender, text, type: 'text', channel, read: false, createdAt: new Date().toISOString() };
     const appInboxDelivery = await syncStaffReplyToBlissApp({
       conversationId,
       conversation: accessibleConversation,
@@ -1245,9 +1251,39 @@ async function sendMessage(req, res) {
     }
 
     const online = isCustomerOnline(accessibleConversation);
-    const offlineDeliveries = online
+    const offlineDeliveries = online || channel === 'whatsapp'
       ? null
       : await notifyCustomerOfOfflineReply(accessibleConversation, authenticatedSender);
+    let whatsappDelivery = offlineDeliveries?.whatsapp || { success: false, skipped: true };
+    if (channel === 'whatsapp') {
+      const phone = String(accessibleConversation.customerPhone || '').trim();
+      if (!phone) {
+        whatsappDelivery = { success: false, error: 'Customer phone number is unavailable.' };
+      } else {
+        const digits = phone.replace(/\D/g, '').replace(/^00/, '');
+        const forms = [...new Set([phone, digits, `+${digits}`])];
+        const optedOut = mongoose.connection.readyState === 1
+          ? await WhatsAppOptOut.findOne({ phoneNumber: { $in: forms } }).select('_id').lean()
+          : null;
+        if (optedOut) {
+          whatsappDelivery = { success: false, error: 'Customer has opted out of WhatsApp messages.' };
+        } else {
+          whatsappDelivery = await sendWhatsAppMessage(phone, text);
+        }
+        if (mongoose.connection.readyState === 1) {
+          await WhatsAppMessageLog.create({
+            phoneNumber: phone,
+            direction: 'outbound',
+            messageType: 'text',
+            content: text,
+            providerMessageId: whatsappDelivery.messageId || '',
+            status: whatsappDelivery.success ? 'sent' : 'failed',
+            error: whatsappDelivery.error || '',
+            eventType: 'staff_inbox_reply',
+          });
+        }
+      }
+    }
 
     if (mongoose.connection.readyState === 1) {
       await StaffNotification.create({ title: 'Staff reply sent', body: `${authenticatedSender} replied to ${conversationId}`, type: 'chat' });
@@ -1263,7 +1299,7 @@ async function sendMessage(req, res) {
         inApp: offlineDeliveries?.inApp || { success: false, skipped: true },
         email: offlineDeliveries?.email || { success: false, skipped: true },
         push: offlineDeliveries?.push || { success: false, skipped: true },
-        whatsapp: offlineDeliveries?.whatsapp || { success: false, skipped: true },
+        whatsapp: whatsappDelivery,
       },
       customerOnline: online,
     });
@@ -1316,15 +1352,32 @@ async function sendMultichannelMessage(req, res) {
 
     if (channels.whatsapp === true) {
       const phone = String(conversation.customerPhone || '').trim();
-      const digits = phone.replace(/\D/g, '').replace(/^00/, '');
-      const forms = phone ? [...new Set([phone, digits, `+${digits}`])] : [];
-      const [contact, optedOut] = forms.length ? await Promise.all([
-        WhatsAppContact.findOne({ phoneNumber: { $in: forms }, optedIn: true, optedOut: false }).select('phoneNumber').lean(),
-        WhatsAppOptOut.findOne({ phoneNumber: { $in: forms } }).select('_id').lean(),
-      ]) : [null, null];
-      if (optedOut) deliveries.whatsapp = { success: false, error: 'Customer has opted out of WhatsApp messages.' };
-      else if (!contact) deliveries.whatsapp = { success: false, error: 'No WhatsApp opt-in contact exists for this number.' };
-      else deliveries.whatsapp = await sendWhatsAppMessage(contact.phoneNumber, body);
+      if (!phone) {
+        deliveries.whatsapp = { success: false, error: 'Customer phone number is unavailable.' };
+      } else {
+        const digits = phone.replace(/\D/g, '').replace(/^00/, '');
+        const forms = [...new Set([phone, digits, `+${digits}`])];
+        const optedOut = mongoose.connection.readyState === 1
+          ? await WhatsAppOptOut.findOne({ phoneNumber: { $in: forms } }).select('_id').lean()
+          : null;
+        if (optedOut) {
+          deliveries.whatsapp = { success: false, error: 'Customer has opted out of WhatsApp messages.' };
+        } else {
+          deliveries.whatsapp = await sendWhatsAppMessage(phone, body);
+        }
+        if (mongoose.connection.readyState === 1) {
+          await WhatsAppMessageLog.create({
+            phoneNumber: phone,
+            direction: 'outbound',
+            messageType: 'text',
+            content: body,
+            providerMessageId: deliveries.whatsapp.messageId || '',
+            status: deliveries.whatsapp.success ? 'sent' : 'failed',
+            error: deliveries.whatsapp.error || '',
+            eventType: 'staff_inbox_multichannel',
+          });
+        }
+      }
     }
 
     if (channels.email === true) {
@@ -1458,14 +1511,126 @@ async function broadcast(req, res) {
 
 async function uploadFile(req, res) {
   try {
-    const { conversationId, fileName, sender } = req.body;
-    if (!conversationId || !fileName || !sender) {
-      return res.status(400).json({ success: false, error: 'conversationId, fileName and sender are required' });
+    const { conversationId, caption = '', channel = 'bliss_app' } = req.body || {};
+    if (!['bliss_app', 'whatsapp'].includes(channel)) {
+      return res.status(400).json({ success: false, error: 'channel must be bliss_app or whatsapp' });
+    }
+    const file = req.file;
+    if (!conversationId || !file) {
+      return res.status(400).json({ success: false, error: 'conversationId and file are required' });
     }
     const accessibleConversation = await findAccessibleConversation(req, conversationId);
     if (!accessibleConversation) return res.status(404).json({ success: false, error: 'Conversation not found' });
 
-    return res.json({ success: true, data: { conversationId, fileName, sender, uploadedAt: new Date().toISOString() } });
+    const attachmentUrl = file.secure_url || file.path || file.location || file.url || '';
+    if (!/^https?:\/\//i.test(attachmentUrl)) {
+      return res.status(502).json({ success: false, error: 'File storage did not return a valid URL.' });
+    }
+    const mimeType = file.mimetype || 'application/octet-stream';
+    const type = mimeType.startsWith('image/')
+      ? 'image'
+      : mimeType.startsWith('video/')
+        ? 'video'
+        : mimeType.startsWith('audio/')
+          ? 'audio'
+          : 'document';
+    const senderName = req.staff.fullName || req.staff.email || 'Staff';
+    const text = String(caption).trim() || `Shared ${file.originalname || type}`;
+    const message = mongoose.connection.readyState === 1
+      ? await StaffMessage.create({
+          conversationId,
+          sender: 'staff',
+          senderName,
+          text,
+          type,
+          channel,
+          attachmentUrl,
+          attachmentName: file.originalname || file.filename || 'Attachment',
+          attachmentMimeType: mimeType,
+          read: false,
+        })
+      : {
+          conversationId,
+          sender: 'staff',
+          senderName,
+          text,
+          type,
+          channel,
+          attachmentUrl,
+          attachmentName: file.originalname || file.filename || 'Attachment',
+          attachmentMimeType: mimeType,
+          read: false,
+          createdAt: new Date().toISOString(),
+        };
+    const sync = await syncStaffReplyToBlissApp({
+      conversationId,
+      conversation: accessibleConversation,
+      message,
+    }).catch((error) => {
+      console.error('Staff attachment could not be synced to the Bliss app inbox:', error.message);
+      return { success: false, error: error.message };
+    });
+    if (mongoose.connection.readyState === 1) {
+      await StaffConversation.findOneAndUpdate(
+        { conversationId },
+        { lastMessage: text, lastActive: 'Just now', status: 'Waiting Candidate' },
+      );
+    } else {
+      memoryState.messages.push(message);
+      Object.assign(accessibleConversation, {
+        lastMessage: text,
+        lastActive: 'Just now',
+        status: 'Waiting Candidate',
+      });
+    }
+
+    let whatsapp = { success: false, skipped: true };
+    if (channel === 'whatsapp') {
+      const phone = String(accessibleConversation.customerPhone || '').trim();
+      if (!phone) {
+        whatsapp = { success: false, error: 'Customer phone number is unavailable.' };
+      } else {
+        const digits = phone.replace(/\D/g, '').replace(/^00/, '');
+        const optedOut = mongoose.connection.readyState === 1
+          ? await WhatsAppOptOut.findOne({
+              phoneNumber: { $in: [...new Set([phone, digits, `+${digits}`])] },
+            }).select('_id').lean()
+          : null;
+        if (optedOut) {
+          whatsapp = { success: false, error: 'Customer has opted out of WhatsApp messages.' };
+        } else {
+          const mediaType = ['image', 'video', 'audio'].includes(type) ? type : 'document';
+          whatsapp = await whatsappCloudService.sendMediaMessage(
+            phone,
+            mediaType,
+            attachmentUrl,
+            caption,
+          );
+        }
+      }
+      if (mongoose.connection.readyState === 1) {
+        await WhatsAppMessageLog.create({
+          phoneNumber: String(accessibleConversation.customerPhone || '').trim(),
+          direction: 'outbound',
+          messageType: type,
+          content: text,
+          providerMessageId: whatsapp.messageId || '',
+          status: whatsapp.success ? 'sent' : 'failed',
+          error: whatsapp.error || '',
+          eventType: 'staff_inbox_media',
+        });
+      }
+    }
+    return res.status(201).json({
+      success: true,
+      data: message,
+      attachment: {
+        url: attachmentUrl,
+        name: message.attachmentName,
+        mimeType,
+      },
+      channels: { appInbox: sync, whatsapp },
+    });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
   }

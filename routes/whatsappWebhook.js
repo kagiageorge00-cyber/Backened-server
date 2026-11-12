@@ -11,6 +11,8 @@ const WhatsAppQueue = require('../models/WhatsAppQueue');
 const contactService = require('../services/whatsappContactService');
 const mongoose = require('mongoose');
 const { ingestIncomingBlissAppMessage } = require('../services/staffOperationsBridge');
+const whatsappCloudService = require('../services/whatsappCloudService');
+const storageService = require('../services/storageService');
 
 const WEBHOOK_APP_SECRET = process.env.META_APP_SECRET || process.env.WHATSAPP_APP_SECRET || process.env.WHATSAPP_WEBHOOK_APP_SECRET || '';
 
@@ -148,9 +150,35 @@ function incomingMessageText(message) {
 }
 
 async function handleIncomingMessage(message, phoneNumber, timestamp, contactName = '') {
-    const messageText = incomingMessageText(message);
+    let messageText = incomingMessageText(message);
     const normalizedPhone = String(phoneNumber || '').replace(/\D/g, '');
     if (!normalizedPhone) throw new Error('WhatsApp sender phone number is missing.');
+
+    const media = ['image', 'video', 'audio', 'document', 'sticker'].includes(message.type)
+      ? message[message.type]
+      : null;
+    let attachmentUrl = '';
+    let attachmentName = media?.filename || '';
+    let attachmentMimeType = media?.mime_type || '';
+    if (media?.id) {
+      try {
+        const downloaded = await whatsappCloudService.downloadIncomingMedia(media.id);
+        attachmentMimeType = downloaded.mimeType || attachmentMimeType;
+        attachmentName = downloaded.filename || attachmentName || `whatsapp-${message.type}`;
+        attachmentUrl = await storageService.uploadBuffer(downloaded.buffer, {
+          filename: attachmentName,
+        });
+      } catch (error) {
+        console.error('[whatsapp-webhook] incoming media could not be stored', {
+          messageId: message.id || '',
+          mediaType: message.type,
+          error: error.message,
+        });
+        if (!String(media.caption || '').trim()) {
+          messageText = `[${String(message.type).replace(/^\w/, (letter) => letter.toUpperCase())} received; preview unavailable]`;
+        }
+      }
+    }
 
     const logMessage = async (status, eventType) => WhatsAppMessageLog.create({
       phoneNumber,
@@ -185,6 +213,9 @@ async function handleIncomingMessage(message, phoneNumber, timestamp, contactNam
       message_text: messageText,
       message_type: message.type || 'text',
       channel: 'whatsapp',
+      attachmentUrl,
+      attachmentName,
+      attachmentMimeType,
     });
 }
 

@@ -606,6 +606,71 @@ async function createMessageTemplate(name, bodyText, languageCode = 'en_US', cat
   }
 }
 
+async function downloadIncomingMedia(mediaId, { maxBytes = 100 * 1024 * 1024 } = {}) {
+  const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
+  if (!accessToken) throw new Error('WHATSAPP_ACCESS_TOKEN is not configured');
+  if (!mediaId) throw new Error('WhatsApp media ID is missing');
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30_000);
+  try {
+    const metadataResponse = await fetch(
+      `${API_BASE_URL}/${encodeURIComponent(mediaId)}`,
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        signal: controller.signal,
+      },
+    );
+    const metadata = await metadataResponse.json().catch(() => null);
+    if (!metadataResponse.ok || !metadata?.url) {
+      throw new Error(
+        metadata?.error?.message || `WhatsApp media lookup failed: ${metadataResponse.status}`,
+      );
+    }
+
+    const mediaUrl = new URL(metadata.url);
+    const trustedHost = mediaUrl.hostname === 'graph.facebook.com' ||
+      mediaUrl.hostname.endsWith('.facebook.com') ||
+      mediaUrl.hostname.endsWith('.fbsbx.com') ||
+      mediaUrl.hostname.endsWith('.fbcdn.net');
+    if (mediaUrl.protocol !== 'https:' || !trustedHost || mediaUrl.username || mediaUrl.password) {
+      throw new Error('WhatsApp returned an untrusted media URL');
+    }
+
+    const mediaResponse = await fetch(mediaUrl, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      redirect: 'error',
+      signal: controller.signal,
+    });
+    if (!mediaResponse.ok) {
+      throw new Error(`WhatsApp media download failed: ${mediaResponse.status}`);
+    }
+    const declaredLength = Number(mediaResponse.headers.get('content-length') || 0);
+    if (declaredLength > maxBytes) {
+      throw new Error(`WhatsApp media exceeds the ${maxBytes} byte upload limit`);
+    }
+
+    const chunks = [];
+    let totalBytes = 0;
+    for await (const chunk of mediaResponse.body) {
+      totalBytes += chunk.length;
+      if (totalBytes > maxBytes) {
+        throw new Error(`WhatsApp media exceeds the ${maxBytes} byte upload limit`);
+      }
+      chunks.push(chunk);
+    }
+    if (totalBytes === 0) throw new Error('WhatsApp returned an empty media file');
+
+    return {
+      buffer: Buffer.concat(chunks, totalBytes),
+      mimeType: metadata.mime_type || mediaResponse.headers.get('content-type') || '',
+      filename: metadata.file_name || '',
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 /**
  * Send message with media (image, video, document, audio)
  * @param {string} phoneNumber - Recipient phone number
@@ -966,6 +1031,7 @@ module.exports = {
   sendTestMessage,
   sendTemplateMessage,
   sendMediaMessage,
+  downloadIncomingMedia,
   sendInteractiveMessage,
   sendBulkMessages,
   markAsRead,

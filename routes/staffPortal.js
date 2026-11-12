@@ -9,6 +9,7 @@ const mongoose = require('mongoose');
 const authenticateStaff = require('../middleware/staffAuth');
 const staffController = require('../controllers/staffController');
 const { requireStaffPermission } = require('../middleware/staffPermissions');
+const inboxUpload = require('../inbox/middlewares/uploadMiddleware');
 
 function sanitizeValue(value) {
   return typeof value === 'string' ? value.trim() : value;
@@ -48,7 +49,7 @@ router.post('/chats/send', authenticateStaff, staffController.sendMessage);
 router.post('/chats/send-multichannel', authenticateStaff, staffController.sendMultichannelMessage);
 router.put('/chats/call-status', authenticateStaff, staffController.updateSupportCallStatus);
 router.put('/chats/status', authenticateStaff, staffController.updateChatStatus);
-router.post('/chats/upload', authenticateStaff, staffController.uploadFile);
+router.post('/chats/upload', authenticateStaff, inboxUpload.single('file'), staffController.uploadFile);
 router.put('/chats/assign', authenticateStaff, staffController.assignConversation);
 router.put('/chats/transfer', authenticateStaff, staffController.transferConversation);
 router.post('/chats/internal-note', authenticateStaff, staffController.addInternalNote);
