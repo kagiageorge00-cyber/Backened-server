@@ -1,4 +1,5 @@
 const InboxService = require('../inbox/services/inboxService');
+const staffOperationsBridge = require('../services/staffOperationsBridge');
 
 describe('InboxService', () => {
   it('creates a personalized support welcome when a customer starts a service enquiry', async () => {
@@ -66,5 +67,64 @@ describe('InboxService', () => {
 
     expect(result.success).toBe(false);
     expect(result.message).toMatch(/not authorized/i);
+  });
+
+  it('forwards customer attachment metadata to the staff inbox', async () => {
+    const message = {
+      id: 'message-attachment-1',
+      attachmentUrl: 'https://res.cloudinary.com/bliss/video/upload/intro.mp4',
+      attachmentName: 'intro.mp4',
+      attachmentMimeType: 'video/mp4',
+    };
+    const repository = {
+      getConversation: jest.fn().mockResolvedValue({
+        id: 'conv-attachment-1',
+        userId: 'BLISS-2026-000001',
+        departmentId: 'dept-customer-care',
+        departmentName: 'Customer Care',
+      }),
+      createMessage: jest.fn().mockResolvedValue(message),
+    };
+    const deliverToStaff = jest
+      .spyOn(staffOperationsBridge, 'ingestIncomingBlissAppMessage')
+      .mockResolvedValue({ success: true });
+
+    try {
+      const service = new InboxService(repository);
+      await service.sendMessage(
+        {
+          blissId: 'BLISS-2026-000001',
+          fullName: 'Customer',
+          email: 'customer@example.com',
+        },
+        'conv-attachment-1',
+        {
+          message_text: 'Shared intro.mp4',
+          message_type: 'Video',
+          attachment_url: message.attachmentUrl,
+          attachment_name: message.attachmentName,
+          attachment_mime_type: message.attachmentMimeType,
+        },
+      );
+
+      expect(repository.createMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          messageType: 'video',
+          attachmentUrl: message.attachmentUrl,
+          attachmentName: message.attachmentName,
+          attachmentMimeType: message.attachmentMimeType,
+        }),
+      );
+      expect(deliverToStaff).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message_type: 'video',
+          attachmentUrl: message.attachmentUrl,
+          attachmentName: message.attachmentName,
+          attachmentMimeType: message.attachmentMimeType,
+        }),
+      );
+    } finally {
+      deliverToStaff.mockRestore();
+    }
   });
 });

@@ -26,7 +26,6 @@ const blissCommunicationUserSchema = new mongoose.Schema({
   userType: { type: String, default: 'candidate' },
   emailVerified: { type: Boolean, default: false },
   phoneVerified: { type: Boolean, default: false },
-  whatsappVerified: { type: Boolean, default: false },
   isActive: { type: Boolean, default: true },
   profileStatus: { type: String, default: 'active' },
   memberSince: { type: Date, default: Date.now },

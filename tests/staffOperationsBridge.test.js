@@ -97,4 +97,28 @@ describe('Staff operations app-inbound bridge', () => {
     expect(result.message.attachmentName).toBe('sample.jpg');
     expect(result.message.attachmentMimeType).toBe('image/jpeg');
   });
+
+  test('persists Bliss Communication uploads and source identifiers for staff', async () => {
+    const sourceMessageId = `app-media-${Date.now()}`;
+    const result = await ingestIncomingBlissAppMessage({
+      sourceMessageId,
+      conversationId: `bliss-app-conv-${Date.now()}`,
+      blissAppConversationId: '1700000000000',
+      userId: 'candidate-media',
+      customerName: 'Customer',
+      message_text: 'Shared travel-video.mp4',
+      message_type: 'Video',
+      channel: 'bliss_app',
+      attachmentUrl: 'https://res.cloudinary.com/bliss/video/upload/travel.mp4',
+      attachmentName: 'travel-video.mp4',
+      attachmentMimeType: 'video/mp4',
+    });
+
+    expect(result.message.sourceMessageId).toBe(sourceMessageId);
+    expect(result.message.type).toBe('Video');
+    expect(result.message.attachmentUrl).toContain('travel.mp4');
+    expect(result.message.attachmentName).toBe('travel-video.mp4');
+    expect(result.message.attachmentMimeType).toBe('video/mp4');
+    expect(result.conversation.blissAppConversationId).toBe('1700000000000');
+  });
 });

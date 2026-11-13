@@ -1,4 +1,4 @@
-const { ingestIncomingBlissAppMessage } = require('../../services/staffOperationsBridge');
+const staffOperationsBridge = require('../../services/staffOperationsBridge');
 
 class InboxService {
   constructor(repository, notificationService = null, socketService = null) {
@@ -99,7 +99,12 @@ class InboxService {
       return { success: false, message: 'Message text is required.' };
     }
 
-    const messageType = payload.messageType || payload.message_type || 'text';
+    const attachmentMimeType =
+      payload.attachmentMimeType || payload.attachment_mime_type || '';
+    const messageType = normalizeMessageType(
+      payload.messageType || payload.message_type || 'text',
+      attachmentMimeType,
+    );
     const message = await this.repository.createMessage({
       conversationId,
       senderId: user.blissId,
@@ -108,11 +113,12 @@ class InboxService {
       messageText,
       attachmentUrl: payload.attachmentUrl || payload.attachment_url || null,
       attachmentName: payload.attachmentName || payload.attachment_name || null,
+      attachmentMimeType: attachmentMimeType || null,
       replyTo: payload.replyTo || payload.reply_to || null,
     });
 
     if (user.blissId) {
-      await ingestIncomingBlissAppMessage({
+      await staffOperationsBridge.ingestIncomingBlissAppMessage({
         sourceMessageId: message.id,
         conversationId: `bliss-app-${conversationId}`,
         conversation_id: conversationId,
@@ -127,6 +133,9 @@ class InboxService {
         department: conversation.departmentName || payload.department || 'Customer Care',
         message_text: messageText,
         message_type: messageType,
+        attachmentUrl: message.attachmentUrl,
+        attachmentName: message.attachmentName,
+        attachmentMimeType: message.attachmentMimeType,
         jobTitle: user.jobTitle || '',
         destination: user.destination || '',
       });
@@ -186,6 +195,24 @@ class InboxService {
     const conversations = await this.repository.searchConversations(user, query);
     return { success: true, conversations };
   }
+}
+
+function normalizeMessageType(messageType, mimeType = '') {
+  const type = String(messageType || '').toLowerCase();
+  const mime = String(mimeType || '').toLowerCase();
+  if (mime.startsWith('image/') || type.includes('image')) return 'image';
+  if (mime.startsWith('video/') || type.includes('video')) return 'video';
+  if (mime.startsWith('audio/') || type.includes('voice') || type.includes('audio')) {
+    return 'audio';
+  }
+  if (
+    mime.startsWith('application/') ||
+    mime.startsWith('text/') ||
+    ['document', 'pdf', 'file'].some((part) => type.includes(part))
+  ) {
+    return 'document';
+  }
+  return 'text';
 }
 
 module.exports = InboxService;

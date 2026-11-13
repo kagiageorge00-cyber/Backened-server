@@ -462,6 +462,12 @@ async function syncStaffReplyToBlissApp({ conversationId, conversation, message 
   const appConversation = await database.collection('inbox_conversations').findOne({
     conversationId: customerConversationId,
   });
+  const numericConversationId = Number(customerConversationId);
+  const appDatabaseConversation = Number.isSafeInteger(numericConversationId)
+    ? await database.collection('conversations').findOne({
+        id: numericConversationId,
+      })
+    : null;
 
   const messageId = message?._id?.toString?.() || message?.id;
   if (!messageId) throw new Error('Staff reply is missing its message identifier.');
@@ -493,6 +499,43 @@ async function syncStaffReplyToBlissApp({ conversationId, conversation, message 
       { upsert: true },
     );
     insertedInboxMessage = inboxResult.upsertedCount > 0;
+  }
+
+  let insertedAppMessage = false;
+  if (appDatabaseConversation) {
+    const appMessage = {
+      _id: id,
+      id,
+      conversation_id: appDatabaseConversation.id,
+      sender_id: 'bliss-connect',
+      sender_name: message.senderName || 'Bliss Connect',
+      receiver_id: appDatabaseConversation.user_id,
+      message_type: message.type || 'text',
+      message_text: text || (message.attachmentName ? `Shared ${message.attachmentName}` : 'Attachment'),
+      attachment_url: message.attachmentUrl || '',
+      attachment_name: message.attachmentName || '',
+      attachment_mime_type: message.attachmentMimeType || '',
+      read: false,
+      created_at: createdAt,
+      updated_at: createdAt,
+    };
+    const appMessageResult = await database.collection('messages').updateOne(
+      { _id: id },
+      { $setOnInsert: appMessage },
+      { upsert: true },
+    );
+    insertedAppMessage = appMessageResult.upsertedCount > 0;
+    if (insertedAppMessage) {
+      await database.collection('conversations').updateOne(
+        { _id: appDatabaseConversation._id },
+        {
+          $set: {
+            last_message: appMessage.message_text,
+            updated_at: createdAt,
+          },
+        },
+      );
+    }
   }
 
   const Conversation = require('../models/Conversation');
@@ -539,11 +582,12 @@ async function syncStaffReplyToBlissApp({ conversationId, conversation, message 
     );
   }
   return {
-    success: Boolean(appConversation || legacyConversation),
-    duplicate: !insertedInboxMessage && !insertedLegacyMessage,
+    success: Boolean(appConversation || appDatabaseConversation || legacyConversation),
+    duplicate: !insertedInboxMessage && !insertedAppMessage && !insertedLegacyMessage,
     messageId: id,
     legacyConversationSynced: Boolean(legacyConversation),
     inboxConversationSynced: Boolean(appConversation),
+    appConversationSynced: Boolean(appDatabaseConversation),
   };
 }
 

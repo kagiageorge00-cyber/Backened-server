@@ -1,16 +1,14 @@
 const logger = require('../../utils/logger');
 const { validateRegisterPayload, validateLoginPayload } = require('../validation/authValidation');
-const { buildBlissId, identifyLoginMethod, hashPassword, comparePassword, compareAndUpgradeLegacyPassword, signAccessToken, signRefreshToken, randomOtp, randomToken } = require('../services/authService');
+const { buildBlissId, identifyLoginMethod, hashPassword, comparePassword, compareAndUpgradeLegacyPassword, signAccessToken, signRefreshToken, randomToken } = require('../services/authService');
 const AuthRepository = require('../repositories/authRepository');
 const UserModel = require('../../models/BlissCommunicationUser');
 const CandidateModel = require('../../models/candidate');
 const VerificationTokenModel = require('../../models/BlissVerificationToken');
-const PhoneOtpModel = require('../../models/BlissPhoneOtp');
 const LoginHistoryModel = require('../../models/LoginHistory');
 const WhatsAppOptOutModel = require('../../models/WhatsAppOptOut');
 const whatsappCloudService = require('../../services/whatsappCloudService');
 const whatsappContactService = require('../../services/whatsappContactService');
-const axios = require('axios');
 const crypto = require('crypto');
 
 const authRepository = new AuthRepository();
@@ -73,12 +71,6 @@ const CUSTOMER_NOTIFICATION_CHANNELS = Object.freeze([
   'fcm',
 ]);
 
-function normalizeWhatsAppNumber(value) {
-  const phone = String(value || '').trim().replace(/[\s().-]/g, '');
-  if (phone.startsWith('00')) return phone.substring(2);
-  return phone.replace(/^\+/, '');
-}
-
 async function subscribeCustomerToWhatsApp(user) {
   if (!user.notificationsConsent || !user.marketingConsent || !user.whatsapp) {
     return null;
@@ -101,65 +93,6 @@ async function subscribeCustomerToWhatsApp(user) {
       error: error.message,
     });
     return false;
-  }
-}
-
-async function sendCustomerWhatsAppOtp(user, { phoneNumber } = {}) {
-  const recipient = normalizeWhatsAppNumber(
-    phoneNumber || user.whatsapp || user.phone,
-  );
-  const templateName = process.env.WHATSAPP_OTP_TEMPLATE_NAME;
-  if (!recipient || !templateName) {
-    return {
-      sent: false,
-      error: !recipient
-        ? 'No valid WhatsApp number is available.'
-        : 'WhatsApp OTP template is not configured.',
-    };
-  }
-
-  let record;
-  try {
-    const otp = await randomOtp();
-    record = await authRepository.createOtp(PhoneOtpModel, {
-      userId: user._id,
-      phone: recipient,
-      otp,
-      expiresAt: new Date(Date.now() + 1000 * 60 * 5),
-      verifiedAt: null,
-    });
-    const result = await whatsappCloudService.sendTemplateMessage(
-      recipient,
-      templateName,
-      [otp],
-      process.env.WHATSAPP_OTP_TEMPLATE_LANGUAGE || 'en',
-    );
-    if (!result.success) {
-      record.verifiedAt = new Date();
-      await record.save();
-      logger.error('Customer WhatsApp OTP delivery failed', {
-        blissId: user.blissId,
-        error: result.error,
-      });
-      return {
-        sent: false,
-        error: result.error || 'WhatsApp could not deliver the verification code.',
-      };
-    }
-    return { sent: true };
-  } catch (error) {
-    if (record) {
-      record.verifiedAt = new Date();
-      await record.save();
-    }
-    logger.error('Customer WhatsApp OTP delivery failed', {
-      blissId: user.blissId,
-      error: error.message,
-    });
-    return {
-      sent: false,
-      error: error.message || 'WhatsApp could not deliver the verification code.',
-    };
   }
 }
 
@@ -294,7 +227,6 @@ async function registerCustomer(req, res) {
       }),
     );
     const campaignSubscribed = await subscribeCustomerToWhatsApp(user);
-    const otpDelivery = await sendCustomerWhatsAppOtp(user);
     const tokens = issueCustomerTokens(user);
     logger.info('Customer registration success', {
       blissId: user.blissId,
@@ -306,8 +238,6 @@ async function registerCustomer(req, res) {
       ...tokens,
       user: buildUserPayload(user),
       whatsappCampaignSubscribed: campaignSubscribed,
-      whatsappOtpSent: otpDelivery.sent,
-      ...(otpDelivery.error ? { whatsappOtpError: otpDelivery.error } : {}),
     });
   } catch (error) {
     if (error.code === 11000) {
@@ -320,88 +250,6 @@ async function registerCustomer(req, res) {
     return res.status(500).json({
       success: false,
       message: 'Customer account could not be created.',
-    });
-  }
-}
-
-async function googleCustomerSignIn(req, res) {
-  try {
-    const clientId = process.env.GOOGLE_CLIENT_ID;
-    const idToken = typeof req.body.idToken === 'string' ? req.body.idToken : '';
-    if (!clientId) {
-      return res.status(503).json({
-        success: false,
-        message: 'Google sign-in is not configured on the server.',
-      });
-    }
-    if (!idToken) {
-      return res.status(400).json({ success: false, message: 'Google ID token is required.' });
-    }
-    const verification = await axios.get('https://oauth2.googleapis.com/tokeninfo', {
-      params: { id_token: idToken },
-      timeout: 10000,
-    });
-    const identity = verification.data;
-    if (
-      identity.aud !== clientId ||
-      !['accounts.google.com', 'https://accounts.google.com'].includes(identity.iss) ||
-      String(identity.email_verified) !== 'true' ||
-      Number(identity.exp) <= Math.floor(Date.now() / 1000) ||
-      !identity.email
-    ) {
-      return res.status(401).json({
-        success: false,
-        message: 'Google could not verify this account.',
-      });
-    }
-
-    const email = String(identity.email).trim().toLowerCase();
-    let user = await UserModel.findOne({ email });
-    if (!user) {
-      user = await authRepository.createUser(
-        UserModel,
-        {
-          blissId: createCustomerBlissId(),
-          fullName: identity.name || identity.given_name || 'Bliss customer',
-          email,
-          phone: `pending-${crypto.randomUUID()}`,
-          whatsapp: '',
-          location: '',
-          country: 'Pending profile completion',
-          services: [],
-          termsAccepted: false,
-          notificationsConsent: false,
-          marketingConsent: false,
-          password: crypto.randomBytes(48).toString('hex'),
-          authProvider: 'google',
-          userType: 'customer',
-          emailVerified: true,
-          phoneVerified: false,
-          status: 'active',
-        },
-      );
-    }
-    if (
-      user.status === 'suspended' ||
-      user.profileStatus === 'suspended' ||
-      user.isActive === false
-    ) {
-      return res.status(403).json({ success: false, message: 'This account is unavailable.' });
-    }
-    return res.json({
-      success: true,
-      message: 'Google sign-in successful.',
-      ...issueCustomerTokens(user),
-      user: buildUserPayload(user),
-    });
-  } catch (error) {
-    logger.error('Google customer sign-in error', { error: error.message });
-    const status = error.response?.status === 400 ? 401 : 502;
-    return res.status(status).json({
-      success: false,
-      message: status === 401
-        ? 'Google could not verify this sign-in.'
-        : 'Google sign-in could not be completed.',
     });
   }
 }
@@ -436,15 +284,12 @@ async function completeCustomerProfile(req, res) {
     user.termsVersion = CUSTOMER_TERMS_VERSION;
     await user.save();
     const campaignSubscribed = await subscribeCustomerToWhatsApp(user);
-    const otpDelivery = await sendCustomerWhatsAppOtp(user);
     return res.json({
       success: true,
       message: 'Customer profile completed.',
       ...issueCustomerTokens(user),
       user: buildUserPayload(user),
       whatsappCampaignSubscribed: campaignSubscribed,
-      whatsappOtpSent: otpDelivery.sent,
-      ...(otpDelivery.error ? { whatsappOtpError: otpDelivery.error } : {}),
     });
   } catch (error) {
     logger.error('Customer profile completion error', { error: error.message });
@@ -677,78 +522,6 @@ async function verifyEmail(req, res) {
   }
 }
 
-async function sendOtp(req, res) {
-  try {
-    const { phone } = req.body;
-    if (!phone) {
-      return res.status(400).json({ success: false, message: 'Phone number is required.' });
-    }
-
-    const normalizedPhone = normalizeWhatsAppNumber(phone);
-    const user = await UserModel.findOne({
-      $or: [{ phone }, { whatsapp: phone }, { phone: `+${normalizedPhone}` }, { whatsapp: `+${normalizedPhone}` }],
-    });
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'Account not found.' });
-    }
-    const delivery = await sendCustomerWhatsAppOtp(user, { phoneNumber: phone });
-    if (!delivery.sent) {
-      return res.status(502).json({
-        success: false,
-        message: delivery.error || 'WhatsApp could not deliver the verification code.',
-      });
-    }
-    return res.json({
-      success: true,
-      message: 'Verification code sent to your WhatsApp.',
-    });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: 'OTP sending failed.', error: error.message });
-  }
-}
-
-async function verifyOtp(req, res) {
-  try {
-    const { phone, otp } = req.body;
-    if (!phone || !otp) {
-      return res.status(400).json({ success: false, message: 'Phone and OTP are required.' });
-    }
-
-    const normalizedPhone = normalizeWhatsAppNumber(phone);
-    const record = await PhoneOtpModel.findOne({
-      phone: normalizedPhone,
-      otp: String(otp),
-      verifiedAt: null,
-    }).sort({ createdAt: -1 });
-    if (!record) {
-      return res.status(404).json({ success: false, message: 'OTP not found.' });
-    }
-    if (record.expiresAt < new Date()) {
-      return res.status(410).json({ success: false, message: 'OTP expired.' });
-    }
-
-    const user = await UserModel.findById(record.userId);
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found.' });
-    }
-
-    if (normalizeWhatsAppNumber(user.whatsapp) === normalizedPhone) {
-      user.whatsappVerified = true;
-    } else if (normalizeWhatsAppNumber(user.phone) === normalizedPhone) {
-      user.phoneVerified = true;
-    } else {
-      return res.status(400).json({ success: false, message: 'The WhatsApp number does not match this account.' });
-    }
-    await user.save();
-    record.verifiedAt = new Date();
-    await record.save();
-
-    return res.json({ success: true, message: 'Phone verified successfully.', user: buildUserPayload(user) });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: 'OTP verification failed.', error: error.message });
-  }
-}
-
 async function forgotPassword(req, res) {
   try {
     const { identifier } = req.body;
@@ -808,18 +581,14 @@ async function logout(req, res) {
 module.exports = {
   register,
   registerCustomer,
-  googleCustomerSignIn,
   completeCustomerProfile,
   updateCustomerServices,
   validateCustomerProfile,
   buildUserPayload,
-  sendCustomerWhatsAppOtp,
   subscribeCustomerToWhatsApp,
   login,
   profile,
   verifyEmail,
-  sendOtp,
-  verifyOtp,
   forgotPassword,
   resetPassword,
   refresh,
