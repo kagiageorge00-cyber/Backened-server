@@ -246,11 +246,15 @@ router.get('/user/:userType/:userId', async (req, res) => {
 });
 
 // Register push token (device)
-router.post('/register-token', async (req, res) => {
+router.post('/register-token', authenticateToken, async (req, res) => {
   try {
     const { userId, userType, token, platform, marketingOptIn } = req.body;
     if (!userId || !token) return res.status(400).json({ success: false, error: 'userId and token are required' });
-    const update = { userType, platform, token, userId };
+    const authenticatedUserId = String(req.user?.blissId || '').trim();
+    if (!authenticatedUserId || authenticatedUserId !== String(userId).trim()) {
+      return res.status(403).json({ success: false, error: 'You can only register a device for your own account.' });
+    }
+    const update = { userType: 'customer', platform, token, userId: authenticatedUserId };
     if (typeof marketingOptIn === 'boolean') {
       update.marketingOptIn = marketingOptIn;
       update.marketingOptInAt = marketingOptIn ? new Date() : null;

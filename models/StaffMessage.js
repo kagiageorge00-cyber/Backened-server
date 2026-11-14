@@ -14,6 +14,8 @@ const staffMessageSchema = new mongoose.Schema(
     sourceMessageId: { type: String, unique: true, sparse: true },
     createdAt: { type: Date, default: Date.now },
     read: { type: Boolean, default: false },
+    deliveredAt: { type: Date, default: null },
+    readAt: { type: Date, default: null },
   },
   { timestamps: true }
 );

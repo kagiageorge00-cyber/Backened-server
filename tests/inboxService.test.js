@@ -84,6 +84,11 @@ describe('InboxService', () => {
         departmentName: 'Customer Care',
       }),
       createMessage: jest.fn().mockResolvedValue(message),
+      markMessageDelivered: jest.fn().mockResolvedValue({
+        messageId: message.id,
+        delivered: true,
+        deliveredAt: '2026-10-25T00:00:00.000Z',
+      }),
     };
     const deliverToStaff = jest
       .spyOn(staffOperationsBridge, 'ingestIncomingBlissAppMessage')
@@ -123,6 +128,7 @@ describe('InboxService', () => {
           attachmentMimeType: message.attachmentMimeType,
         }),
       );
+      expect(repository.markMessageDelivered).toHaveBeenCalledWith(message.id);
     } finally {
       deliverToStaff.mockRestore();
     }

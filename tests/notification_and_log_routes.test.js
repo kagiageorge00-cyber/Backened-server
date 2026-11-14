@@ -1,5 +1,6 @@
 const express = require('express');
 const request = require('supertest');
+const jwt = require('jsonwebtoken');
 
 jest.mock('../email', () => ({
   sendEmail: jest.fn().mockResolvedValue(true),
@@ -75,11 +76,16 @@ describe('notification and audit endpoints', () => {
   });
 
   it('registers a browser token for the selected user', async () => {
+    const accessToken = jwt.sign(
+      { blissId: 'CAND-TEST-1', role: 'candidate' },
+      process.env.BLISS_JWT_SECRET || 'bliss-auth-secret',
+    );
     const res = await request(app)
       .post('/api/notifications/register-token')
+      .set('Authorization', `Bearer ${accessToken}`)
       .send({
         userId: 'CAND-TEST-1',
-        userType: 'candidate',
+        userType: 'customer',
         token: 'fcm-test-token',
         platform: 'web',
         marketingOptIn: true,
@@ -92,7 +98,7 @@ describe('notification and audit endpoints', () => {
       {
         $set: expect.objectContaining({
           userId: 'CAND-TEST-1',
-          userType: 'candidate',
+          userType: 'customer',
           token: 'fcm-test-token',
           platform: 'web',
           marketingOptIn: true,
@@ -101,6 +107,24 @@ describe('notification and audit endpoints', () => {
       },
       { upsert: true },
     );
+  });
+
+  it('does not allow registering a push token for a different account', async () => {
+    const accessToken = jwt.sign(
+      { blissId: 'CAND-TEST-1', role: 'candidate' },
+      process.env.BLISS_JWT_SECRET || 'bliss-auth-secret',
+    );
+    const res = await request(app)
+      .post('/api/notifications/register-token')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        userId: 'BLISS-OTHER-1',
+        token: 'fcm-test-token',
+        platform: 'web',
+      });
+
+    expect(res.status).toBe(403);
+    expect(PushToken.findOneAndUpdate).not.toHaveBeenCalled();
   });
 
   it('sends a push through FCM to the registered device token', async () => {

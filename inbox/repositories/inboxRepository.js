@@ -161,8 +161,46 @@ class InboxRepository {
     return conversation;
   }
 
+  async markMessageDelivered(messageId) {
+    const deliveredAt = new Date().toISOString();
+    const database = this.getDatabase();
+    if (database) {
+      await database.collection('inbox_messages').updateOne(
+        { id: messageId },
+        { $set: { delivered: true, deliveredAt } },
+      );
+    }
+    const message = this.memoryMessages.find((item) => item.id === messageId);
+    if (message) Object.assign(message, { delivered: true, deliveredAt });
+    return { messageId, delivered: true, deliveredAt };
+  }
+
   async markMessageRead(messageId, readerId) {
-    return { messageId, readerId };
+    const readAt = new Date().toISOString();
+    const database = this.getDatabase();
+    let updated = false;
+    if (database) {
+      const result = await database.collection('inbox_messages').updateOne(
+        { id: messageId, receiverId: readerId },
+        { $set: { read: true, readAt, read_by: readerId } },
+      );
+      const matched = result.matchedCount > 0;
+      updated = result.modifiedCount > 0;
+      if (matched && messageId.startsWith('staff-reply-')) {
+        await database.collection('staff_messages').updateOne(
+          { _id: messageId.substring('staff-reply-'.length) },
+          { $set: { read: true, readAt } },
+        );
+      }
+    }
+    const message = this.memoryMessages.find(
+      (item) => item.id === messageId && item.receiverId === readerId,
+    );
+    if (message) {
+      Object.assign(message, { read: true, readAt, read_by: readerId });
+      updated = true;
+    }
+    return { messageId, readerId, read: updated, readAt: updated ? readAt : null };
   }
 
   async starMessage(messageId, userId) {

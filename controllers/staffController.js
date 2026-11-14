@@ -23,11 +23,10 @@ const { permissionsFor } = require('../middleware/staffPermissions');
 const { sendWhatsAppMessage } = require('../whatsapp');
 const whatsappCloudService = require('../services/whatsappCloudService');
 const WhatsAppMessageLog = require('../models/WhatsAppMessageLog');
-const { sendPushForNotification } = require('../services/pushNotificationDelivery');
 const { sendEmail } = require('../email');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'bliss-staff-secret';
-const CUSTOMER_ONLINE_WINDOW_MS = 60 * 1000;
+const CUSTOMER_ONLINE_WINDOW_MS = 90 * 1000;
 
 const memoryState = {
   staff: [],
@@ -120,6 +119,44 @@ function isCustomerOnline(conversation, now = Date.now()) {
     now - lastActive <= CUSTOMER_ONLINE_WINDOW_MS;
 }
 
+async function notifyCustomerOfAppReply(conversation, sender) {
+  if (mongoose.connection.readyState !== 1 || !conversation.blissId) {
+    return {
+      inApp: { success: false, error: 'Customer notification storage is unavailable.' },
+      push: { success: false, error: 'Customer notification storage is unavailable.' },
+    };
+  }
+  try {
+    const notification = await Notification.create({
+      notificationId: `CHAT-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`,
+      userId: conversation.blissId,
+      userType: 'candidate',
+      title: `New message from ${sender}`,
+      message: 'You have a new message in your Bliss App chat. Open the app to read it.',
+      notificationType: 'chat_reply',
+      category: 'message',
+      actionUrl: process.env.BLISS_APP_URL || 'https://blissapp.web.app',
+      entityType: 'conversation',
+      entityId: conversation.conversationId,
+    });
+    return {
+      inApp: { success: true },
+      push: notification.$locals?.pushDelivery || {
+        success: false,
+        sent: 0,
+        failed: 0,
+        error: 'Push delivery did not return a result.',
+      },
+    };
+  } catch (error) {
+    console.error('App chat notification could not be saved:', error.message);
+    return {
+      inApp: { success: false, error: error.message },
+      push: { success: false, error: error.message },
+    };
+  }
+}
+
 async function notifyCustomerOfOfflineReply(conversation, sender) {
   const deliveries = {
     inApp: { success: false },
@@ -129,7 +166,10 @@ async function notifyCustomerOfOfflineReply(conversation, sender) {
   };
   const title = `New message from ${sender}`;
   const message = 'You have a new message in your Bliss Connect chat. Open the app to read it.';
-  const actionUrl = process.env.FRONTEND_URL || 'https://blissconnect12.netlify.app';
+  const actionUrl = conversation.blissAppConversationId ||
+      conversation.conversationId?.startsWith('bliss-app-')
+    ? process.env.BLISS_APP_URL || 'https://blissapp.web.app'
+    : process.env.FRONTEND_URL || 'https://blissconnect12.netlify.app';
 
   if (mongoose.connection.readyState === 1 && conversation.blissId) {
     try {
@@ -1177,9 +1217,26 @@ async function getChatById(req, res) {
     let conversation = await findAccessibleConversation(req, id);
     if (!conversation) return res.status(404).json({ success: false, error: 'Conversation not found' });
     if (mongoose.connection.readyState === 1) {
+      const unreadCustomerMessages = await StaffMessage.find({
+        conversationId: id,
+        sender: 'customer',
+        read: { $ne: true },
+      }).select('sourceMessageId').lean();
+      const sourceMessageIds = unreadCustomerMessages
+        .map((message) => message.sourceMessageId)
+        .filter(Boolean);
       await Promise.all([
         StaffConversation.updateOne({ conversationId: id, ...staffChatScope(req.staff) }, { $set: { unreadCount: 0 } }),
-        StaffMessage.updateMany({ conversationId: id, sender: 'customer' }, { $set: { read: true } }),
+        StaffMessage.updateMany(
+          { conversationId: id, sender: 'customer' },
+          { $set: { read: true, readAt: new Date() } },
+        ),
+        ...(sourceMessageIds.length
+          ? [mongoose.connection.db.collection('inbox_messages').updateMany(
+              { id: { $in: sourceMessageIds } },
+              { $set: { read: true, readAt: new Date(), read_by: 'staff' } },
+            )]
+          : []),
       ]);
       conversation = await StaffConversation.findOne({ conversationId: id, ...staffChatScope(req.staff) }).lean();
     } else {
@@ -1251,7 +1308,15 @@ async function sendMessage(req, res) {
     }
 
     const online = isCustomerOnline(accessibleConversation);
-    const offlineDeliveries = online || channel === 'whatsapp'
+    const isBlissAppConversation = Boolean(
+      accessibleConversation.blissAppConversationId ||
+      conversationId.startsWith('bliss-app-'),
+    );
+    const offlineDeliveries = channel === 'whatsapp'
+      ? null
+      : online && isBlissAppConversation
+      ? await notifyCustomerOfAppReply(accessibleConversation, authenticatedSender)
+      : online
       ? null
       : await notifyCustomerOfOfflineReply(accessibleConversation, authenticatedSender);
     let whatsappDelivery = offlineDeliveries?.whatsapp || { success: false, skipped: true };
@@ -1338,16 +1403,14 @@ async function sendMultichannelMessage(req, res) {
       Object.assign(conversation, { lastMessage: body, lastActive: 'Just now', status: 'Waiting Candidate' });
     }
 
-    const deliveries = {};
-    deliveries.appInbox = appInboxDelivery;
-    if (channels.app === true) {
-      const pushIds = [conversation.blissId, conversationId].map((value) => String(value || '').trim()).filter(Boolean);
-      deliveries.app = await sendPushForNotification({
-        userId: pushIds[0], userIds: pushIds.slice(1), userType: 'candidate',
-        notificationId: `STAFF-${message._id?.toString?.() || Date.now()}`,
-        notificationType: 'staff_message', title: `Message from ${sender}`, message: body,
-        entityType: 'conversation', entityId: conversationId,
-      }).catch((error) => ({ success: false, sent: 0, error: error.message }));
+    const deliveries = { appInbox: appInboxDelivery };
+    if (isBlissAppConversation && appInboxDelivery.success) {
+      deliveries.push = await notifyCustomerOfAppReply(conversation, sender);
+    } else {
+      deliveries.push = {
+        success: false,
+        error: appInboxDelivery.error || 'The reply could not be synced to the Bliss App inbox.',
+      };
     }
 
     if (channels.whatsapp === true) {

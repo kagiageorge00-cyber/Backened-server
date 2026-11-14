@@ -118,7 +118,7 @@ class InboxService {
     });
 
     if (user.blissId) {
-      await staffOperationsBridge.ingestIncomingBlissAppMessage({
+      const delivery = await staffOperationsBridge.ingestIncomingBlissAppMessage({
         sourceMessageId: message.id,
         conversationId: `bliss-app-${conversationId}`,
         conversation_id: conversationId,
@@ -139,6 +139,10 @@ class InboxService {
         jobTitle: user.jobTitle || '',
         destination: user.destination || '',
       });
+      if (delivery?.success && this.repository.markMessageDelivered) {
+        const receipt = await this.repository.markMessageDelivered(message.id);
+        Object.assign(message, receipt);
+      }
     }
 
     if (this.notificationService) {

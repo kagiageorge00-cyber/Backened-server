@@ -1,12 +1,13 @@
 const logger = require('../../utils/logger');
 const { validateRegisterPayload, validateLoginPayload } = require('../validation/authValidation');
-const { buildBlissId, identifyLoginMethod, hashPassword, comparePassword, compareAndUpgradeLegacyPassword, signAccessToken, signRefreshToken, randomToken } = require('../services/authService');
+const { buildBlissId, identifyLoginMethod, hashPassword, comparePassword, compareAndUpgradeLegacyPassword, signAccessToken, verifyToken, randomToken } = require('../services/authService');
 const AuthRepository = require('../repositories/authRepository');
 const UserModel = require('../../models/BlissCommunicationUser');
 const CandidateModel = require('../../models/candidate');
 const VerificationTokenModel = require('../../models/BlissVerificationToken');
 const LoginHistoryModel = require('../../models/LoginHistory');
 const WhatsAppOptOutModel = require('../../models/WhatsAppOptOut');
+const CustomerAuthSession = require('../../models/CustomerAuthSession');
 const whatsappCloudService = require('../../services/whatsappCloudService');
 const whatsappContactService = require('../../services/whatsappContactService');
 const crypto = require('crypto');
@@ -65,8 +66,6 @@ const CUSTOMER_SERVICES = new Set([
   'Office appointments and customer support',
 ]);
 const CUSTOMER_NOTIFICATION_CHANNELS = Object.freeze([
-  'whatsapp',
-  'email',
   'in_app',
   'fcm',
 ]);
@@ -124,6 +123,9 @@ function validateCustomerProfile(body, { requirePassword = false } = {}) {
     errors.push('Choose services from the available Bliss Connect service list.');
   }
   if (body.termsAccepted !== true) errors.push('You must agree to the Terms and Privacy Policy.');
+  if (body.notificationsConsent !== true) {
+    errors.push('You must agree to receive service notifications.');
+  }
   if (requirePassword) {
     if (password.length < 10) errors.push('Password must be at least 10 characters long.');
     if (
@@ -183,18 +185,24 @@ function buildCustomerUser(profile, extras = {}) {
   };
 }
 
-function issueCustomerTokens(user) {
+function hashRefreshToken(token) {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+async function issueCustomerTokens(user, role = 'customer') {
+  const refreshToken = crypto.randomBytes(48).toString('base64url');
+  await CustomerAuthSession.create({
+    tokenHash: hashRefreshToken(refreshToken),
+    userId: user._id,
+    role,
+  });
   return {
     accessToken: signAccessToken({
       sub: user._id.toString(),
       blissId: user.blissId,
-      role: 'customer',
+      role,
     }),
-    refreshToken: signRefreshToken({
-      sub: user._id.toString(),
-      blissId: user.blissId,
-      role: 'customer',
-    }),
+    refreshToken,
   };
 }
 
@@ -227,7 +235,7 @@ async function registerCustomer(req, res) {
       }),
     );
     const campaignSubscribed = await subscribeCustomerToWhatsApp(user);
-    const tokens = issueCustomerTokens(user);
+    const tokens = await issueCustomerTokens(user);
     logger.info('Customer registration success', {
       blissId: user.blissId,
       email: user.email,
@@ -287,7 +295,7 @@ async function completeCustomerProfile(req, res) {
     return res.json({
       success: true,
       message: 'Customer profile completed.',
-      ...issueCustomerTokens(user),
+      ...(await issueCustomerTokens(user)),
       user: buildUserPayload(user),
       whatsappCampaignSubscribed: campaignSubscribed,
     });
@@ -378,8 +386,7 @@ async function register(req, res) {
       used: false,
     });
 
-    const accessToken = signAccessToken({ sub: user._id.toString(), blissId: user.blissId, role: 'user' });
-    const refreshToken = signRefreshToken({ sub: user._id.toString(), blissId: user.blissId, role: 'user' });
+    const { accessToken, refreshToken } = await issueCustomerTokens(user, 'user');
 
     logger.info('Auth register success', { blissId: user.blissId, email });
     return res.status(201).json({
@@ -453,8 +460,7 @@ async function login(req, res) {
       return res.status(403).json({ success: false, message: 'Account suspended.' });
     }
 
-    const accessToken = signAccessToken({ sub: user._id.toString(), blissId: user.blissId, role: 'user' });
-    const refreshToken = signRefreshToken({ sub: user._id.toString(), blissId: user.blissId, role: 'user' });
+    const { accessToken, refreshToken } = await issueCustomerTokens(user, 'user');
 
     await authRepository.createLoginRecord(LoginHistoryModel, {
       userId: user._id,
@@ -550,6 +556,10 @@ async function resetPassword(req, res) {
     }
     user.passwordHash = await hashPassword(password);
     await user.save();
+    await CustomerAuthSession.updateMany(
+      { userId: user._id, revokedAt: null },
+      { $set: { revokedAt: new Date() } },
+    );
     return res.json({ success: true, message: 'Password reset successfully.' });
   } catch (error) {
     return res.status(500).json({ success: false, message: 'Password reset failed.', error: error.message });
@@ -562,9 +572,44 @@ async function refresh(req, res) {
     if (!refreshToken) {
       return res.status(400).json({ success: false, message: 'Refresh token is required.' });
     }
-    const payload = jwt.verify(refreshToken, process.env.BLISS_JWT_SECRET || 'bliss-auth-secret');
-    const accessToken = signAccessToken({ sub: payload.sub, blissId: payload.blissId, role: payload.role || 'user' });
-    return res.json({ success: true, accessToken });
+    let session = await CustomerAuthSession.findOne({
+      tokenHash: hashRefreshToken(refreshToken),
+      revokedAt: null,
+    });
+    if (!session) {
+      let legacyPayload;
+      try {
+        legacyPayload = verifyToken(refreshToken);
+      } catch (_) {
+        return res.status(401).json({ success: false, message: 'Refresh token expired or invalid.' });
+      }
+      if (!legacyPayload.sub) {
+        return res.status(401).json({ success: false, message: 'Refresh token expired or invalid.' });
+      }
+      session = await CustomerAuthSession.create({
+        tokenHash: hashRefreshToken(refreshToken),
+        userId: legacyPayload.sub,
+        role: legacyPayload.role || 'user',
+      });
+    }
+
+    const user = await UserModel.findById(session.userId);
+    if (!user || user.status === 'suspended') {
+      return res.status(401).json({ success: false, message: 'This account cannot refresh its session.' });
+    }
+    session.lastUsedAt = new Date();
+    await session.save();
+    const role = session.role || 'user';
+    const accessToken = signAccessToken({
+      sub: user._id.toString(),
+      blissId: user.blissId,
+      role,
+    });
+    return res.json({
+      success: true,
+      accessToken,
+      refreshToken,
+    });
   } catch (error) {
     return res.status(401).json({ success: false, message: 'Refresh token expired or invalid.' });
   }
@@ -572,6 +617,17 @@ async function refresh(req, res) {
 
 async function logout(req, res) {
   try {
+    const { refreshToken } = req.body || {};
+    if (refreshToken) {
+      await CustomerAuthSession.updateOne(
+        {
+          tokenHash: hashRefreshToken(refreshToken),
+          userId: req.user.sub,
+          revokedAt: null,
+        },
+        { $set: { revokedAt: new Date() } },
+      );
+    }
     return res.json({ success: true, message: 'Logout successful.' });
   } catch (error) {
     return res.status(500).json({ success: false, message: 'Logout failed.', error: error.message });

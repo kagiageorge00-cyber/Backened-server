@@ -34,6 +34,7 @@ describe('auth service helpers', () => {
       email: 'customer@example.test',
       services: [],
       termsAccepted: true,
+      notificationsConsent: true,
     });
 
     expect(validation.isValid).toBe(true);
@@ -49,8 +50,8 @@ describe('auth service helpers', () => {
       profileComplete: true,
       services: [],
       marketingConsent: false,
-      notificationsConsent: false,
-      notificationChannels: [],
+      notificationsConsent: true,
+      notificationChannels: ['in_app', 'fcm'],
     });
   });
 
@@ -78,7 +79,7 @@ describe('auth service helpers', () => {
       profileComplete: true,
       marketingConsent: true,
       notificationsConsent: true,
-      notificationChannels: ['whatsapp', 'email', 'in_app', 'fcm'],
+      notificationChannels: ['in_app', 'fcm'],
     });
   });
 
