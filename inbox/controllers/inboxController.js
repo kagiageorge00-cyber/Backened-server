@@ -54,6 +54,32 @@ class InboxController {
     }
   }
 
+  async startSupportCall(req, res) {
+    try {
+      const result = await this.service.startSupportCall(
+        req.user,
+        req.params.conversationId,
+        req.body?.callType,
+      );
+      return res.status(result.success ? 201 : result.statusCode || 500).json(result);
+    } catch (error) {
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
+  async endSupportCall(req, res) {
+    try {
+      const result = await this.service.endSupportCall(
+        req.user,
+        req.params.conversationId,
+        req.body?.callId,
+      );
+      return res.status(result.success ? 200 : result.statusCode || 500).json(result);
+    } catch (error) {
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
   async markRead(req, res) {
     try {
       const result = await this.service.markMessageRead(req.user, req.params.messageId);

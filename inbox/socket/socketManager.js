@@ -1,6 +1,7 @@
 const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
 const { verifyEmployerToken } = require('../../services/jwtService');
+const { verifyToken } = require('../../auth/services/authService');
 
 class SocketManager {
   constructor(server) {
@@ -37,7 +38,15 @@ class SocketManager {
               socket.data.candidate = candidate;
               authenticated = true;
             } catch (candidateError) {
-              console.warn('Socket authentication failed:', candidateError.message);
+              try {
+                const customer = verifyToken(token);
+                if (customer.sub) socket.join(`candidate:${customer.sub}`);
+                if (customer.blissId) socket.join(`candidate:${customer.blissId}`);
+                socket.data.customer = customer;
+                authenticated = true;
+              } catch (customerError) {
+                console.warn('Socket authentication failed:', customerError.message);
+              }
             }
           }
         }

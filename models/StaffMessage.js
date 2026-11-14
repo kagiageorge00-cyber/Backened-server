@@ -11,6 +11,7 @@ const staffMessageSchema = new mongoose.Schema(
     attachmentUrl: { type: String, default: '' },
     attachmentName: { type: String, default: '' },
     attachmentMimeType: { type: String, default: '' },
+    jobData: { type: mongoose.Schema.Types.Mixed, default: null },
     sourceMessageId: { type: String, unique: true, sparse: true },
     createdAt: { type: Date, default: Date.now },
     read: { type: Boolean, default: false },

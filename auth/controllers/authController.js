@@ -348,6 +348,40 @@ async function updateCustomerServices(req, res) {
   }
 }
 
+async function enableCustomerNotifications(req, res) {
+  try {
+    if (req.body?.enabled !== true) {
+      return res.status(400).json({
+        success: false,
+        message: 'Explicit notification consent is required.',
+      });
+    }
+
+    const user = await UserModel.findById(req.user.sub);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Account not found.' });
+    }
+
+    user.notificationsConsent = true;
+    user.notificationsConsentAt = new Date();
+    user.notificationChannels = CUSTOMER_NOTIFICATION_CHANNELS;
+    await user.save();
+    return res.json({
+      success: true,
+      message: 'Service notification consent updated.',
+      user: buildUserPayload(user),
+    });
+  } catch (error) {
+    logger.error('Customer notification-consent update error', {
+      error: error.message,
+    });
+    return res.status(500).json({
+      success: false,
+      message: 'Notification consent could not be updated.',
+    });
+  }
+}
+
 async function register(req, res) {
   try {
     const validation = validateRegisterPayload(req.body);
@@ -639,6 +673,7 @@ module.exports = {
   registerCustomer,
   completeCustomerProfile,
   updateCustomerServices,
+  enableCustomerNotifications,
   validateCustomerProfile,
   buildUserPayload,
   subscribeCustomerToWhatsApp,

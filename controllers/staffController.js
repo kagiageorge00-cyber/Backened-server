@@ -74,6 +74,15 @@ function staffChatScope(staff = {}) {
   return access.length ? { $or: access } : { conversationId: '__no_staff_chat_access__' };
 }
 
+function findReadableConversation(conversationId) {
+  if (mongoose.connection.readyState === 1) {
+    return StaffConversation.findOne({ conversationId }).lean();
+  }
+  return memoryState.conversations.find(
+    (conversation) => conversation.conversationId === conversationId,
+  ) || null;
+}
+
 function staffCanAccessConversation(staff = {}, conversation) {
   if (!conversation) return false;
   if (canAccessAllStaffChats(staff)) return true;
@@ -802,7 +811,7 @@ async function postMarketplaceJob(req, res) {
       country: req.body.country || 'Global',
       city: req.body.city || '',
       location: req.body.location || req.body.city || '',
-      workLocation: normalizeWorkLocation(req.body.workLocation),
+      workLocation: normalizeWorkLocation(req.body.workLocation) || 'On-site',
       numberOfVacancies: Number(req.body.numberOfVacancies) || 1,
       applicationDeadline: parseDateOrDefault(
         req.body.applicationDeadline,
@@ -827,7 +836,7 @@ async function postMarketplaceJob(req, res) {
       preferredGender: normalizePreferredGender(req.body.preferredGender),
       ageRange: req.body.ageRange || { min: 18, max: 65 },
       salary: salaryValue,
-      salaryType: normalizedSalaryType,
+      salaryType: normalizedSalaryType || 'Annual',
       currency: req.body.currency || 'USD',
       benefits: req.body.benefits || {},
       requirements: { ...(req.body.requirements || {}) },
@@ -884,6 +893,64 @@ async function listJobs(req, res) {
     const jobs = memoryState.jobs.filter((job) =>
       !filter.status || job.status === filter.status);
     return res.json({ success: true, data: jobs });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+}
+
+function buildChatJobCard(job) {
+  const location = String(
+    job.location ||
+      [job.city, job.country].filter(Boolean).join(', ') ||
+      job.workLocation ||
+      '',
+  ).trim();
+  const deadline = job.applicationDeadline
+    ? new Date(job.applicationDeadline)
+    : null;
+
+  return {
+    jobId: String(job.jobId || ''),
+    title: String(job.jobTitle || job.title || job.position || 'Job opportunity'),
+    employerName: String(job.employerName || 'Employer'),
+    location,
+    employmentType: String(job.employmentType || ''),
+    salary: Number.isFinite(Number(job.salary)) ? Number(job.salary) : null,
+    salaryType: String(job.salaryType || ''),
+    currency: String(job.currency || ''),
+    summary: String(job.jobSummary || job.description || ''),
+    requirements: String(job.requirementsText || job.qualifications || ''),
+    applicationDeadline:
+      deadline && !Number.isNaN(deadline.getTime())
+        ? deadline.toISOString()
+        : null,
+  };
+}
+
+async function listChatShareableJobs(req, res) {
+  try {
+    if (mongoose.connection.readyState === 1) {
+      const jobs = await Job.find({ status: 'Active' })
+        .select(
+          'jobId jobTitle title position employerName city country location workLocation employmentType salary salaryType currency jobSummary description requirementsText qualifications applicationDeadline',
+        )
+        .sort({ createdAt: -1 })
+        .limit(100)
+        .lean();
+      return res.json({
+        success: true,
+        data: jobs.map(buildChatJobCard),
+      });
+    }
+
+    await ensureDemoData();
+    return res.json({
+      success: true,
+      data: memoryState.jobs
+        .filter((job) => job.status === 'Active')
+        .slice(0, 100)
+        .map(buildChatJobCard),
+    });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
   }
@@ -1186,8 +1253,8 @@ async function listChats(req, res) {
   try {
     await backfillStaffConversationQueues();
     const conversations = mongoose.connection.readyState === 1
-      ? await StaffConversation.find(staffChatScope(req.staff)).sort({ updatedAt: -1 }).lean()
-      : memoryState.conversations.filter((conversation) => staffCanAccessConversation(req.staff, conversation));
+      ? await StaffConversation.find({}).sort({ updatedAt: -1 }).lean()
+      : memoryState.conversations;
     const whatsappConversationIds = mongoose.connection.readyState === 1
       ? new Set(await StaffMessage.distinct('conversationId', {
           channel: 'whatsapp',
@@ -1200,6 +1267,7 @@ async function listChats(req, res) {
       success: true,
       data: conversations.map((conversation) => ({
         ...conversation,
+        canReply: staffCanAccessConversation(req.staff, conversation),
         channels: [...new Set([
           ...(conversation.channels || []),
           ...(whatsappConversationIds.has(conversation.conversationId) ? ['whatsapp'] : []),
@@ -1236,7 +1304,7 @@ async function updateCustomerPresence(req, res) {
 async function getChatById(req, res) {
   try {
     const { id } = req.params;
-    let conversation = await findAccessibleConversation(req, id);
+    let conversation = await findReadableConversation(id);
     if (!conversation) return res.status(404).json({ success: false, error: 'Conversation not found' });
     if (mongoose.connection.readyState === 1) {
       const unreadCustomerMessages = await StaffMessage.find({
@@ -1248,7 +1316,7 @@ async function getChatById(req, res) {
         .map((message) => message.sourceMessageId)
         .filter(Boolean);
       await Promise.all([
-        StaffConversation.updateOne({ conversationId: id, ...staffChatScope(req.staff) }, { $set: { unreadCount: 0 } }),
+        StaffConversation.updateOne({ conversationId: id }, { $set: { unreadCount: 0 } }),
         StaffMessage.updateMany(
           { conversationId: id, sender: 'customer' },
           { $set: { read: true, readAt: new Date() } },
@@ -1260,7 +1328,7 @@ async function getChatById(req, res) {
             )]
           : []),
       ]);
-      conversation = await StaffConversation.findOne({ conversationId: id, ...staffChatScope(req.staff) }).lean();
+      conversation = await findReadableConversation(id);
     } else {
       conversation.unreadCount = 0;
       memoryState.messages
@@ -1270,7 +1338,16 @@ async function getChatById(req, res) {
     const messages = mongoose.connection.readyState === 1
       ? await StaffMessage.find({ conversationId: id }).sort({ createdAt: 1 }).lean()
       : memoryState.messages.filter((item) => item.conversationId === id);
-    return res.json({ success: true, data: { conversation, messages } });
+    return res.json({
+      success: true,
+      data: {
+        conversation: {
+          ...conversation,
+          canReply: staffCanAccessConversation(req.staff, conversation),
+        },
+        messages,
+      },
+    });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
   }
@@ -1288,10 +1365,12 @@ async function receiveBlissAppMessage(req, res) {
 
 async function sendMessage(req, res) {
   try {
-    const { conversationId, text } = req.body || {};
+    const { conversationId, text, jobId } = req.body || {};
     const channel = String(req.body?.channel || 'bliss_app').toLowerCase();
-    if (!conversationId || !text || !text.trim()) {
-      return res.status(400).json({ success: false, error: 'conversationId and text are required' });
+    const requestedJobId = String(jobId || '').trim();
+    const replyText = String(text || '').trim();
+    if (!conversationId || (!replyText && !requestedJobId)) {
+      return res.status(400).json({ success: false, error: 'conversationId and text or jobId are required' });
     }
     if (!['bliss_app', 'whatsapp'].includes(channel)) {
       return res.status(400).json({ success: false, error: 'channel must be bliss_app or whatsapp' });
@@ -1299,10 +1378,64 @@ async function sendMessage(req, res) {
     const accessibleConversation = await findAccessibleConversation(req, conversationId);
     if (!accessibleConversation) return res.status(404).json({ success: false, error: 'Conversation not found' });
 
+    const isBlissAppConversation = Boolean(
+      accessibleConversation.blissAppConversationId ||
+      conversationId.startsWith('bliss-app-'),
+    );
+    if (requestedJobId && (channel !== 'bliss_app' || !isBlissAppConversation)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Marketplace jobs can only be shared in Bliss app conversations.',
+      });
+    }
+
+    let jobData = null;
+    if (requestedJobId) {
+      let job;
+      if (mongoose.connection.readyState === 1) {
+        job = await Job.findOne({ jobId: requestedJobId, status: 'Active' }).lean();
+      } else {
+        await ensureDemoData();
+        job = memoryState.jobs.find(
+          (item) => item.jobId === requestedJobId && item.status === 'Active',
+        );
+      }
+      if (!job) {
+        return res.status(404).json({
+          success: false,
+          error: 'This job is no longer active or could not be found.',
+        });
+      }
+      jobData = buildChatJobCard(job);
+    }
+
+    const messageText = jobData
+      ? `Shared job: ${jobData.title}`
+      : replyText;
+    const messageType = jobData ? 'job_alert' : 'text';
     const authenticatedSender = req.staff.fullName || req.staff.email || 'Staff';
     const message = mongoose.connection.readyState === 1
-      ? await StaffMessage.create({ conversationId, sender: 'staff', senderName: authenticatedSender, text, type: 'text', channel, read: false })
-      : { conversationId, sender: 'staff', senderName: authenticatedSender, text, type: 'text', channel, read: false, createdAt: new Date().toISOString() };
+      ? await StaffMessage.create({
+          conversationId,
+          sender: 'staff',
+          senderName: authenticatedSender,
+          text: messageText,
+          type: messageType,
+          channel,
+          ...(jobData ? { jobData } : {}),
+          read: false,
+        })
+      : {
+          conversationId,
+          sender: 'staff',
+          senderName: authenticatedSender,
+          text: messageText,
+          type: messageType,
+          channel,
+          ...(jobData ? { jobData } : {}),
+          read: false,
+          createdAt: new Date().toISOString(),
+        };
     const appInboxDelivery = await syncStaffReplyToBlissApp({
       conversationId,
       conversation: accessibleConversation,
@@ -1317,23 +1450,19 @@ async function sendMessage(req, res) {
       memoryState.messages.push(message);
       const conversation = memoryState.conversations.find((item) => item.conversationId === conversationId);
       if (conversation) {
-        conversation.lastMessage = text;
+        conversation.lastMessage = messageText;
         conversation.lastActive = 'Just now';
         conversation.status = 'Waiting Candidate';
       }
     } else {
       await StaffConversation.findOneAndUpdate(
         { conversationId },
-        { lastMessage: text, lastActive: 'Just now', status: 'Waiting Candidate' },
+        { lastMessage: messageText, lastActive: 'Just now', status: 'Waiting Candidate' },
         { new: true }
       );
     }
 
     const online = isCustomerOnline(accessibleConversation);
-    const isBlissAppConversation = Boolean(
-      accessibleConversation.blissAppConversationId ||
-      conversationId.startsWith('bliss-app-'),
-    );
     const offlineDeliveries = channel === 'whatsapp'
       ? null
       : online && isBlissAppConversation
@@ -1370,7 +1499,7 @@ async function sendMessage(req, res) {
             phoneNumber: phone,
             direction: 'outbound',
             messageType: 'text',
-            content: text,
+            content: messageText,
             providerMessageId: whatsappDelivery.messageId || '',
             status: whatsappDelivery.success ? 'sent' : 'failed',
             error: whatsappDelivery.error || '',
@@ -1977,6 +2106,8 @@ module.exports = {
   listAssignments,
   postMarketplaceJob,
   listJobs,
+  buildChatJobCard,
+  listChatShareableJobs,
   reviewJob,
   broadcast,
 };

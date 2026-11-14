@@ -127,6 +127,42 @@ describe('notification and audit endpoints', () => {
     expect(PushToken.findOneAndUpdate).not.toHaveBeenCalled();
   });
 
+  it('registers a browser token for the authenticated staff account', async () => {
+    const accessToken = jwt.sign(
+      {
+        sub: 'STAFF-1',
+        email: 'Agent@Example.com',
+        department: 'Customer Care',
+        rank: 'Staff',
+      },
+      process.env.JWT_SECRET || 'bliss-staff-secret',
+    );
+    const res = await request(app)
+      .post('/api/notifications/register-token')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        userId: 'agent@example.com',
+        userType: 'staff',
+        token: 'staff-fcm-test-token',
+        platform: 'web',
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(PushToken.findOneAndUpdate).toHaveBeenCalledWith(
+      { userId: 'agent@example.com', token: 'staff-fcm-test-token' },
+      {
+        $set: expect.objectContaining({
+          userId: 'agent@example.com',
+          userType: 'staff',
+          token: 'staff-fcm-test-token',
+          platform: 'web',
+        }),
+      },
+      { upsert: true },
+    );
+  });
+
   it('sends a push through FCM to the registered device token', async () => {
     const tokens = [{ token: 'fcm-test-token' }];
     PushToken.find.mockResolvedValue(tokens);

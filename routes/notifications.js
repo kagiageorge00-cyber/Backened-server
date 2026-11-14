@@ -1,11 +1,47 @@
 const express = require('express');
 const router = express.Router();
 const { randomUUID } = require('crypto');
+const jwt = require('jsonwebtoken');
 const Notification = require('../models/Notification');
 const { createNotification } = require('../utils/notificationHelper');
 const PushToken = require('../models/PushToken');
 const fcmService = require('../services/fcmService');
 const { authenticateToken } = require('../auth/middleware/authMiddleware');
+const { verifyToken } = require('../auth/services/authService');
+
+function authenticatePushRegistrant(req, res, next) {
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : '';
+  if (!token) {
+    return res.status(401).json({ success: false, error: 'Authorization token required.' });
+  }
+
+  try {
+    const user = verifyToken(token);
+    if (user?.blissId) {
+      req.pushRegistrant = {
+        userId: String(user.blissId).trim(),
+        userType: 'customer',
+      };
+      return next();
+    }
+  } catch (_) {
+    // Staff use the separate portal JWT secret.
+  }
+
+  try {
+    const staff = jwt.verify(token, process.env.JWT_SECRET || 'bliss-staff-secret');
+    const email = String(staff.email || '').trim().toLowerCase();
+    if (email && staff.sub && staff.rank) {
+      req.pushRegistrant = { userId: email, userType: 'staff' };
+      return next();
+    }
+  } catch (_) {
+    // Reject tokens that are not valid customer or staff credentials.
+  }
+
+  return res.status(401).json({ success: false, error: 'Invalid or expired token.' });
+}
 
 router.get('/me', authenticateToken, async (req, res) => {
   try {
@@ -246,20 +282,38 @@ router.get('/user/:userType/:userId', async (req, res) => {
 });
 
 // Register push token (device)
-router.post('/register-token', authenticateToken, async (req, res) => {
+router.post('/register-token', authenticatePushRegistrant, async (req, res) => {
   try {
     const { userId, userType, token, platform, marketingOptIn } = req.body;
     if (!userId || !token) return res.status(400).json({ success: false, error: 'userId and token are required' });
-    const authenticatedUserId = String(req.user?.blissId || '').trim();
-    if (!authenticatedUserId || authenticatedUserId !== String(userId).trim()) {
+    const registrant = req.pushRegistrant;
+    const requestedUserType = String(userType || registrant.userType).trim().toLowerCase();
+    const requestedUserId = String(userId).trim();
+    const matchesUser = registrant?.userType === 'staff'
+      ? registrant.userId === requestedUserId.toLowerCase()
+      : registrant?.userId === requestedUserId;
+    if (
+      !registrant?.userId ||
+      !matchesUser ||
+      (registrant.userType === 'staff' && requestedUserType !== 'staff')
+    ) {
       return res.status(403).json({ success: false, error: 'You can only register a device for your own account.' });
     }
-    const update = { userType: 'customer', platform, token, userId: authenticatedUserId };
+    const update = {
+      userType: registrant.userType,
+      platform,
+      token,
+      userId: registrant.userId,
+    };
     if (typeof marketingOptIn === 'boolean') {
       update.marketingOptIn = marketingOptIn;
       update.marketingOptInAt = marketingOptIn ? new Date() : null;
     }
-    await PushToken.findOneAndUpdate({ userId, token }, { $set: update }, { upsert: true });
+    await PushToken.findOneAndUpdate(
+      { userId: registrant.userId, token },
+      { $set: update },
+      { upsert: true },
+    );
     return res.json({ success: true, message: 'Token registered' });
   } catch (err) {
     console.error('Register token error:', err);

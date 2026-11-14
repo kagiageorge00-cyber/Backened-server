@@ -217,11 +217,12 @@ async function fetchMarketplaceJobs(req, res) {
       .limit(parseInt(limit));
 
     const total = await Job.countDocuments(filter);
+    const marketplaceJobs = jobs.map(normalizeMarketplaceJob);
 
     return res.json({
       success: true,
-      data: jobs,
-      jobs,
+      data: marketplaceJobs,
+      jobs: marketplaceJobs,
       total,
       page: parseInt(page),
       pages: Math.ceil(total / parseInt(limit)),
@@ -233,6 +234,26 @@ async function fetchMarketplaceJobs(req, res) {
       error: err.message,
     });
   }
+}
+
+function normalizeMarketplaceJob(job) {
+  const value = job && typeof job.toObject === 'function' ? job.toObject() : { ...job };
+  const yearsOfExperience = Number(value.yearsOfExperience);
+
+  return {
+    ...value,
+    employer: value.employer || value.employerName || 'Bliss Connect',
+    city: value.city || (value.location && value.location !== value.country ? value.location : ''),
+    vacancies: value.vacancies ?? value.numberOfVacancies ?? 1,
+    experience: value.experience || (
+      Number.isFinite(yearsOfExperience) && yearsOfExperience > 0
+        ? `${yearsOfExperience} years`
+        : 'Not specified'
+    ),
+    skills: Array.isArray(value.skills) ? value.skills : (value.requiredSkills || []),
+    description: value.description || value.jobSummary || '',
+    isFeatured: value.isFeatured ?? value.featured ?? false,
+  };
 }
 
 // Get Marketplace Jobs
@@ -406,10 +427,7 @@ router.get('/:jobId', async (req, res) => {
     // Increment views
     await Job.updateOne({ jobId }, { $inc: { viewsCount: 1 } });
 
-    return res.json({
-      success: true,
-      job,
-    });
+    return res.json({ success: true, job: normalizeMarketplaceJob(job) });
   } catch (err) {
     console.error('Job details fetch error:', err);
     return res.status(500).json({

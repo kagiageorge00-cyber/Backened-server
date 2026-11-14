@@ -10,6 +10,7 @@ const messageSchema = new mongoose.Schema({
   attachmentUrl: { type: String, default: '' },
   attachmentName: { type: String, default: '' },
   attachmentMimeType: { type: String, default: '' },
+  jobData: { type: mongoose.Schema.Types.Mixed, default: null },
   sourceMessageId: { type: String, unique: true, sparse: true },
   timestamp: { type: Date, default: Date.now },
   readStatus: { type: String, enum: ['unread', 'read'], default: 'unread' },

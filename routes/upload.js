@@ -23,29 +23,48 @@ if (process.env.CLOUDINARY_URL) {
 // ========================
 // STORAGE (all uploads must be stored in Cloudinary)
 // ========================
+function buildCloudinaryUploadParams(req, file) {
+  const qtype = (req.query && req.query.type) || (req.body && req.body.type);
+  const candidateId = (req.query && req.query.candidateId) || (req.body && req.body.candidateId);
+  const explicitFolder = (req.query && req.query.folder) || (req.body && req.body.folder);
+
+  let folder = 'bliss-connect';
+  if (explicitFolder) {
+    folder = explicitFolder;
+  } else if (qtype === 'candidate_video') {
+    folder = candidateId ? `uploads/candidate_videos/${candidateId}` : 'uploads/candidate_videos';
+  } else if (qtype === 'marketplace_job') {
+    folder = 'uploads/marketplace_jobs';
+  }
+
+  const mimeType = String(file.mimetype || '').toLowerCase();
+  const filename = String(file.originalname || '');
+  const extension = path.extname(filename).toLowerCase() ||
+    ({
+      'application/pdf': '.pdf',
+      'application/msword': '.doc',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+      'application/vnd.ms-excel': '.xls',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
+      'application/vnd.ms-powerpoint': '.ppt',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation': '.pptx',
+    }[mimeType] || '.bin');
+  const isMedia = /^(image|video|audio)\//.test(mimeType) ||
+    /\.(avif|bmp|gif|heic|jpe?g|mov|mp3|mp4|m4a|mpeg|ogg|png|svg|wav|webm|webp)$/i.test(filename);
+  const resourceType = isMedia ? 'auto' : 'raw';
+  const publicId = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+
+  return {
+    folder,
+    resource_type: resourceType,
+    public_id: resourceType === 'raw' ? `${publicId}${extension}` : publicId,
+  };
+}
+
 function createCloudinaryStorage() {
   return new CloudinaryStorage({
     cloudinary,
-    params: async (req, file) => {
-      const qtype = (req.query && req.query.type) || (req.body && req.body.type);
-      const candidateId = (req.query && req.query.candidateId) || (req.body && req.body.candidateId);
-      const explicitFolder = (req.query && req.query.folder) || (req.body && req.body.folder);
-
-      let folder = 'bliss-connect';
-      if (explicitFolder) {
-        folder = explicitFolder;
-      } else if (qtype === 'candidate_video') {
-        folder = candidateId ? `uploads/candidate_videos/${candidateId}` : 'uploads/candidate_videos';
-      } else if (qtype === 'marketplace_job') {
-        folder = 'uploads/marketplace_jobs';
-      }
-
-      return {
-        folder,
-        resource_type: 'auto',
-        public_id: `${Date.now()}-${Math.round(Math.random() * 1e9)}`,
-      };
-    },
+    params: buildCloudinaryUploadParams,
   });
 }
 
@@ -345,5 +364,6 @@ router.post('/migrate-local', async (req, res) => {
 module.exports = router;
 module.exports.persistUploadToCandidate = persistUploadToCandidate;
 module.exports.getUploadFolder = getUploadFolder;
+module.exports.buildCloudinaryUploadParams = buildCloudinaryUploadParams;
 module.exports.createAdaptiveStorage = createAdaptiveStorage;
 module.exports.migrateCandidateLocalUploads = migrateCandidateLocalUploads;

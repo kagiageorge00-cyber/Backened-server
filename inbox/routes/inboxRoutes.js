@@ -20,6 +20,8 @@ router.get('/search', authenticateToken, controller.search.bind(controller));
 router.get('/:conversationId', authenticateToken, controller.getConversation.bind(controller));
 router.get('/:conversationId/messages', authenticateToken, controller.getMessages.bind(controller));
 router.post('/:conversationId/messages', authenticateToken, controller.sendMessage.bind(controller));
+router.post('/:conversationId/call', authenticateToken, controller.startSupportCall.bind(controller));
+router.put('/:conversationId/call-status', authenticateToken, controller.endSupportCall.bind(controller));
 router.put('/messages/:messageId/read', authenticateToken, controller.markRead.bind(controller));
 router.put('/messages/:messageId/star', authenticateToken, controller.star.bind(controller));
 router.put('/messages/:messageId/pin', authenticateToken, controller.pin.bind(controller));

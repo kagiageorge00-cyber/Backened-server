@@ -43,6 +43,7 @@ router.use(authenticateStaff);
 router.get('/accounts', authenticateStaff, staffController.listStaffAccounts);
 router.get('/dashboard', staffController.dashboard);
 router.get('/chats', authenticateStaff, staffController.listChats);
+router.get('/chats/marketplace-jobs', authenticateStaff, staffController.listChatShareableJobs);
 router.get('/chats/:id', authenticateStaff, staffController.getChatById);
 router.post('/chats/app-inbound', authenticateStaff, staffController.receiveBlissAppMessage);
 router.post('/chats/send', authenticateStaff, staffController.sendMessage);

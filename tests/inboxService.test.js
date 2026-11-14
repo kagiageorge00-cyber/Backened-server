@@ -133,4 +133,35 @@ describe('InboxService', () => {
       deliverToStaff.mockRestore();
     }
   });
+
+  it('marks staff messages delivered when the customer fetches the conversation', async () => {
+    const repository = {
+      getConversation: jest.fn().mockResolvedValue({
+        id: 'conv-1',
+        userId: 'BLISS-2026-000001',
+      }),
+      getMessages: jest.fn().mockResolvedValue({
+        messages: [
+          { id: 'staff-reply-1', senderId: 'staff', delivered: false },
+          { id: 'customer-message-1', senderId: 'BLISS-2026-000001' },
+        ],
+        pagination: { page: 1, limit: 30, hasMore: false },
+      }),
+      markMessageDelivered: jest.fn().mockResolvedValue({
+        delivered: true,
+        deliveredAt: '2026-11-14T12:00:00.000Z',
+      }),
+    };
+    const service = new InboxService(repository);
+
+    const result = await service.getMessages(
+      { blissId: 'BLISS-2026-000001' },
+      'conv-1',
+    );
+
+    expect(repository.markMessageDelivered).toHaveBeenCalledTimes(1);
+    expect(repository.markMessageDelivered).toHaveBeenCalledWith('staff-reply-1');
+    expect(result.messages[0]).toMatchObject({ delivered: true });
+    expect(result.messages[1]).not.toHaveProperty('delivered');
+  });
 });

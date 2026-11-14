@@ -9,6 +9,7 @@ const bcrypt = require('bcryptjs');
 const CustomerUser = require('../models/BlissCommunicationUser');
 const {
   buildUserPayload,
+  enableCustomerNotifications,
   validateCustomerProfile,
 } = require('../auth/controllers/authController');
 
@@ -80,6 +81,71 @@ describe('auth service helpers', () => {
       marketingConsent: true,
       notificationsConsent: true,
       notificationChannels: ['in_app', 'fcm'],
+    });
+  });
+
+  it('persists explicit customer notification consent and enables push channels', async () => {
+    const user = {
+      _id: { toString: () => 'customer-1' },
+      blissId: 'BLISS-2026-000001',
+      fullName: 'Test Customer',
+      email: 'customer@example.test',
+      termsAccepted: true,
+      notificationsConsent: false,
+      notificationChannels: [],
+      save: jest.fn().mockResolvedValue(undefined),
+    };
+    const findById = jest.spyOn(CustomerUser, 'findById').mockResolvedValue(user);
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn(),
+    };
+
+    try {
+      await enableCustomerNotifications(
+        { user: { sub: 'customer-1' }, body: { enabled: true } },
+        res,
+      );
+    } finally {
+      findById.mockRestore();
+    }
+
+    expect(user.notificationsConsent).toBe(true);
+    expect(user.notificationsConsentAt).toBeInstanceOf(Date);
+    expect(user.notificationChannels).toEqual(['in_app', 'fcm']);
+    expect(user.save).toHaveBeenCalledTimes(1);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: true,
+        user: expect.objectContaining({
+          notificationsConsent: true,
+          notificationChannels: ['in_app', 'fcm'],
+        }),
+      }),
+    );
+  });
+
+  it('does not enable customer notifications without explicit consent', async () => {
+    const findById = jest.spyOn(CustomerUser, 'findById');
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn(),
+    };
+
+    try {
+      await enableCustomerNotifications(
+        { user: { sub: 'customer-1' }, body: { enabled: false } },
+        res,
+      );
+    } finally {
+      findById.mockRestore();
+    }
+
+    expect(findById).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({
+      success: false,
+      message: 'Explicit notification consent is required.',
     });
   });
 

@@ -22,7 +22,11 @@ jest.mock('../models/candidate', () => ({
 
 const stream = require('stream');
 const Candidate = require('../models/candidate');
-const { persistUploadToCandidate, createAdaptiveStorage } = require('../routes/upload');
+const {
+  persistUploadToCandidate,
+  createAdaptiveStorage,
+  buildCloudinaryUploadParams,
+} = require('../routes/upload');
 
 describe('upload persistence', () => {
   beforeEach(() => {
@@ -45,6 +49,26 @@ describe('upload persistence', () => {
     expect(Candidate.findOne).toHaveBeenCalled();
     expect(candidate.medicalUrl).toBe('https://cdn.example.com/medical.pdf');
     expect(candidate.save).toHaveBeenCalled();
+  });
+
+  test('stores raw documents with their extension in the Cloudinary public ID', () => {
+    const params = buildCloudinaryUploadParams(
+      { query: {}, body: {} },
+      { originalname: 'contract.pdf', mimetype: 'application/pdf' },
+    );
+
+    expect(params.resource_type).toBe('raw');
+    expect(params.public_id).toMatch(/\.pdf$/);
+  });
+
+  test('keeps image uploads on Cloudinary auto resource detection', () => {
+    const params = buildCloudinaryUploadParams(
+      { query: {}, body: {} },
+      { originalname: 'passport.png', mimetype: 'image/png' },
+    );
+
+    expect(params.resource_type).toBe('auto');
+    expect(params.public_id).not.toMatch(/\.png$/);
   });
 
   test('returns the Cloudinary error when upload fails', (done) => {

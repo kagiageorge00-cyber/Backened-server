@@ -169,6 +169,13 @@ class InboxRepository {
         { id: messageId },
         { $set: { delivered: true, deliveredAt } },
       );
+      if (messageId.startsWith('staff-reply-')) {
+        const StaffMessage = require('../../models/StaffMessage');
+        await StaffMessage.updateOne(
+          { _id: messageId.slice('staff-reply-'.length) },
+          { $set: { deliveredAt } },
+        );
+      }
     }
     const message = this.memoryMessages.find((item) => item.id === messageId);
     if (message) Object.assign(message, { delivered: true, deliveredAt });
@@ -187,8 +194,9 @@ class InboxRepository {
       const matched = result.matchedCount > 0;
       updated = result.modifiedCount > 0;
       if (matched && messageId.startsWith('staff-reply-')) {
-        await database.collection('staff_messages').updateOne(
-          { _id: messageId.substring('staff-reply-'.length) },
+        const StaffMessage = require('../../models/StaffMessage');
+        await StaffMessage.updateOne(
+          { _id: messageId.slice('staff-reply-'.length) },
           { $set: { read: true, readAt } },
         );
       }
