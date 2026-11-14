@@ -71,31 +71,53 @@ async function getAccessToken(serviceAccount) {
   return cachedAccessToken;
 }
 
-async function sendToToken(token, { title, message, data = {}, link = '' }) {
-  const serviceAccount = getServiceAccount();
-  const accessToken = await getAccessToken(serviceAccount);
+function buildMessagePayload({
+  token,
+  title,
+  message,
+  data = {},
+  link = '',
+  imageUrl = '',
+}) {
+  const image = /^https:\/\//i.test(String(imageUrl || '')) ? imageUrl : '';
   const stringData = Object.fromEntries(
     Object.entries(data).map(([key, value]) => [key, String(value ?? '')]),
   );
   if (link) stringData.link = link;
+  if (image) stringData.image = image;
+  else delete stringData.image;
+
+  const notification = {
+    title,
+    body: message,
+    ...(image ? { image } : {}),
+  };
+
+  return {
+    message: {
+      token,
+      notification,
+      data: { title, body: message, ...stringData },
+      webpush: {
+        notification: {
+          title,
+          body: message,
+          icon: '/icons/Icon-192.png',
+          ...(image ? { image } : {}),
+        },
+        ...(link ? { fcmOptions: { link } } : {}),
+      },
+    },
+  };
+}
+
+async function sendToToken(token, notification) {
+  const serviceAccount = getServiceAccount();
+  const accessToken = await getAccessToken(serviceAccount);
 
   const response = await axios.post(
     `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(serviceAccount.projectId)}/messages:send`,
-    {
-      message: {
-        token,
-        notification: { title, body: message },
-        data: { title, body: message, ...stringData },
-        webpush: {
-          notification: {
-            title,
-            body: message,
-            icon: '/icons/Icon-192.png',
-          },
-          ...(link ? { fcmOptions: { link } } : {}),
-        },
-      },
-    },
+    buildMessagePayload({ token, ...notification }),
     { headers: { Authorization: `Bearer ${accessToken}` } },
   );
   return response.data;
@@ -119,4 +141,4 @@ async function sendToTokens(tokens, notification) {
   };
 }
 
-module.exports = { sendToToken, sendToTokens };
+module.exports = { buildMessagePayload, sendToToken, sendToTokens };

@@ -119,7 +119,25 @@ function isCustomerOnline(conversation, now = Date.now()) {
     now - lastActive <= CUSTOMER_ONLINE_WINDOW_MS;
 }
 
-async function notifyCustomerOfAppReply(conversation, sender) {
+function customerReplyNotification(reply) {
+  const type = String(reply?.type || 'text').toLowerCase();
+  const text = String(reply?.text || '').trim();
+  const preview = text || (type === 'image' ? 'Sent you a photo.' : 'You have a new message.');
+  const maxPreviewLength = 180;
+  const imageUrl = String(reply?.attachmentUrl || '').trim();
+
+  return {
+    titleType: type === 'image' ? 'photo' : 'message',
+    message: preview.length > maxPreviewLength
+      ? `${preview.slice(0, maxPreviewLength - 3).trimEnd()}...`
+      : preview,
+    imageUrl: type === 'image' && /^https:\/\//i.test(imageUrl)
+      ? imageUrl
+      : '',
+  };
+}
+
+async function notifyCustomerOfAppReply(conversation, sender, reply) {
   if (mongoose.connection.readyState !== 1 || !conversation.blissId) {
     return {
       inApp: { success: false, error: 'Customer notification storage is unavailable.' },
@@ -127,12 +145,14 @@ async function notifyCustomerOfAppReply(conversation, sender) {
     };
   }
   try {
+    const preview = customerReplyNotification(reply);
     const notification = await Notification.create({
       notificationId: `CHAT-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`,
       userId: conversation.blissId,
       userType: 'candidate',
-      title: `New message from ${sender}`,
-      message: 'You have a new message in your Bliss App chat. Open the app to read it.',
+      title: `New ${preview.titleType} from ${sender}`,
+      message: preview.message,
+      imageUrl: preview.imageUrl,
       notificationType: 'chat_reply',
       category: 'message',
       actionUrl: process.env.BLISS_APP_URL || 'https://blissapp.web.app',
@@ -157,15 +177,16 @@ async function notifyCustomerOfAppReply(conversation, sender) {
   }
 }
 
-async function notifyCustomerOfOfflineReply(conversation, sender) {
+async function notifyCustomerOfOfflineReply(conversation, sender, reply) {
   const deliveries = {
     inApp: { success: false },
     email: { success: false },
     whatsapp: { success: false },
     push: { success: false },
   };
-  const title = `New message from ${sender}`;
-  const message = 'You have a new message in your Bliss Connect chat. Open the app to read it.';
+  const preview = customerReplyNotification(reply);
+  const title = `New ${preview.titleType} from ${sender}`;
+  const message = preview.message;
   const actionUrl = conversation.blissAppConversationId ||
       conversation.conversationId?.startsWith('bliss-app-')
     ? process.env.BLISS_APP_URL || 'https://blissapp.web.app'
@@ -179,6 +200,7 @@ async function notifyCustomerOfOfflineReply(conversation, sender) {
         userType: 'candidate',
         title,
         message,
+        imageUrl: preview.imageUrl,
         notificationType: 'chat_reply',
         category: 'message',
         actionUrl,
@@ -1315,10 +1337,18 @@ async function sendMessage(req, res) {
     const offlineDeliveries = channel === 'whatsapp'
       ? null
       : online && isBlissAppConversation
-      ? await notifyCustomerOfAppReply(accessibleConversation, authenticatedSender)
+      ? await notifyCustomerOfAppReply(
+          accessibleConversation,
+          authenticatedSender,
+          message,
+        )
       : online
       ? null
-      : await notifyCustomerOfOfflineReply(accessibleConversation, authenticatedSender);
+      : await notifyCustomerOfOfflineReply(
+          accessibleConversation,
+          authenticatedSender,
+          message,
+        );
     let whatsappDelivery = offlineDeliveries?.whatsapp || { success: false, skipped: true };
     if (channel === 'whatsapp') {
       const phone = String(accessibleConversation.customerPhone || '').trim();
@@ -1384,6 +1414,10 @@ async function sendMultichannelMessage(req, res) {
     if (!conversation) return res.status(404).json({ success: false, error: 'Conversation not found' });
 
     const sender = req.staff.fullName || req.staff.email || 'Bliss Connect';
+    const isBlissAppConversation = Boolean(
+      conversation.blissAppConversationId ||
+      conversationId.startsWith('bliss-app-'),
+    );
     const message = mongoose.connection.readyState === 1
       ? await StaffMessage.create({ conversationId, sender: 'staff', senderName: sender, text: body, type: 'text', channel: 'staff' })
       : { conversationId, sender: 'staff', senderName: sender, text: body, type: 'text', channel: 'staff', read: false, createdAt: new Date().toISOString() };
@@ -1405,7 +1439,11 @@ async function sendMultichannelMessage(req, res) {
 
     const deliveries = { appInbox: appInboxDelivery };
     if (isBlissAppConversation && appInboxDelivery.success) {
-      deliveries.push = await notifyCustomerOfAppReply(conversation, sender);
+      deliveries.push = await notifyCustomerOfAppReply(
+        conversation,
+        sender,
+        message,
+      );
     } else {
       deliveries.push = {
         success: false,
@@ -1647,6 +1685,33 @@ async function uploadFile(req, res) {
       });
     }
 
+    const isBlissAppConversation = Boolean(
+      accessibleConversation.blissAppConversationId ||
+      conversationId.startsWith('bliss-app-'),
+    );
+    const notificationReply = {
+      type,
+      text: String(caption).trim() ||
+        (type === 'image' ? 'Sent you a photo.' : text),
+      attachmentUrl,
+    };
+    const online = isCustomerOnline(accessibleConversation);
+    const push = channel === 'whatsapp'
+      ? { success: false, skipped: true }
+      : online && isBlissAppConversation
+      ? await notifyCustomerOfAppReply(
+          accessibleConversation,
+          senderName,
+          notificationReply,
+        )
+      : online
+      ? { success: false, skipped: true }
+      : await notifyCustomerOfOfflineReply(
+          accessibleConversation,
+          senderName,
+          notificationReply,
+        );
+
     let whatsapp = { success: false, skipped: true };
     if (channel === 'whatsapp') {
       const phone = String(accessibleConversation.customerPhone || '').trim();
@@ -1692,7 +1757,7 @@ async function uploadFile(req, res) {
         name: message.attachmentName,
         mimeType,
       },
-      channels: { appInbox: sync, whatsapp },
+      channels: { appInbox: sync, push, whatsapp },
     });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });

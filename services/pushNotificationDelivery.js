@@ -19,12 +19,14 @@ async function sendPushForNotification(notification) {
   const result = await fcmService.sendToTokens(tokens, {
     title: notification.title,
     message: notification.message,
+    imageUrl: notification.imageUrl || '',
     data: {
       notificationId: notification.notificationId || '',
       notificationType: notification.notificationType || '',
       actionUrl: notification.actionUrl || '',
       entityType: notification.entityType || '',
       entityId: notification.entityId || '',
+      image: notification.imageUrl || '',
     },
     link: notification.actionUrl || '',
   });

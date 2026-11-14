@@ -6,6 +6,7 @@ const notificationSchema = new mongoose.Schema({
   userType: { type: String, enum: ['candidate', 'employer', 'admin', 'agent', 'staff', 'operator'], default: 'candidate' },
   title: { type: String, required: true },
   message: { type: String, required: true },
+  imageUrl: { type: String, default: '' },
   notificationType: { type: String },
   category: { 
     type: String, 
