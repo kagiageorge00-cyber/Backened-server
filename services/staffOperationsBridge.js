@@ -168,6 +168,7 @@ async function ingestIncomingBlissAppMessage(payload = {}) {
   const route = classifyStaffChat(payload);
   const userId = payload.userId || payload.sender_id || payload.user_id || payload.customerId || '';
   const sourceMessageId = String(payload.sourceMessageId || payload.source_message_id || '');
+  const messageTime = new Date();
 
   const conversationId = payload.conversationId || payload.conversation_id ||
     (userId ? `bliss-app-${userId}` : `bliss-app-${Date.now()}`);
@@ -230,6 +231,7 @@ async function ingestIncomingBlissAppMessage(payload = {}) {
       ...route,
       unreadCount: (existingConversation?.unreadCount || 0) + 1,
       lastMessage: messageText,
+      lastMessageAt: messageTime,
       channels,
       lastActive: 'Just now',
       online: true,
@@ -270,6 +272,7 @@ async function ingestIncomingBlissAppMessage(payload = {}) {
       attachmentName: payload.attachmentName || payload.attachment_name || '',
       attachmentMimeType: payload.attachmentMimeType || payload.attachment_mime_type || '',
       read: false,
+      createdAt: messageTime,
       ...(sourceMessageId ? { sourceMessageId } : {}),
     });
 
@@ -352,6 +355,7 @@ async function ingestIncomingBlissAppMessage(payload = {}) {
     if (!existingConversation.assignedTo) existingConversation.assignedTo = autoAssignee;
     existingConversation.unreadCount = Number(existingConversation.unreadCount || 0) + 1;
     existingConversation.lastMessage = messageText;
+    existingConversation.lastMessageAt = messageTime;
     existingConversation.channels = [
       ...new Set([...(existingConversation.channels || []), channel]),
     ];
@@ -374,6 +378,7 @@ async function ingestIncomingBlissAppMessage(payload = {}) {
       ...route,
       unreadCount: 1,
       lastMessage: messageText,
+      lastMessageAt: messageTime,
       channels: [channel],
       lastActive: 'Just now',
       online: true,
@@ -393,7 +398,7 @@ async function ingestIncomingBlissAppMessage(payload = {}) {
     attachmentName: payload.attachmentName || payload.attachment_name || '',
     attachmentMimeType: payload.attachmentMimeType || payload.attachment_mime_type || '',
     read: false,
-    createdAt: new Date().toISOString(),
+    createdAt: messageTime.toISOString(),
     ...(sourceMessageId ? { sourceMessageId } : {}),
   };
 

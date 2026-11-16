@@ -1,6 +1,27 @@
 const { buildMessagePayload } = require('../services/fcmService');
 
 describe('FCM message payload', () => {
+  it('marks chat notifications as high priority for background delivery', () => {
+    const payload = buildMessagePayload({
+      token: 'test-token',
+      title: 'New message from Support',
+      message: 'Please check your inbox.',
+    });
+
+    expect(payload.message.android).toMatchObject({
+      priority: 'HIGH',
+      ttl: '86400s',
+    });
+    expect(payload.message.apns).toMatchObject({
+      headers: { 'apns-priority': '10' },
+      payload: { aps: { sound: 'default' } },
+    });
+    expect(payload.message.webpush.headers).toMatchObject({
+      Urgency: 'high',
+      TTL: '86400',
+    });
+  });
+
   it('includes the message text in the notification preview', () => {
     const payload = buildMessagePayload({
       token: 'test-token',

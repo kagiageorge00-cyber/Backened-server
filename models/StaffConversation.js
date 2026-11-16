@@ -23,6 +23,7 @@ const staffConversationSchema = new mongoose.Schema(
     destination: { type: String, default: '' },
     unreadCount: { type: Number, default: 0 },
     lastMessage: { type: String, default: 'No messages yet' },
+    lastMessageAt: { type: Date, default: null },
     channels: { type: [String], default: [] },
     lastActive: { type: String, default: 'Just now' },
     notes: [{ type: String }],

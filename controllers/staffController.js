@@ -91,6 +91,28 @@ function staffCanAccessConversation(staff = {}, conversation) {
     assigned.includes(String(conversation.assignedTo || '').toLowerCase());
 }
 
+function isBlissAppConversation(conversation) {
+  return Boolean(
+    conversation?.blissAppConversationId ||
+    String(conversation?.conversationId || '').startsWith('bliss-app-') ||
+    (Array.isArray(conversation?.channels) &&
+      conversation.channels.some((channel) => String(channel).toLowerCase() === 'bliss_app')),
+  );
+}
+
+function staffCanReplyToConversation(staff, conversation) {
+  return isBlissAppConversation(conversation) ||
+    staffCanAccessConversation(staff, conversation);
+}
+
+async function findReplyableConversation(req, conversationId) {
+  const accessibleConversation = await findAccessibleConversation(req, conversationId);
+  if (accessibleConversation) return accessibleConversation;
+
+  const conversation = await findReadableConversation(conversationId);
+  return staffCanReplyToConversation(req.staff, conversation) ? conversation : null;
+}
+
 function queueForDepartment(department) {
   const queues = {
     Recruitment: 'Candidate Chats',
@@ -1267,7 +1289,7 @@ async function listChats(req, res) {
       success: true,
       data: conversations.map((conversation) => ({
         ...conversation,
-        canReply: staffCanAccessConversation(req.staff, conversation),
+        canReply: staffCanReplyToConversation(req.staff, conversation),
         channels: [...new Set([
           ...(conversation.channels || []),
           ...(whatsappConversationIds.has(conversation.conversationId) ? ['whatsapp'] : []),
@@ -1343,7 +1365,7 @@ async function getChatById(req, res) {
       data: {
         conversation: {
           ...conversation,
-          canReply: staffCanAccessConversation(req.staff, conversation),
+          canReply: staffCanReplyToConversation(req.staff, conversation),
         },
         messages,
       },
@@ -1375,14 +1397,11 @@ async function sendMessage(req, res) {
     if (!['bliss_app', 'whatsapp'].includes(channel)) {
       return res.status(400).json({ success: false, error: 'channel must be bliss_app or whatsapp' });
     }
-    const accessibleConversation = await findAccessibleConversation(req, conversationId);
+    const accessibleConversation = await findReplyableConversation(req, conversationId);
     if (!accessibleConversation) return res.status(404).json({ success: false, error: 'Conversation not found' });
 
-    const isBlissAppConversation = Boolean(
-      accessibleConversation.blissAppConversationId ||
-      conversationId.startsWith('bliss-app-'),
-    );
-    if (requestedJobId && (channel !== 'bliss_app' || !isBlissAppConversation)) {
+    const isBlissAppThread = isBlissAppConversation(accessibleConversation);
+    if (requestedJobId && (channel !== 'bliss_app' || !isBlissAppThread)) {
       return res.status(400).json({
         success: false,
         error: 'Marketplace jobs can only be shared in Bliss app conversations.',
@@ -1414,6 +1433,7 @@ async function sendMessage(req, res) {
       : replyText;
     const messageType = jobData ? 'job_alert' : 'text';
     const authenticatedSender = req.staff.fullName || req.staff.email || 'Staff';
+    const messageTime = new Date();
     const message = mongoose.connection.readyState === 1
       ? await StaffMessage.create({
           conversationId,
@@ -1424,6 +1444,7 @@ async function sendMessage(req, res) {
           channel,
           ...(jobData ? { jobData } : {}),
           read: false,
+          createdAt: messageTime,
         })
       : {
           conversationId,
@@ -1434,7 +1455,7 @@ async function sendMessage(req, res) {
           channel,
           ...(jobData ? { jobData } : {}),
           read: false,
-          createdAt: new Date().toISOString(),
+          createdAt: messageTime.toISOString(),
         };
     const appInboxDelivery = await syncStaffReplyToBlissApp({
       conversationId,
@@ -1452,12 +1473,13 @@ async function sendMessage(req, res) {
       if (conversation) {
         conversation.lastMessage = messageText;
         conversation.lastActive = 'Just now';
+        conversation.lastMessageAt = messageTime;
         conversation.status = 'Waiting Candidate';
       }
     } else {
       await StaffConversation.findOneAndUpdate(
         { conversationId },
-        { lastMessage: messageText, lastActive: 'Just now', status: 'Waiting Candidate' },
+        { lastMessage: messageText, lastActive: 'Just now', lastMessageAt: messageTime, status: 'Waiting Candidate' },
         { new: true }
       );
     }
@@ -1465,7 +1487,7 @@ async function sendMessage(req, res) {
     const online = isCustomerOnline(accessibleConversation);
     const offlineDeliveries = channel === 'whatsapp'
       ? null
-      : online && isBlissAppConversation
+      : online && isBlissAppThread
       ? await notifyCustomerOfAppReply(
           accessibleConversation,
           authenticatedSender,
@@ -1539,17 +1561,15 @@ async function sendMultichannelMessage(req, res) {
     if (!conversationId || !body) {
       return res.status(400).json({ success: false, error: 'conversationId and text are required' });
     }
-    const conversation = await findAccessibleConversation(req, conversationId);
+    const conversation = await findReplyableConversation(req, conversationId);
     if (!conversation) return res.status(404).json({ success: false, error: 'Conversation not found' });
 
     const sender = req.staff.fullName || req.staff.email || 'Bliss Connect';
-    const isBlissAppConversation = Boolean(
-      conversation.blissAppConversationId ||
-      conversationId.startsWith('bliss-app-'),
-    );
+    const isBlissAppThread = isBlissAppConversation(conversation);
+    const messageTime = new Date();
     const message = mongoose.connection.readyState === 1
-      ? await StaffMessage.create({ conversationId, sender: 'staff', senderName: sender, text: body, type: 'text', channel: 'staff' })
-      : { conversationId, sender: 'staff', senderName: sender, text: body, type: 'text', channel: 'staff', read: false, createdAt: new Date().toISOString() };
+      ? await StaffMessage.create({ conversationId, sender: 'staff', senderName: sender, text: body, type: 'text', channel: 'staff', createdAt: messageTime })
+      : { conversationId, sender: 'staff', senderName: sender, text: body, type: 'text', channel: 'staff', read: false, createdAt: messageTime.toISOString() };
     const appInboxDelivery = await syncStaffReplyToBlissApp({
       conversationId,
       conversation,
@@ -1560,14 +1580,14 @@ async function sendMultichannelMessage(req, res) {
         return { success: false, error: error.message };
       });
     if (mongoose.connection.readyState === 1) {
-      await StaffConversation.findOneAndUpdate({ conversationId }, { lastMessage: body, lastActive: 'Just now', status: 'Waiting Candidate' });
+      await StaffConversation.findOneAndUpdate({ conversationId }, { lastMessage: body, lastActive: 'Just now', lastMessageAt: messageTime, status: 'Waiting Candidate' });
     } else {
       memoryState.messages.push(message);
-      Object.assign(conversation, { lastMessage: body, lastActive: 'Just now', status: 'Waiting Candidate' });
+      Object.assign(conversation, { lastMessage: body, lastActive: 'Just now', lastMessageAt: messageTime, status: 'Waiting Candidate' });
     }
 
     const deliveries = { appInbox: appInboxDelivery };
-    if (isBlissAppConversation && appInboxDelivery.success) {
+    if (isBlissAppThread && appInboxDelivery.success) {
       deliveries.push = await notifyCustomerOfAppReply(
         conversation,
         sender,
@@ -1749,7 +1769,7 @@ async function uploadFile(req, res) {
     if (!conversationId || !file) {
       return res.status(400).json({ success: false, error: 'conversationId and file are required' });
     }
-    const accessibleConversation = await findAccessibleConversation(req, conversationId);
+    const accessibleConversation = await findReplyableConversation(req, conversationId);
     if (!accessibleConversation) return res.status(404).json({ success: false, error: 'Conversation not found' });
 
     const attachmentUrl = file.secure_url || file.path || file.location || file.url || '';
@@ -1765,6 +1785,7 @@ async function uploadFile(req, res) {
           ? 'audio'
           : 'document';
     const senderName = req.staff.fullName || req.staff.email || 'Staff';
+    const messageTime = new Date();
     const text = String(caption).trim() || `Shared ${file.originalname || type}`;
     const message = mongoose.connection.readyState === 1
       ? await StaffMessage.create({
@@ -1778,6 +1799,7 @@ async function uploadFile(req, res) {
           attachmentName: file.originalname || file.filename || 'Attachment',
           attachmentMimeType: mimeType,
           read: false,
+          createdAt: messageTime,
         })
       : {
           conversationId,
@@ -1790,7 +1812,7 @@ async function uploadFile(req, res) {
           attachmentName: file.originalname || file.filename || 'Attachment',
           attachmentMimeType: mimeType,
           read: false,
-          createdAt: new Date().toISOString(),
+          createdAt: messageTime.toISOString(),
         };
     const sync = await syncStaffReplyToBlissApp({
       conversationId,
@@ -1803,21 +1825,19 @@ async function uploadFile(req, res) {
     if (mongoose.connection.readyState === 1) {
       await StaffConversation.findOneAndUpdate(
         { conversationId },
-        { lastMessage: text, lastActive: 'Just now', status: 'Waiting Candidate' },
+        { lastMessage: text, lastActive: 'Just now', lastMessageAt: messageTime, status: 'Waiting Candidate' },
       );
     } else {
       memoryState.messages.push(message);
       Object.assign(accessibleConversation, {
         lastMessage: text,
         lastActive: 'Just now',
+        lastMessageAt: messageTime,
         status: 'Waiting Candidate',
       });
     }
 
-    const isBlissAppConversation = Boolean(
-      accessibleConversation.blissAppConversationId ||
-      conversationId.startsWith('bliss-app-'),
-    );
+    const isBlissAppThread = isBlissAppConversation(accessibleConversation);
     const notificationReply = {
       type,
       text: String(caption).trim() ||
@@ -1827,7 +1847,7 @@ async function uploadFile(req, res) {
     const online = isCustomerOnline(accessibleConversation);
     const push = channel === 'whatsapp'
       ? { success: false, skipped: true }
-      : online && isBlissAppConversation
+      : online && isBlissAppThread
       ? await notifyCustomerOfAppReply(
           accessibleConversation,
           senderName,

@@ -99,6 +99,10 @@ function buildMessagePayload({
       notification,
       data: { title, body: message, ...stringData },
       webpush: {
+        headers: {
+          Urgency: 'high',
+          TTL: '86400',
+        },
         notification: {
           title,
           body: message,
@@ -106,6 +110,20 @@ function buildMessagePayload({
           ...(image ? { image } : {}),
         },
         ...(link ? { fcmOptions: { link } } : {}),
+      },
+      android: {
+        priority: 'HIGH',
+        ttl: '86400s',
+      },
+      apns: {
+        headers: {
+          'apns-priority': '10',
+        },
+        payload: {
+          aps: {
+            sound: 'default',
+          },
+        },
       },
     },
   };

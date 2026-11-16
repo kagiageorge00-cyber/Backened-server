@@ -189,4 +189,102 @@ describe('staff chat marketplace job cards', () => {
     );
     expect(res.status).toHaveBeenCalledWith(201);
   });
+
+  it('lets staff reply to Bliss app conversations outside their department', async () => {
+    const previousReadyState = mongoose.connection.readyState;
+    mongoose.connection.readyState = 1;
+    const conversation = {
+      conversationId: 'bliss-app-conversation-2',
+      blissAppConversationId: 'conversation-2',
+      department: 'Customer Care',
+      assignedTo: 'other.staff@example.test',
+    };
+    StaffConversation.findOne.mockImplementation((query) => query.$or
+      ? Promise.resolve(null)
+      : { lean: jest.fn().mockResolvedValue(conversation) });
+    StaffConversation.findOneAndUpdate.mockResolvedValue(conversation);
+    StaffMessage.create.mockImplementation(async (data) => ({
+      _id: 'staff-message-2',
+      ...data,
+    }));
+    Notification.create.mockResolvedValue({});
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn(),
+    };
+
+    try {
+      await sendMessage(
+        {
+          staff: {
+            role: 'staff',
+            department: 'Recruitment',
+            email: 'recruiter@example.test',
+            fullName: 'Recruiter',
+          },
+          body: {
+            conversationId: conversation.conversationId,
+            text: 'I can help with that.',
+            channel: 'bliss_app',
+          },
+        },
+        res,
+      );
+    } finally {
+      mongoose.connection.readyState = previousReadyState;
+    }
+
+    expect(StaffMessage.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: conversation.conversationId,
+        text: 'I can help with that.',
+        channel: 'bliss_app',
+      }),
+    );
+    expect(StaffConversation.findOneAndUpdate).toHaveBeenCalledWith(
+      { conversationId: conversation.conversationId },
+      expect.objectContaining({
+        lastMessage: 'I can help with that.',
+        lastMessageAt: expect.any(Date),
+      }),
+      { new: true },
+    );
+    expect(res.status).toHaveBeenCalledWith(201);
+  });
+
+  it('keeps staff replies restricted for conversations outside the Bliss app', async () => {
+    const previousReadyState = mongoose.connection.readyState;
+    mongoose.connection.readyState = 1;
+    const conversation = {
+      conversationId: 'legacy-conversation-2',
+      department: 'Customer Care',
+      assignedTo: 'other.staff@example.test',
+    };
+    StaffConversation.findOne.mockImplementation((query) => query.$or
+      ? Promise.resolve(null)
+      : { lean: jest.fn().mockResolvedValue(conversation) });
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn(),
+    };
+
+    try {
+      await sendMessage(
+        {
+          staff: { role: 'staff', department: 'Recruitment' },
+          body: {
+            conversationId: conversation.conversationId,
+            text: 'This should not be sent.',
+            channel: 'bliss_app',
+          },
+        },
+        res,
+      );
+    } finally {
+      mongoose.connection.readyState = previousReadyState;
+    }
+
+    expect(StaffMessage.create).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(404);
+  });
 });
