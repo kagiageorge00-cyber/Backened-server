@@ -233,8 +233,6 @@ async function ensureDefaultAdminUser() {
   }
 }
 
-ensureDefaultAdminUser();
-
 // ======================
 // PUBLIC LANDING ROUTES
 // ======================
@@ -956,9 +954,10 @@ app.get('/api/health', (req, res) => {
 app.get('/api/health/ready', async (req, res) => {
   try {
     const mongoState = mongoose.connection.readyState;
-    res.json({
-      success: true,
-      status: mongoState === 1 ? 'ready' : 'connecting',
+    const isReady = mongoState === 1;
+    res.status(isReady ? 200 : 503).json({
+      success: isReady,
+      status: isReady ? 'ready' : 'not_ready',
       mongoReadyState: mongoState,
       timestamp: new Date().toISOString(),
     });
@@ -1217,16 +1216,25 @@ async function startServer() {
 
   try {
     if (!mongoUri) {
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error('MONGO_URI or MONGODB_URI is required in production.');
+      }
       console.warn('⚠️ MONGO_URI missing; continuing without MongoDB');
     } else {
       await mongoose.connect(mongoUri, {
         serverSelectionTimeoutMS: 5000,
       });
+      await require('./services/candidateIndexes').initializeCandidateIndexes();
       await require('./services/paymentRetentionService').initializePaymentRetention();
+      await ensureDefaultAdminUser();
       logger.info('MongoDB Connected');
       await startWhatsAppQueueWorker();
     }
   } catch (error) {
+    if (process.env.NODE_ENV === 'production') {
+      logger.error('MongoDB is required to start the production server:', error.message);
+      throw error;
+    }
     console.warn('⚠️ MongoDB connection failed; continuing without database:', error.message);
   }
 
@@ -1248,7 +1256,10 @@ async function startServer() {
 module.exports = app;
 
 if (require.main === module) {
-  startServer();
+  startServer().catch((error) => {
+    logger.error('Server startup failed:', error.message);
+    process.exitCode = 1;
+  });
 }
 
 // ==========================

@@ -8,6 +8,36 @@ const PushToken = require('../models/PushToken');
 const fcmService = require('../services/fcmService');
 const { authenticateToken } = require('../auth/middleware/authMiddleware');
 const { verifyToken } = require('../auth/services/authService');
+const employerAuth = require('../middleware/employerAuth');
+
+function authenticateNotificationStaff(req, res, next) {
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : '';
+  if (!token) {
+    return res.status(401).json({ success: false, error: 'Authorization token required.' });
+  }
+  if (!process.env.JWT_SECRET) {
+    return res.status(503).json({ success: false, error: 'Staff authentication is not configured.' });
+  }
+
+  try {
+    const staff = jwt.verify(token, process.env.JWT_SECRET);
+    if (!staff.sub || !staff.email || !staff.rank) {
+      return res.status(401).json({ success: false, error: 'Invalid or expired token.' });
+    }
+    req.staff = staff;
+    return next();
+  } catch (_) {
+    return res.status(401).json({ success: false, error: 'Invalid or expired token.' });
+  }
+}
+
+function authenticateNotificationEmployer(req, res, next) {
+  if (!process.env.JWT_SECRET) {
+    return res.status(503).json({ success: false, error: 'Employer authentication is not configured.' });
+  }
+  return employerAuth(req, res, next);
+}
 
 function authenticatePushRegistrant(req, res, next) {
   const header = req.headers.authorization || '';
@@ -29,15 +59,17 @@ function authenticatePushRegistrant(req, res, next) {
     // Staff use the separate portal JWT secret.
   }
 
-  try {
-    const staff = jwt.verify(token, process.env.JWT_SECRET || 'bliss-staff-secret');
-    const email = String(staff.email || '').trim().toLowerCase();
-    if (email && staff.sub && staff.rank) {
-      req.pushRegistrant = { userId: email, userType: 'staff' };
-      return next();
+  if (process.env.JWT_SECRET) {
+    try {
+      const staff = jwt.verify(token, process.env.JWT_SECRET);
+      const email = String(staff.email || '').trim().toLowerCase();
+      if (email && staff.sub && staff.rank) {
+        req.pushRegistrant = { userId: email, userType: 'staff' };
+        return next();
+      }
+    } catch (_) {
+      // Reject tokens that are not valid customer or staff credentials.
     }
-  } catch (_) {
-    // Reject tokens that are not valid customer or staff credentials.
   }
 
   return res.status(401).json({ success: false, error: 'Invalid or expired token.' });
@@ -106,7 +138,7 @@ function buildNotificationPayload(body) {
   };
 }
 
-router.post('/send', async (req, res) => {
+router.post('/send', authenticateNotificationStaff, async (req, res) => {
   try {
     const payload = buildNotificationPayload(req.body);
     const {
@@ -195,7 +227,7 @@ router.post('/send', async (req, res) => {
   }
 });
 
-router.post('/create', async (req, res) => {
+router.post('/create', authenticateNotificationStaff, async (req, res) => {
   try {
     const {
       userId,
@@ -246,15 +278,19 @@ router.post('/create', async (req, res) => {
   }
 });
 
-router.get('/:userId', async (req, res) => {
+router.get('/:userId', authenticateNotificationEmployer, async (req, res) => {
   try {
     const { userId } = req.params;
+    const employerId = String(req.employer.employerId || '');
+    if (userId !== employerId) {
+      return res.status(403).json({ success: false, error: 'You can only view your own notifications.' });
+    }
     const page = Math.max(Number.parseInt(req.query.page, 10) || 1, 1);
     const limit = Math.min(
       Math.max(Number.parseInt(req.query.limit, 10) || 50, 1),
       100,
     );
-    const filter = { userId };
+    const filter = { userId: employerId, userType: 'employer' };
     if (req.query.unreadOnly === 'true') filter.isRead = false;
     const [notes, count] = await Promise.all([
       Notification.find(filter)
@@ -270,10 +306,17 @@ router.get('/:userId', async (req, res) => {
   }
 });
 
-router.get('/user/:userType/:userId', async (req, res) => {
+router.get('/user/:userType/:userId', authenticateNotificationEmployer, async (req, res) => {
   try {
-    const { userId } = req.params;
-    const notes = await Notification.find({ userId }).sort({ createdAt: -1 });
+    const { userId, userType } = req.params;
+    const employerId = String(req.employer.employerId || '');
+    if (userType !== 'employer' || userId !== employerId) {
+      return res.status(403).json({ success: false, error: 'You can only view your own notifications.' });
+    }
+    const notes = await Notification.find({
+      userId: employerId,
+      userType: 'employer',
+    }).sort({ createdAt: -1 });
     return res.json({ success: true, data: notes });
   } catch (err) {
     console.error('Notification fetch error:', err);
@@ -322,7 +365,7 @@ router.post('/register-token', authenticatePushRegistrant, async (req, res) => {
 });
 
 // Send push (stub) to a userId
-router.post('/send-push', async (req, res) => {
+router.post('/send-push', authenticateNotificationStaff, async (req, res) => {
   try {
     const { userId, title, message } = req.body;
     if (!userId || !message) return res.status(400).json({ success: false, error: 'userId and message required' });
@@ -338,11 +381,15 @@ router.post('/send-push', async (req, res) => {
   }
 });
 
-router.patch('/:notificationId/read', async (req, res) => {
+router.patch('/:notificationId/read', authenticateNotificationEmployer, async (req, res) => {
   try {
     const { notificationId } = req.params;
     const note = await Notification.findOneAndUpdate(
-      { notificationId },
+      {
+        notificationId,
+        userId: String(req.employer.employerId || ''),
+        userType: 'employer',
+      },
       { isRead: true },
       { new: true }
     );

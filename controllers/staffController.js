@@ -25,7 +25,6 @@ const whatsappCloudService = require('../services/whatsappCloudService');
 const WhatsAppMessageLog = require('../models/WhatsAppMessageLog');
 const { sendEmail } = require('../email');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'bliss-staff-secret';
 const CUSTOMER_ONLINE_WINDOW_MS = 90 * 1000;
 
 const memoryState = {
@@ -44,6 +43,10 @@ const memoryState = {
 };
 
 function createToken(staff) {
+  const secret = process.env.JWT_SECRET ||
+    (process.env.NODE_ENV === 'production' ? null : 'bliss-staff-secret');
+  if (!secret) throw new Error('JWT_SECRET must be configured for staff authentication in production.');
+
   return jwt.sign(
     {
       sub: staff._id || staff.id,
@@ -54,7 +57,7 @@ function createToken(staff) {
       rank: staff.rank || 'Staff',
       permissions: permissionsFor(staff),
     },
-    JWT_SECRET,
+    secret,
     { expiresIn: '8h' }
   );
 }
@@ -1082,6 +1085,10 @@ async function notifyEmployerOfJobReview(job, status) {
 }
 
 async function login(req, res) {
+  if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
+    return res.status(503).json({ success: false, error: 'Staff authentication is not configured' });
+  }
+
   try {
     const { email, password } = req.body || {};
     if (!email || !password) {
@@ -1759,6 +1766,30 @@ async function broadcast(req, res) {
   }
 }
 
+const AUDIO_MIME_TYPES_BY_EXTENSION = {
+  '.aac': 'audio/aac',
+  '.m4a': 'audio/mp4',
+  '.mp3': 'audio/mpeg',
+  '.ogg': 'audio/ogg',
+  '.opus': 'audio/opus',
+  '.wav': 'audio/wav',
+  '.webm': 'audio/webm',
+};
+
+function resolveChatAttachmentMimeType(file) {
+  const mimeType = String(file?.mimetype || 'application/octet-stream')
+    .split(';')[0]
+    .trim()
+    .toLowerCase();
+  if (mimeType.startsWith('audio/')) return mimeType;
+  if (mimeType !== 'application/octet-stream') return mimeType;
+
+  const extension = String(file?.originalname || '')
+    .toLowerCase()
+    .match(/\.[^.]+$/)?.[0];
+  return AUDIO_MIME_TYPES_BY_EXTENSION[extension] || mimeType;
+}
+
 async function uploadFile(req, res) {
   try {
     const { conversationId, caption = '', channel = 'bliss_app' } = req.body || {};
@@ -1776,7 +1807,7 @@ async function uploadFile(req, res) {
     if (!/^https?:\/\//i.test(attachmentUrl)) {
       return res.status(502).json({ success: false, error: 'File storage did not return a valid URL.' });
     }
-    const mimeType = file.mimetype || 'application/octet-stream';
+    const mimeType = resolveChatAttachmentMimeType(file);
     const type = mimeType.startsWith('image/')
       ? 'image'
       : mimeType.startsWith('video/')
@@ -2105,6 +2136,7 @@ module.exports = {
   sendMultichannelMessage,
   updateSupportCallStatus,
   uploadFile,
+  resolveChatAttachmentMimeType,
   assignConversation,
   updateChatStatus,
   scheduleChatFollowUp,

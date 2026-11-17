@@ -6,7 +6,6 @@ const {
   ensureCandidateReference,
   resolvePublicCandidateId,
 } = require('../utils/candidateIdentity');
-const { ensureCandidatePortalCredentials } = require('../utils/candidatePortalCredentials');
 
 test('candidate reference is created once and preserved for payment flow', () => {
   const candidateId = generateCandidateReferenceId();
@@ -38,17 +37,14 @@ test('candidate reference falls back to Mongo ObjectId when present and does not
   assert.equal(candidate.candidateId, undefined);
 });
 
-test('payment approval preserves candidate reference and leaves portal login code for the registration step', async () => {
+test('candidate references do not require portal credentials', () => {
   const candidate = {
     candidateId: 'CND-2026-1001',
-    email: 'test@example.com',
-    phone: '+254712345678',
+    uniqueCode: undefined,
+    password: undefined,
   };
 
-  const result = await ensureCandidatePortalCredentials(candidate);
-
-  assert.equal(result.candidateId, 'CND-2026-1001');
-  assert.equal(candidate.candidateId, 'CND-2026-1001');
-  assert.equal(result.uniqueCode, null);
-  assert.ok(result.password && result.password.length >= 8);
+  assert.equal(ensureCandidateReference(candidate), 'CND-2026-1001');
+  assert.equal(candidate.uniqueCode, undefined);
+  assert.equal(candidate.password, undefined);
 });

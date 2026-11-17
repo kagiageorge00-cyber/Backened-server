@@ -1,4 +1,5 @@
 const request = require('supertest');
+const mongoose = require('mongoose');
 
 jest.mock('../../functions/flightSearch', () => ({
   searchFlights: async () => []
@@ -17,6 +18,30 @@ describe('Core API endpoint health checks', () => {
     const res = await request(app).get('/api/health');
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
+  });
+
+  test('/api/health/ready fails when MongoDB is unavailable', async () => {
+    const previousState = mongoose.connection.readyState;
+    mongoose.connection.readyState = 0;
+    try {
+      const res = await request(app).get('/api/health/ready');
+      expect(res.status).toBe(503);
+      expect(res.body).toMatchObject({ success: false, status: 'not_ready' });
+    } finally {
+      mongoose.connection.readyState = previousState;
+    }
+  });
+
+  test('/api/health/ready succeeds when MongoDB is connected', async () => {
+    const previousState = mongoose.connection.readyState;
+    mongoose.connection.readyState = 1;
+    try {
+      const res = await request(app).get('/api/health/ready');
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ success: true, status: 'ready' });
+    } finally {
+      mongoose.connection.readyState = previousState;
+    }
   });
 
   test('/api/admin/health responds successfully', async () => {

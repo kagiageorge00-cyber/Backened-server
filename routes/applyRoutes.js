@@ -1,14 +1,7 @@
 const express = require('express');
-const bcrypt = require('bcryptjs');
 const Candidate = require('../models/candidate');
 
 const router = express.Router();
-
-function generateCandidatePortalCode() {
-  const year = new Date().getFullYear();
-  const seq = Math.floor(1000 + Math.random() * 9000);
-  return `CAND-${year}-${seq}`;
-}
 
 function generateCandidateReferenceId() {
   const year = new Date().getFullYear();
@@ -125,7 +118,6 @@ router.post('/', async (req, res) => {
   try {
     const {
       candidateId,
-      password,
       fullName,
       name,
       email,
@@ -183,11 +175,6 @@ router.post('/', async (req, res) => {
     }
     let candidate = await Candidate.findOne({ $or: candidateLookup });
 
-    let hashedPassword = candidate?.password;
-    if (password) {
-      hashedPassword = await bcrypt.hash(password, 10);
-    }
-
     const normalizedDestination = destinationCountry || preferredDestination || preferredDestinations || candidate?.destinationCountry || '';
     const normalizedDestinationPreferences = Array.isArray(destinationPreference)
       ? destinationPreference
@@ -226,7 +213,6 @@ router.post('/', async (req, res) => {
       applicationType: resolveFieldValue(applicationType, candidate?.applicationType || ''),
       jobData: resolveFieldValue(jobData, candidate?.jobData),
       candidateId: candidate?.candidateId || candidateId || generateCandidateReferenceId(),
-      uniqueCode: candidate?.uniqueCode || (password ? generateCandidatePortalCode() : undefined),
       country: resolveFieldValue(country, candidate?.country || ''),
       nationality: resolveFieldValue(nationality, candidate?.nationality || ''),
       religion: resolveFieldValue(religion, candidate?.religion || ''),
@@ -275,10 +261,6 @@ router.post('/', async (req, res) => {
       status: candidate?.status || 'in_process',
       paymentStatus: normalizePaymentStatus(candidate?.paymentStatus) || 'Pending',
     };
-
-    if (hashedPassword) {
-      payload.password = hashedPassword;
-    }
 
     if (candidate) {
       // Update existing candidate

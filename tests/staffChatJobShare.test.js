@@ -31,8 +31,29 @@ const { syncStaffReplyToBlissApp } = require('../services/staffOperationsBridge'
 const {
   buildChatJobCard,
   listChatShareableJobs,
+  resolveChatAttachmentMimeType,
   sendMessage,
 } = require('../controllers/staffController');
+
+describe('staff chat attachment MIME types', () => {
+  it.each([
+    ['voice.webm', 'audio/webm'],
+    ['voice.m4a', 'audio/mp4'],
+    ['voice.ogg', 'audio/ogg'],
+  ])('recognizes recorded audio %s when multipart MIME is generic', (filename, mimeType) => {
+    expect(resolveChatAttachmentMimeType({
+      originalname: filename,
+      mimetype: 'application/octet-stream',
+    })).toBe(mimeType);
+  });
+
+  it('preserves a specific non-audio MIME type', () => {
+    expect(resolveChatAttachmentMimeType({
+      originalname: 'photo.jpg',
+      mimetype: 'image/jpeg',
+    })).toBe('image/jpeg');
+  });
+});
 
 describe('staff chat marketplace job cards', () => {
   beforeEach(() => {

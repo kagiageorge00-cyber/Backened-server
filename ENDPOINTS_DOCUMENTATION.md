@@ -6,7 +6,7 @@ Three new backend endpoints successfully deployed and tested on Render:
 - POST /api/logs/registration (registration event auditing)
 - POST /api/logs/admin-actions (admin action auditing)
 
-All endpoints return HTTP 200 with structured JSON responses.
+Successful requests return structured JSON responses. Notification sending requires staff authentication; unauthenticated and non-staff callers are rejected.
 
 ---
 
@@ -15,6 +15,8 @@ All endpoints return HTTP 200 with structured JSON responses.
 **Purpose:** Send notifications across multiple channels (email, WhatsApp, push, web)
 
 **Base URL:** `https://backened-server-1.onrender.com/api/notifications/send`
+
+**Authorization:** Requires `Authorization: Bearer <staff-access-token>`. Configure `JWT_SECRET` with a strong secret; staff notification actions fail closed if it is missing. Do not call this endpoint directly from an unauthenticated or public client.
 
 **Request Body:**
 ```json
@@ -213,6 +215,7 @@ $json = @{
 
 Invoke-WebRequest -Uri "https://backened-server-1.onrender.com/api/notifications/send" `
     -Method POST `
+    -Headers @{ Authorization = "Bearer $env:STAFF_ACCESS_TOKEN" } `
     -ContentType "application/json" `
     -Body $json `
     -TimeoutSec 120 | Select-Object -Property StatusCode, Content
@@ -256,20 +259,20 @@ Invoke-WebRequest -Uri "https://backened-server-1.onrender.com/api/logs/admin-ac
 ### For Candidate Registration Flow (Flutter)
 1. When candidate completes registration:
    - Call POST /api/logs/registration with eventType="registration_completed"
-   - Call POST /api/notifications/send to email candidate confirmation
+   - Trigger notification delivery from a trusted backend workflow; do not call the staff-only notification endpoint directly from the public Flutter client
 
 2. When credentials are uploaded:
    - Call POST /api/logs/registration with eventType="credential_generated"
-   - Send notification to candidate with verification instructions
+   - Send verification instructions from a trusted backend workflow or an authenticated staff action
 
 ### For Payment Approval Flow (Admin Panel)
 1. When admin approves payment:
    - Call POST /api/logs/admin-actions with action="payment_approved"
-   - Call POST /api/notifications/send to notify candidate of approval
+   - Have the trusted backend workflow send the notification, or use an authenticated staff action
 
 2. When admin rejects payment:
    - Call POST /api/logs/admin-actions with action="payment_rejected"
-   - Call POST /api/notifications/send to notify candidate with reason
+   - Have the trusted backend workflow send the notification, or use an authenticated staff action
 
 ---
 

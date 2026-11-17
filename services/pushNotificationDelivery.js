@@ -2,6 +2,10 @@ const PushToken = require('../models/PushToken');
 const fcmService = require('./fcmService');
 
 async function sendPushForNotification(notification) {
+  const isChatNotification = [
+    'bliss_app_message',
+    'chat_reply',
+  ].includes(notification?.notificationType);
   const userIds = [...new Set(
     [notification?.userId, ...(notification?.userIds || [])]
       .map((value) => String(value || '').trim())
@@ -13,6 +17,12 @@ async function sendPushForNotification(notification) {
 
   const tokens = await PushToken.find({ userId: { $in: userIds } }).select('token').lean();
   if (!tokens.length) {
+    if (isChatNotification) {
+      console.warn('[FCM] Chat notification has no registered device tokens.', {
+        userType: notification.userType || 'unknown',
+        notificationType: notification.notificationType,
+      });
+    }
     return { success: false, sent: 0, failed: 0, total: 0, skipped: true };
   }
 
@@ -30,6 +40,17 @@ async function sendPushForNotification(notification) {
     },
     link: notification.actionUrl || '',
   });
+
+  if (isChatNotification && (result.failed > 0 || result.sent === 0)) {
+    console.error('[FCM] Chat notification delivery failed.', {
+      userType: notification.userType || 'unknown',
+      notificationType: notification.notificationType,
+      sent: result.sent,
+      failed: result.failed,
+      total: result.total,
+      errors: result.errors,
+    });
+  }
 
   return { ...result, success: result.sent > 0 && result.failed === 0 };
 }

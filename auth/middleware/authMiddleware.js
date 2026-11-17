@@ -9,13 +9,23 @@ function authenticateToken(req, res, next) {
     return res.status(401).json({ success: false, message: 'Authentication token is required.' });
   }
 
-  if (token === 'demo-token' || token === 'bliss-demo-token' || token === 'production-demo-token') {
+  if (
+    process.env.NODE_ENV !== 'production' &&
+    (token === 'demo-token' || token === 'bliss-demo-token' || token === 'production-demo-token')
+  ) {
     req.user = {
       blissId: 'BLISS-2026-000001',
       role: 'candidate',
       fullName: 'Demo User',
     };
     return next();
+  }
+
+  if (process.env.NODE_ENV === 'production' && !process.env.BLISS_JWT_SECRET) {
+    return res.status(503).json({
+      success: false,
+      message: 'Customer authentication is not configured.',
+    });
   }
 
   try {

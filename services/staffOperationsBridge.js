@@ -31,13 +31,17 @@ async function pickLeastLoadedStaff(department) {
 }
 
 async function createStaffPushNotifications(conversation, message, customerName) {
-  if (mongoose.connection.readyState !== 1) return [];
+  if (mongoose.connection.readyState !== 1) {
+    console.error('[FCM] Cannot notify staff while the database is unavailable.');
+    return [];
+  }
 
   let recipients = [];
   const assignedTo = String(conversation.assignedTo || '').trim();
   if (assignedTo) {
     const assignedStaff = await Staff.findOne({
       $or: [{ email: assignedTo }, { fullName: assignedTo }],
+      isActive: { $ne: false },
     }).select('email').lean();
     if (assignedStaff?.email) recipients = [assignedStaff.email];
   }
@@ -53,6 +57,12 @@ async function createStaffPushNotifications(conversation, message, customerName)
   const uniqueRecipients = [...new Set(
     recipients.map((email) => String(email).trim().toLowerCase()).filter(Boolean),
   )];
+  if (!uniqueRecipients.length) {
+    console.warn('[FCM] Incoming chat has no active staff recipients.', {
+      department: conversation.department || 'unknown',
+    });
+    return [];
+  }
   const deliveries = await Promise.allSettled(uniqueRecipients.map((userId) =>
     Notification.create({
       notificationId: `CHAT-${message._id?.toString() || Date.now()}-${userId}`,

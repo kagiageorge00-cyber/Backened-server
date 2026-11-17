@@ -31,7 +31,7 @@
 
 ---
 
-## 📋 Register Endpoint
+## 📋 Candidate Registration (after payment and document upload)
 
 ### Path
 `POST /api/register/register`
@@ -39,29 +39,22 @@
 ### Required Fields
 ```json
 {
-  "fullName": "string (required)",
-  "email": "string (required)",
   "phone": "string (required)",
-  "country": "string (required)",
-  "skills": "string (required)",
-  "experience": "string (required)",
   "photoUrl": "string (required)",
   "videoUrl": "string (required)",
   "passportUrl": "string (required)",
   "medicalUrl": "string (required)",
-  "resumeUrl": "string (required)",
-  "additionalUrl": "string (optional)"
+  "conductUrl": "string (required; goodConductUrl is also accepted)",
+  "candidateId": "string (recommended for an existing paid candidate)"
 }
 ```
 
 ### What It Does
-- ✅ Validates all required fields
-- ✅ Checks for duplicate phone/email
-- ✅ Generates unique candidate code: `CAND-YYYY-XXXX`
-- ✅ Generates temporary password in format: `BLISSXXXX` (e.g., BLISS4829)
-- ✅ Hashes password with bcryptjs
-- ✅ Creates candidate profile
-- ✅ Sets `isVerified: true` and `paymentStatus: completed`
+- Finds and updates the existing candidate using `candidateId` (or phone/email).
+- Requires the photo, video, passport, medical, and conduct documents, either in the request or already saved on the candidate.
+- Creates the portal code (`uniqueCode`) and temporary Bliss password only at this registration step.
+- Does not approve payment or mark the candidate verified. Payment approval is separate.
+- The candidate can appear in the marketplace after payment approval and successful registration with the required documents.
 - ✅ Sends background emails (non-blocking)
 
 ### Example Request
@@ -70,19 +63,19 @@ POST https://backened-server-1.onrender.com/api/register/register
 Content-Type: application/json
 
 {
+  "candidateId": "candidate-id-returned-during-payment",
   "fullName": "John Doe",
   "email": "john@example.com",
   "phone": "254712345678",
-  "country": "Kenya",
-  "skills": "Hospitality, Customer Service",
-  "experience": "5 years",
   "photoUrl": "https://example.com/photo.jpg",
   "videoUrl": "https://example.com/video.mp4",
   "passportUrl": "https://example.com/passport.pdf",
   "medicalUrl": "https://example.com/medical.pdf",
-  "resumeUrl": "https://example.com/resume.pdf"
+  "conductUrl": "https://example.com/conduct.pdf"
 }
 ```
+
+Payment submission creates or finds the candidate draft and returns its candidate ID; it does not create portal credentials. Payment approval records the approval, while the candidate code and password are created only after the required documents are submitted to Register.
 
 ### Example Response
 ```json

@@ -263,7 +263,14 @@ router.post("/", async (req, res) => {
     // ======================
     // VALIDATION (allow existing candidate's stored docs)
     // ======================
-    const requiredFields = [{ key: 'phone', value: phone }];
+    const requiredFields = [
+      { key: 'phone', value: phone },
+      { key: 'photoUrl', value: photoUrl },
+      { key: 'videoUrl', value: videoUrl || introductionVideoUrl },
+      { key: 'passportUrl', value: passportUrl },
+      { key: 'medicalUrl', value: medicalUrl },
+      { key: 'conductUrl', value: goodConductUrl || conductUrl },
+    ];
 
     const looksLikeVideoFile = (str) => {
       if (!str || typeof str !== 'string') return false;
@@ -274,17 +281,19 @@ router.post("/", async (req, res) => {
     const hasStored = (fieldKey) => {
       if (!candidate) return false;
       // direct fields
-      const direct = candidate[fieldKey];
+      const directFieldKey = fieldKey === 'conductUrl' ? 'goodConductUrl' : fieldKey;
+      const direct = candidate[directFieldKey];
       if (direct && !(typeof direct === 'string' && !direct.trim())) return true;
 
       // check documents container
       if (candidate.documents) {
+        if (fieldKey === 'photoUrl' && candidate.documents.profilePhoto) return true;
         if (fieldKey === 'passportUrl' && candidate.documents.passportPhoto) return true;
         if (fieldKey === 'resumeUrl' && candidate.documents.cv) return true;
         if (fieldKey === 'additionalUrl' && candidate.documents.coverLetter) return true;
 
         // check uploads array for matching filename or url
-        if (Array.isArray(candidate.documents.uploads)) {
+        if (fieldKey === 'videoUrl' && Array.isArray(candidate.documents.uploads)) {
           const found = candidate.documents.uploads.find((u) => {
             if (!u) return false;
             if (u.filename && looksLikeVideoFile(u.filename)) return true;

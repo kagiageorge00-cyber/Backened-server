@@ -139,6 +139,42 @@ describe('Admin payment approval flow', () => {
     });
   });
 
+  test('payment approval preserves the candidate ID without issuing portal credentials', async () => {
+    const candidate = {
+      _id: 'candidate-approval-123',
+      candidateId: 'candidate-approval-123',
+      phone: '+254700000000',
+      email: 'test@example.com',
+      uniqueCode: undefined,
+      password: undefined,
+      save: jest.fn().mockResolvedValue(true),
+    };
+    const payment = {
+      _id: 'PAY-APPROVAL-123',
+      candidateId: candidate.candidateId,
+      metadata: { name: 'Test Applicant', email: candidate.email },
+      save: jest.fn().mockResolvedValue(true),
+    };
+    Candidate.findOne.mockResolvedValueOnce(candidate);
+    Payment.findById.mockResolvedValueOnce(payment);
+
+    const app = express();
+    app.use(express.json());
+    app.use('/api/admin', adminRoutes);
+    const token = signAdminToken({ username: 'test-admin', role: 'administrator' });
+
+    const response = await request(app)
+      .post(`/api/admin/payments/${payment._id}/approve`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+    expect(candidate.candidateId).toBe('candidate-approval-123');
+    expect(candidate.uniqueCode).toBeUndefined();
+    expect(candidate.password).toBeUndefined();
+    expect(candidate.paymentStatus).toBe('Paid');
+    expect(candidate.isVerified).toBe(true);
+  });
+
   test('lists pending submissions and approves them for registration', async () => {
     Candidate.findOneAndUpdate.mockResolvedValue({ phone: '+254700000000' });
     Candidate.findOne.mockResolvedValue({

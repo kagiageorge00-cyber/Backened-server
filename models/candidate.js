@@ -46,11 +46,7 @@ const candidateSchema = new mongoose.Schema({
   fullName: String,
   email: String,
   phone: { type: String, unique: true },
-  uniqueCode: {
-    type: String,
-    unique: true,
-    index: true,
-  },
+  uniqueCode: String,
   legacyBlissAppProfileId: { type: String, unique: true, sparse: true },
   password: String,
   candidateId: {
@@ -181,5 +177,14 @@ const candidateSchema = new mongoose.Schema({
     default: Date.now,
   },
 });
+
+candidateSchema.set('autoIndex', false);
+candidateSchema.index(
+  { uniqueCode: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { uniqueCode: { $type: 'string' } },
+  },
+);
 
 module.exports = mongoose.model('Candidate', candidateSchema);

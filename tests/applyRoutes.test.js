@@ -45,6 +45,7 @@ describe('Candidate application persistence', () => {
       destinationCountry: 'Canada',
       expectedSalary: 1500,
       jobData: { jobTitle: 'Caregiver', employerId: 'employer-1' },
+      password: 'should-not-be-used-before-registration',
     };
 
     const response = await request(app)
@@ -54,7 +55,15 @@ describe('Candidate application persistence', () => {
     expect(response.status).toBe(201);
     expect(response.body.success).toBe(true);
     expect(Candidate.create).toHaveBeenCalledWith(
-      expect.objectContaining(application),
+      expect.objectContaining({
+        fullName: application.fullName,
+        phone: application.phone,
+        jobPosition: application.jobPosition,
+      }),
     );
+    const candidatePayload = Candidate.create.mock.calls[0][0];
+    expect(candidatePayload.candidateId).toMatch(/^CND-\d{4}-\d{4}$/);
+    expect(candidatePayload).not.toHaveProperty('uniqueCode');
+    expect(candidatePayload).not.toHaveProperty('password');
   });
 });

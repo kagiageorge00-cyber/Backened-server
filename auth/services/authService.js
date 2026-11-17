@@ -5,9 +5,16 @@ const crypto = require('crypto');
 const { promisify } = require('util');
 const setTimeoutPromise = promisify(setTimeout);
 
-const JWT_SECRET = process.env.BLISS_JWT_SECRET || 'bliss-auth-secret';
 const ACCESS_TTL = process.env.BLISS_ACCESS_TTL || '15m';
 const REFRESH_TTL = process.env.BLISS_REFRESH_TTL || '30d';
+
+function getJwtSecret() {
+  if (process.env.BLISS_JWT_SECRET) return process.env.BLISS_JWT_SECRET;
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('BLISS_JWT_SECRET must be configured in production.');
+  }
+  return 'bliss-auth-secret';
+}
 
 function buildBlissId(year = new Date().getFullYear(), sequence = 1) {
   return `BLISS-${year}-${String(sequence).padStart(6, '0')}`;
@@ -68,15 +75,15 @@ async function compareAndUpgradeLegacyPassword(user, password) {
 }
 
 function signAccessToken(payload) {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: ACCESS_TTL });
+  return jwt.sign(payload, getJwtSecret(), { expiresIn: ACCESS_TTL });
 }
 
 function signRefreshToken(payload) {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: REFRESH_TTL });
+  return jwt.sign(payload, getJwtSecret(), { expiresIn: REFRESH_TTL });
 }
 
 function verifyToken(token) {
-  return jwt.verify(token, JWT_SECRET);
+  return jwt.verify(token, getJwtSecret());
 }
 
 async function randomOtp() {

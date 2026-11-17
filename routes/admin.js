@@ -33,7 +33,6 @@ const { sendEmail } = require("../email");
 const { FRONTEND_URL, BACKEND_URL } = require("../config");
 const { getCandidateDisplayName } = require('../utils/candidateDisplayName');
 const {
-  ensureCandidatePortalCredentials,
   notifyCandidatePortalReady,
 } = require('../utils/candidatePortalCredentials');
 const {
@@ -412,7 +411,11 @@ router.post(
 
       const candidate = await findCandidateForPayment(Candidate, payment);
 
-      const candidateReference = candidate?.candidateId || candidate?.uniqueCode || payment.candidateId;
+      if (candidate && !candidate.candidateId && candidate._id) {
+        candidate.candidateId = candidate._id.toString();
+      }
+
+      const candidateReference = candidate?.candidateId || payment.candidateId;
       const formLinkTarget = candidateReference
         ? `${FRONTEND_URL}/candidate-form?candidateId=${encodeURIComponent(candidateReference)}`
         : `${FRONTEND_URL}/candidate-form?phone=${encodeURIComponent(candidate?.phone || payment.candidateId)}`;
@@ -421,7 +424,6 @@ router.post(
       payment.linkGeneratedAt = new Date();
       await payment.save();
 
-      let portalCredentials = null;
       if (candidate) {
         candidate.isVerified = true;
         candidate.paymentStatus = "Paid";
@@ -429,14 +431,13 @@ router.post(
         candidate.candidateFormLink = formLinkTarget;
         candidate.applicationStatus = 'Payment Approved';
         candidate.currentStatus = 'Registration';
-        portalCredentials = await ensureCandidatePortalCredentials(candidate);
         await candidate.save();
       }
 
       await createNotification({
         userId: candidate?.phone || candidate?.email || candidate?.uniqueCode || payment.candidateId,
         title: 'Payment Approved',
-        message: 'Your payment has been approved. Upload your photo and resume using the candidate form link.',
+        message: 'Your payment is approved. Upload the required documents and select Register to receive your candidate code and password.',
         type: 'payment',
         category: 'payment',
         actionUrl: formLinkTarget,
@@ -448,8 +449,8 @@ router.post(
         await notifyCandidatePortalReady({
           candidate,
           userId: candidate.phone || candidate.email || candidate.uniqueCode || payment.candidateId,
-          title: 'Registration Can Continue',
-          message: `Your payment is approved. Your candidate portal account is ready. Candidate code: ${portalCredentials?.uniqueCode || candidate.uniqueCode || candidate.candidateId}. Use the link below to continue registration.`,
+          title: 'Payment Approved — Documents Required',
+          message: 'Your payment is approved. Upload the required documents and select Register to receive your candidate code and password.',
           actionUrl: formLinkTarget,
           email: candidate.email,
           phoneNumber: candidate.phone,
@@ -458,8 +459,7 @@ router.post(
               <h2 style="color: #0f172a; margin-top: 0;">Your registration can continue</h2>
               <p>Your payment has been approved.</p>
               <p><strong>Candidate reference ID:</strong> ${candidate.candidateId || payment.candidateId || 'N/A'}</p>
-              <p><strong>Candidate portal code:</strong> ${portalCredentials?.uniqueCode || candidate.uniqueCode || 'N/A'}</p>
-              <p><strong>Password:</strong> ${portalCredentials?.password || 'Contact support'}</p>
+              <p>Upload the required documents and select Register. Your candidate code and password will be created during registration.</p>
               <p><a href="${formLinkTarget}" style="display:inline-block;padding:12px 20px;background:#2563eb;color:white;text-decoration:none;border-radius:6px;">Continue Registration</a></p>
             </div>
           `,
@@ -494,8 +494,6 @@ router.post(
       const link = candidateReference
         ? `${FRONTEND_URL}/candidate-form?candidateId=${encodeURIComponent(candidateReference)}`
         : `${FRONTEND_URL}/candidate-form?phone=${encodeURIComponent(phoneParam)}`;
-      const portalId = portalCredentials?.uniqueCode || candidate?.uniqueCode || candidate?.candidateId || null;
-      const portalPassword = portalCredentials?.password || null;
 
       if (email) {
         setImmediate(async () => {
@@ -516,11 +514,9 @@ router.post(
                 </div>
                 <p style="font-size: 16px; line-height: 1.6; margin: 0 0 16px;">Hello ${name},</p>
                 <p style="font-size: 16px; line-height: 1.6; margin: 0 0 16px;">Your payment has been reviewed and approved successfully. Thank you for completing this step.</p>
-                <p style="font-size: 16px; line-height: 1.6; margin: 0 0 16px;">Please proceed to complete your candidate form using the link below:</p>
+                <p style="font-size: 16px; line-height: 1.6; margin: 0 0 16px;">Upload the required documents and select Register. Your candidate code and password will be created during registration.</p>
                 <p style="margin: 0 0 16px;"><a href="${link}" style="display: inline-block; padding: 12px 20px; background-color: #0056d6; color: #ffffff; text-decoration: none; border-radius: 4px;">Complete Candidate Form</a></p>
-                ${portalId ? `<p style="font-size: 16px; line-height: 1.6; margin: 0 0 8px;"><strong>Candidate reference:</strong> ${candidate?.candidateId || payment.candidateId || 'N/A'}</p>` : ''}
-                ${portalId ? `<p style="font-size: 16px; line-height: 1.6; margin: 0 0 8px;"><strong>Candidate portal code:</strong> ${portalCredentials?.uniqueCode || candidate?.uniqueCode || 'N/A'}</p>` : ''}
-                ${portalPassword ? `<p style="font-size: 16px; line-height: 1.6; margin: 0 0 16px;"><strong>Password:</strong> ${portalPassword}</p>` : ''}
+                <p style="font-size: 16px; line-height: 1.6; margin: 0 0 8px;"><strong>Candidate reference:</strong> ${candidate?.candidateId || payment.candidateId || 'N/A'}</p>
                 <p style="font-size: 16px; line-height: 1.6; margin: 0 0 16px;">If you need assistance, reply to this email and our support team will be happy to help.</p>
                 <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #e0e0e0; color: #777; font-size: 14px;">
                   <p style="margin: 0;">Bliss Connect</p>

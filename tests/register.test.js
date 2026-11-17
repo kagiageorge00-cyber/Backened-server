@@ -46,6 +46,11 @@ describe('User Registration', () => {
         email: 'test@test.com',
         phone: '254700000001',
         country: 'Kenya',
+        photoUrl: 'https://example.com/photo.jpg',
+        videoUrl: 'https://example.com/video.mp4',
+        passportUrl: 'https://example.com/passport.pdf',
+        medicalUrl: 'https://example.com/medical.pdf',
+        conductUrl: 'https://example.com/conduct.pdf',
         skills: 'Testing',
         experience: '1 year',
       });
@@ -67,6 +72,11 @@ describe('User Registration', () => {
       name: 'Existing User',
       email: 'existing@test.com',
       phone: '254700000002',
+      photoUrl: 'https://example.com/photo.jpg',
+      videoUrl: 'https://example.com/video.mp4',
+      passportUrl: 'https://example.com/passport.pdf',
+      medicalUrl: 'https://example.com/medical.pdf',
+      goodConductUrl: 'https://example.com/conduct.pdf',
       uniqueCode: 'CAND-2026-1234',
       password: '$2b$10$existing-hash',
       documents: {},
@@ -98,6 +108,76 @@ describe('User Registration', () => {
       .resolves.toBe(true);
   });
 
+  it('does not issue portal credentials until the required documents are present', async () => {
+    const paymentCandidate = {
+      candidateId: 'pending-documents-candidate',
+      phone: '254700000008',
+      uniqueCode: undefined,
+      password: undefined,
+      documents: {},
+      save: jest.fn(async () => {}),
+      toObject() {
+        return { ...this };
+      },
+    };
+    Candidate.findOne.mockResolvedValueOnce(paymentCandidate);
+
+    const res = await request(app)
+      .post('/api/register')
+      .send({
+        candidateId: paymentCandidate.candidateId,
+        phone: paymentCandidate.phone,
+        passportUrl: 'https://example.com/passport.pdf',
+      });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body.error).toBe('photoUrl is required');
+    expect(paymentCandidate.uniqueCode).toBeUndefined();
+    expect(paymentCandidate.password).toBeUndefined();
+    expect(paymentCandidate.save).not.toHaveBeenCalled();
+  });
+
+  it('creates portal credentials when an existing payment candidate registers', async () => {
+    const paymentCandidate = {
+      _id: 'payment_candidate_123',
+      candidateId: 'payment_candidate_123',
+      fullName: 'Payment Candidate',
+      phone: '254700000007',
+      uniqueCode: undefined,
+      password: undefined,
+      documents: {},
+      skills: [],
+      languages: [],
+      isVerified: false,
+      status: 'in_process',
+      paymentStatus: 'Paid',
+      save: jest.fn(async () => {}),
+      toObject() {
+        return { ...this };
+      },
+    };
+    Candidate.findOne.mockResolvedValueOnce(paymentCandidate);
+
+    const res = await request(app)
+      .post('/api/register')
+      .send({
+        candidateId: paymentCandidate.candidateId,
+        phone: paymentCandidate.phone,
+        photoUrl: 'https://example.com/photo.jpg',
+        videoUrl: 'https://example.com/video.mp4',
+        passportUrl: 'https://example.com/passport.pdf',
+        medicalUrl: 'https://example.com/medical.pdf',
+        conductUrl: 'https://example.com/conduct.pdf',
+      });
+
+    expect(res.statusCode).toBe(201);
+    expect(res.body.uniqueCode).toMatch(/^CAND-\d{4}-\d{4}$/);
+    expect(res.body.password).toMatch(/^BLISS\d{4}$/);
+    expect(paymentCandidate.candidateId).toBe('payment_candidate_123');
+    expect(paymentCandidate.uniqueCode).toBe(res.body.uniqueCode);
+    expect(paymentCandidate.password).not.toBe(res.body.password);
+  });
+
   it('should register an existing candidate using saved contact details', async () => {
     const existingCandidate = {
       _id: 'cand_saved_details',
@@ -123,7 +203,11 @@ describe('User Registration', () => {
       .post('/api/register')
       .send({
         candidateId: 'CAND-2026-5678',
+        photoUrl: 'https://example.com/photo.jpg',
+        videoUrl: 'https://example.com/video.mp4',
         passportUrl: 'https://example.com/passport.pdf',
+        medicalUrl: 'https://example.com/medical.pdf',
+        conductUrl: 'https://example.com/conduct.pdf',
       });
 
     expect(res.statusCode).toBe(201);
@@ -146,6 +230,11 @@ describe('User Registration', () => {
       .send({
         fullName: 'Candidate Without Email',
         phone: '254700000006',
+        photoUrl: 'https://example.com/photo.jpg',
+        videoUrl: 'https://example.com/video.mp4',
+        passportUrl: 'https://example.com/passport.pdf',
+        medicalUrl: 'https://example.com/medical.pdf',
+        conductUrl: 'https://example.com/conduct.pdf',
       });
 
     expect(res.statusCode).toBe(201);
@@ -185,7 +274,10 @@ describe('User Registration', () => {
       .post('/api/register')
       .send({
         candidateId: mongoId,
+        photoUrl: 'https://example.com/photo.jpg',
+        videoUrl: 'https://example.com/video.mp4',
         passportUrl: 'https://example.com/passport.pdf',
+        medicalUrl: 'https://example.com/medical.pdf',
         skills: [],
         languages: [],
         applicationType: 'International',
