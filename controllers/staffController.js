@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const Staff = require('../models/Staff');
+const Agent = require('../models/Agent');
 const Job = require('../models/Job');
 const Employer = require('../models/Employer');
 const StaffConversation = require('../models/StaffConversation');
@@ -716,8 +717,12 @@ async function registerEmployer(req, res) {
 
 async function listAgents(req, res) {
   try {
-    await ensureDemoData();
-    return res.json({ success: true, data: memoryState.agents });
+    const agents = await Agent.find({})
+      .select('-password -temporaryPassword')
+      .sort({ createdAt: -1 })
+      .limit(250)
+      .lean();
+    return res.json({ success: true, data: agents });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
   }
@@ -725,21 +730,49 @@ async function listAgents(req, res) {
 
 async function registerAgent(req, res) {
   try {
-    await ensureDemoData();
-    const agent = {
-      agentId: `AGT-2026-${String(memoryState.agents.length + 1).padStart(6, '0')}`,
-      name: req.body.fullName ?? 'Unnamed agent',
-      email: req.body.email ?? 'unknown@example.com',
-      phone: req.body.phone ?? '',
-      country: req.body.country ?? 'Unknown',
-      agentType: req.body.agentType ?? 'Recruitment',
-      status: 'Active',
-      createdAt: new Date().toISOString(),
-      ...req.body,
-    };
-    memoryState.agents.unshift(agent);
-    return res.status(201).json({ success: true, data: agent });
+    const fullName = String(req.body.fullName || req.body.name || '').trim();
+    const email = String(req.body.email || '').trim().toLowerCase();
+    const phone = String(req.body.phone || '').trim();
+    const password = req.body.password;
+    const agentType = String(req.body.agentType || '').trim().toLowerCase();
+
+    if (!fullName || !email || !phone || typeof password !== 'string' || !password || !agentType) {
+      return res.status(400).json({
+        success: false,
+        error: 'fullName, email, phone, password and agentType are required',
+      });
+    }
+
+    if (!['candidate', 'employer'].includes(agentType)) {
+      return res.status(400).json({ success: false, error: 'agentType must be candidate or employer' });
+    }
+
+    const existing = await Agent.findOne({ $or: [{ email }, { phone }] });
+    if (existing) {
+      return res.status(409).json({ success: false, error: 'An agent with this email or phone already exists' });
+    }
+
+    const sequence = (await Agent.countDocuments()) + 1;
+    const agent = await Agent.create({
+      fullName,
+      email,
+      phone,
+      country: String(req.body.country || 'Unknown').trim(),
+      password,
+      agentType,
+      agentCode: `AGT-${new Date().getFullYear()}-${String(sequence).padStart(6, '0')}`,
+      referralCode: `REF-${String(sequence).padStart(6, '0')}`,
+      status: 'active',
+    });
+
+    const data = agent.toObject ? agent.toObject() : { ...agent };
+    delete data.password;
+    delete data.temporaryPassword;
+    return res.status(201).json({ success: true, data });
   } catch (error) {
+    if (error?.code === 11000) {
+      return res.status(409).json({ success: false, error: 'An agent with this email or code already exists' });
+    }
     return res.status(500).json({ success: false, error: error.message });
   }
 }

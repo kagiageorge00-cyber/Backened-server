@@ -544,6 +544,7 @@ app.use('/api/staff', staffPortalRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/inbox', inboxRoutes);
 app.use('/api/agents', agentsRoutes);
+app.use('/api/agent', agentsRoutes);
 app.use('/api/agent-portal', agentPortalRoutes);
 app.use('/api/medical', medicalRoutes);
 app.get('/api/marketplace/:jobId', async (req, res, next) => {

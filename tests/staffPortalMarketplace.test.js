@@ -10,6 +10,8 @@ jest.mock('../middleware/staffAuth', () => (req, res, next) => {
 });
 
 jest.mock('../controllers/staffController', () => new Proxy({
+  registerAgent: jest.fn((req, res) =>
+    res.status(201).json({ success: true, data: { fullName: req.body.fullName } })),
   postMarketplaceJob: jest.fn((req, res) =>
     res.status(201).json({ success: true, data: { title: req.body.title } })),
 }, {
@@ -103,6 +105,20 @@ describe('Staff marketplace candidate routes', () => {
       { $set: { fullName: 'Updated Candidate' } },
       { new: true, runValidators: true }
     );
+  });
+
+  test('registers an agent through the staff portal endpoint', async () => {
+    const app = express();
+    app.use(express.json());
+    app.use('/api/staff', staffPortalRoutes);
+
+    const res = await request(app)
+      .post('/api/staff/agents/register')
+      .send({ fullName: 'Jane Agent' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.data.fullName).toBe('Jane Agent');
+    expect(staffController.registerAgent).toHaveBeenCalled();
   });
 
   test('PATCH /marketplace/candidates/:id persists all candidate profile aliases', async () => {

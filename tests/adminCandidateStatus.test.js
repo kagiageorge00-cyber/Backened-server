@@ -12,9 +12,18 @@ jest.mock('../models/candidate', () => ({
   findOneAndUpdate: jest.fn(),
 }));
 
+jest.mock('../controllers/staffController', () => new Proxy({
+  registerAgent: jest.fn((req, res) => res.status(201).json({ success: true })),
+}, {
+  get(target, property) {
+    return property in target ? target[property] : jest.fn();
+  },
+}));
+
 const express = require('express');
 const request = require('supertest');
 const Candidate = require('../models/candidate');
+const staffController = require('../controllers/staffController');
 const adminRoutes = require('../routes/admin');
 
 describe('Admin candidate status route', () => {
@@ -54,5 +63,18 @@ describe('Admin candidate status route', () => {
       { status: 'approved' },
       { new: true }
     );
+  });
+
+  test('registers agents through the admin agent endpoint', async () => {
+    const app = express();
+    app.use(express.json());
+    app.use('/api/admin', adminRoutes);
+
+    const res = await request(app)
+      .post('/api/admin/agents/register')
+      .send({ fullName: 'Jane Agent' });
+
+    expect(res.status).toBe(201);
+    expect(staffController.registerAgent).toHaveBeenCalled();
   });
 });

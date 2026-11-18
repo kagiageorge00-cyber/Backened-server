@@ -960,6 +960,8 @@ router.get('/agents', requireAdminAuth, async (req, res) => {
   }
 });
 
+router.post(['/agents', '/agents/register'], requireAdminAuth, staffController.registerAgent);
+
 router.get('/dashboard/summary', requireAdminAuth, async (req, res) => {
   try {
     const totalCandidates = await Candidate.countDocuments();

@@ -97,6 +97,7 @@ router.put('/candidates/:id/complete', requireStaffPermission('candidates.manage
 router.get('/employers', staffController.listEmployers);
 router.post('/employers/register', staffController.registerEmployer);
 router.get('/agents', staffController.listAgents);
+router.post('/agents', staffController.registerAgent);
 router.post('/agents/register', staffController.registerAgent);
 router.get('/bookings', staffController.listBookings);
 router.put('/bookings/:id/status', staffController.updateBookingStatus);

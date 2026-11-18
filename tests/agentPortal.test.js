@@ -17,6 +17,7 @@ const agentRoutes = require('../routes/agents');
 const app = express();
 app.use(express.json());
 app.use('/api/agents', agentRoutes);
+app.use('/api/agent', agentRoutes);
 
 describe('Agent portal API', () => {
   beforeEach(() => {
@@ -57,6 +58,33 @@ describe('Agent portal API', () => {
     expect(response.body.success).toBe(true);
     expect(response.body.agent.agentCode).toMatch(/AGT-/);
     expect(response.body.token).toBeTruthy();
+  });
+
+  it('supports the singular agent registration endpoint used by legacy clients', async () => {
+    Agent.findOne.mockResolvedValue(null);
+    Agent.create.mockResolvedValue({
+      _id: 'agent-2',
+      fullName: 'John Doe',
+      email: 'john@example.com',
+      phone: '+254700000001',
+      agentType: 'employer',
+      agentCode: 'AGT-2026-000002',
+      referralCode: 'REF-000002',
+      status: 'active',
+    });
+
+    const response = await request(app)
+      .post('/api/agent/register')
+      .send({
+        fullName: 'John Doe',
+        email: 'john@example.com',
+        phone: '+254700000001',
+        password: 'StrongPass123',
+        agentType: 'employer',
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body.success).toBe(true);
   });
 
   it('rejects missing password on login', async () => {
