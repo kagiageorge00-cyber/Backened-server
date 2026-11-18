@@ -43,6 +43,21 @@ function getCloudinaryFileUrl(file) {
   return fileUrl;
 }
 
+function getPhoneVariants(rawPhone) {
+  const normalized = String(rawPhone || '').replace(/[^+0-9]/g, '').trim();
+  if (!normalized) return [];
+  const digits = normalized.replace(/\D/g, '');
+  const variants = new Set([normalized, digits]);
+  if (digits.startsWith('0')) {
+    variants.add(`254${digits.slice(1)}`);
+    variants.add(`+254${digits.slice(1)}`);
+  } else if (digits.startsWith('254')) {
+    variants.add(`0${digits.slice(3)}`);
+    variants.add(`+${digits}`);
+  }
+  return [...variants].filter(Boolean);
+}
+
 // POST / - create a candidate
 router.post('/', async (req, res) => {
   try {
@@ -342,8 +357,7 @@ router.get('/', async (req, res) => {
 router.get('/marketplace', async (req, res) => {
   try {
     const candidates = await Candidate.find({
-      isVerified: true,
-      status: 'available',
+      status: { $in: ['available', 'in_process', 'approved'] },
       ...candidateMarketplaceEligibilityFilter(),
     }).sort({ createdAt: -1 });
     return res.json({
@@ -366,8 +380,7 @@ router.get('/marketplace/profile/:candidateId', async (req, res) => {
 
     const candidate = await Candidate.findOne({
       uniqueCode: candidateId,
-      isVerified: true,
-      status: 'available',
+      status: { $in: ['available', 'in_process', 'approved'] },
       ...candidateMarketplaceEligibilityFilter(),
     });
 
@@ -560,9 +573,11 @@ router.post('/form/submit', async (req, res) => {
 
     searchCriteria.push(
       { uniqueCode: lookupValue },
-      { phone: lookupValue },
       { email: lookupValue }
     );
+    for (const phone of getPhoneVariants(lookupValue)) {
+      searchCriteria.push({ phone });
+    }
 
     let candidate = await Candidate.findOne({ $or: searchCriteria });
     let passwordPlain;
@@ -897,11 +912,13 @@ router.post('/upload-documents', documentUpload.single('file'), async (req, res)
     if (mongoose.Types.ObjectId.isValid(candidateId)) {
       searchCriteria.push({ _id: candidateId });
     }
-    searchCriteria.push({
-      uniqueCode: candidateId,
-      phone: candidateId,
-      email: candidateId,
-    });
+    searchCriteria.push(
+      { uniqueCode: candidateId },
+      { email: candidateId },
+    );
+    for (const phone of getPhoneVariants(candidateId)) {
+      searchCriteria.push({ phone });
+    }
 
     const candidate = await Candidate.findOne({ $or: searchCriteria });
     if (!candidate) {

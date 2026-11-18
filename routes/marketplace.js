@@ -37,7 +37,6 @@ function requireVerifiedEmployer(req, res) {
 
 function marketplaceCandidateFilter() {
   return {
-    isVerified: true,
     status: { $in: ['available', 'in_process', 'approved'] },
     ...candidateMarketplaceEligibilityFilter(),
   };
@@ -109,9 +108,13 @@ router.get('/candidates', async (req, res) => {
     if (language) query.languages = { $in: [language] };
     if (availability) query.status = availability === 'available' ? 'available' : query.status;
     if (salary) query.expectedSalary = { $regex: salary, $options: 'i' };
-    if (verifiedOnly === 'true') query.isVerified = true;
-    if (verified !== undefined && verified !== 'true') {
-      return res.status(400).json({ success: false, error: 'Marketplace only returns verified candidates' });
+    if (verified !== undefined) {
+      if (verified !== 'true' && verified !== 'false') {
+        return res.status(400).json({ success: false, error: 'verified must be true or false' });
+      }
+      query.isVerified = verified === 'true';
+    } else if (verifiedOnly === 'true') {
+      query.isVerified = true;
     }
 
     const skip = (Number(page) - 1) * Number(limit);
@@ -214,7 +217,6 @@ router.get('/candidates/:candidateId', async (req, res) => {
 
     const candidate = await Candidate.findOne({
       $or: identifiers,
-      isVerified: true,
       status: { $in: ['available', 'in_process', 'approved'] },
       ...candidateMarketplaceEligibilityFilter(),
     }).select('-password');

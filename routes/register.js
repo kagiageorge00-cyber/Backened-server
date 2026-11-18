@@ -220,6 +220,20 @@ router.post("/", async (req, res) => {
       if (!p) return p;
       return String(p).replace(/[#\s\-()]/g, '').trim();
     };
+    const getPhoneVariants = (p) => {
+      const normalized = normalizePhone(p);
+      if (!normalized) return [];
+      const digits = normalized.replace(/\D/g, '');
+      const variants = new Set([normalized, digits]);
+      if (digits.startsWith('0')) {
+        variants.add(`254${digits.slice(1)}`);
+        variants.add(`+254${digits.slice(1)}`);
+      } else if (digits.startsWith('254')) {
+        variants.add(`0${digits.slice(3)}`);
+        variants.add(`+${digits}`);
+      }
+      return [...variants].filter(Boolean);
+    };
     phone = normalizePhone(phone);
 
     // (phone already normalized above for aliases)
@@ -250,7 +264,10 @@ router.post("/", async (req, res) => {
       ? await Candidate.findOne({ $or: candidateIdentifiers })
       : null;
     if (!candidate && phone) {
-      candidate = await Candidate.findOne({ phone });
+      const phoneVariants = getPhoneVariants(phone);
+      candidate = await Candidate.findOne({
+        $or: phoneVariants.map((value) => ({ phone: value })),
+      });
     }
     if (!candidate && email) {
       candidate = await Candidate.findOne({ email });

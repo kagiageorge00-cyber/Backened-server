@@ -58,7 +58,6 @@ describe('Marketplace routes', () => {
       religion: 'Christian',
     });
     expect(Candidate.find).toHaveBeenCalledWith({
-      isVerified: true,
       status: { $in: ['available', 'in_process', 'approved'] },
       ...candidateMarketplaceEligibilityFilter(),
     });
@@ -99,7 +98,6 @@ describe('Marketplace routes', () => {
     });
     expect(Candidate.findOne).toHaveBeenCalledWith({
       $or: [{ uniqueCode: 'CAND-2026-0102' }],
-      isVerified: true,
       status: { $in: ['available', 'in_process', 'approved'] },
       ...candidateMarketplaceEligibilityFilter(),
     });
@@ -133,15 +131,21 @@ describe('Marketplace routes', () => {
         { uniqueCode: '507f1f77bcf86cd799439011' },
         { _id: '507f1f77bcf86cd799439011' },
       ],
-      isVerified: true,
       status: { $in: ['available', 'in_process', 'approved'] },
       ...candidateMarketplaceEligibilityFilter(),
     });
   });
 
-  test('GET /api/marketplace/candidates/:candidateId does not expose an unverified candidate', async () => {
+  test('GET /api/marketplace/candidates/:candidateId returns a registered paid candidate while verification is pending', async () => {
     Candidate.findOne.mockReturnValue({
-      select: jest.fn().mockResolvedValue(null),
+      select: jest.fn().mockResolvedValue({
+        _id: 'cand_pending',
+        uniqueCode: 'CND-2026-0999',
+        fullName: 'Pending Candidate',
+        status: 'in_process',
+        isVerified: false,
+        paymentStatus: 'Paid',
+      }),
     });
 
     const app = express();
@@ -149,10 +153,34 @@ describe('Marketplace routes', () => {
 
     const res = await request(app).get('/api/marketplace/candidates/CND-2026-0999');
 
-    expect(res.status).toBe(404);
-    expect(res.body.success).toBe(false);
+    expect(res.status).toBe(200);
+    expect(res.body.data).toMatchObject({
+      candidateCode: 'CND-2026-0999',
+      fullName: 'Pending Candidate',
+      verified: false,
+    });
     expect(Candidate.findOne).toHaveBeenCalledWith({
       $or: [{ uniqueCode: 'CND-2026-0999' }],
+      status: { $in: ['available', 'in_process', 'approved'] },
+      ...candidateMarketplaceEligibilityFilter(),
+    });
+  });
+
+  test('verified filter still limits listing results to verified candidates', async () => {
+    Candidate.find.mockReturnValue({
+      sort: jest.fn().mockReturnThis(),
+      skip: jest.fn().mockReturnThis(),
+      limit: jest.fn().mockReturnThis(),
+      select: jest.fn().mockResolvedValue([]),
+    });
+
+    const app = express();
+    app.use('/api/marketplace', marketplaceRoutes);
+
+    const res = await request(app).get('/api/marketplace/candidates?verified=true');
+
+    expect(res.status).toBe(200);
+    expect(Candidate.find).toHaveBeenCalledWith({
       isVerified: true,
       status: { $in: ['available', 'in_process', 'approved'] },
       ...candidateMarketplaceEligibilityFilter(),

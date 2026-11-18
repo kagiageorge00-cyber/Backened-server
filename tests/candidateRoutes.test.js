@@ -106,8 +106,7 @@ describe('Candidate portal routes', () => {
       availabilityBadge: 'Verified',
     }));
     expect(Candidate.find).toHaveBeenCalledWith({
-      isVerified: true,
-      status: 'available',
+      status: { $in: ['available', 'in_process', 'approved'] },
       ...candidateMarketplaceEligibilityFilter(),
     });
   });
@@ -138,8 +137,7 @@ describe('Candidate portal routes', () => {
     }));
     expect(Candidate.findOne).toHaveBeenCalledWith({
       uniqueCode: 'CAND-2026-0004',
-      isVerified: true,
-      status: 'available',
+      status: { $in: ['available', 'in_process', 'approved'] },
       ...candidateMarketplaceEligibilityFilter(),
     });
   });

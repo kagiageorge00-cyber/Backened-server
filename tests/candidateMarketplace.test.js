@@ -74,4 +74,29 @@ describe('candidate marketplace scoring', () => {
     expect(profile.certificates).toEqual([]);
     expect(profile.employmentHistory).toEqual([]);
   });
+
+  test('preserves profile details from registration fields', () => {
+    const profile = buildCandidateMarketplaceProfile({
+      fullName: 'Teresiah Anzanzi',
+      dateOfBirth: '1994-11-02',
+      maritalStatus: 'Married',
+      numberOfChildren: 2,
+      educationalLevel: 'Diploma',
+      education: 'Diploma in Hospitality',
+      experience: '8 years',
+      documents: { certificates: ['Food Safety'] },
+    });
+
+    expect(profile).toMatchObject({
+      fullName: 'Teresiah Anzanzi',
+      dateOfBirth: '1994-11-02',
+      maritalStatus: 'Married',
+      numberOfChildren: 2,
+      educationLevel: 'Diploma',
+      yearsOfExperience: 8,
+      workExperience: [],
+      education: [],
+      certificates: ['Food Safety'],
+    });
+  });
 });

@@ -14,6 +14,23 @@ function normalizeExperience(value) {
   return match ? Number(match[1]) : 0;
 }
 
+function calculateAge(dateOfBirth) {
+  if (!dateOfBirth) return null;
+  const birthDate = new Date(dateOfBirth);
+  if (Number.isNaN(birthDate.getTime())) return null;
+
+  const today = new Date();
+  let age = today.getFullYear() - birthDate.getFullYear();
+  if (
+    today.getMonth() < birthDate.getMonth() ||
+    (today.getMonth() === birthDate.getMonth() &&
+      today.getDate() < birthDate.getDate())
+  ) {
+    age--;
+  }
+  return age >= 0 ? age : null;
+}
+
 function buildAvailabilityLabel(candidate) {
   const status = sanitizeText(candidate?.status, '').toLowerCase();
   const availability = sanitizeText(candidate?.availability, '').toLowerCase();
@@ -70,11 +87,17 @@ function buildCandidateMarketplaceProfile(candidate, employerRequirements = {}) 
   const videoUrl = sanitizeText(candidateObj.videoUrl || candidateObj.introductionVideoUrl || candidateObj.introVideoUrl || candidateObj.introVideo || '', '');
   const skills = Array.isArray(candidateObj.skills) ? candidateObj.skills : [];
   const languages = Array.isArray(candidateObj.languages) ? candidateObj.languages : [];
-  const workExperience = Array.isArray(candidateObj.workExperience) && candidateObj.workExperience.length
+  const workExperience = Array.isArray(candidateObj.workExperience)
     ? candidateObj.workExperience
-    : candidateObj.experience || [];
-  const education = candidateObj.education || [];
-  const certificates = Array.isArray(candidateObj.certificates) ? candidateObj.certificates : [];
+    : Array.isArray(candidateObj.employmentHistory)
+      ? candidateObj.employmentHistory
+      : [];
+  const education = Array.isArray(candidateObj.education) ? candidateObj.education : [];
+  const certificates = Array.isArray(candidateObj.certificates)
+    ? candidateObj.certificates
+    : Array.isArray(candidateObj.documents?.certificates)
+      ? candidateObj.documents.certificates
+      : [];
   const employmentHistory = Array.isArray(candidateObj.employmentHistory) ? candidateObj.employmentHistory : [];
   const photos = Array.isArray(candidateObj.photos) && candidateObj.photos.length
     ? candidateObj.photos
@@ -94,7 +117,14 @@ function buildCandidateMarketplaceProfile(candidate, employerRequirements = {}) 
     nationality: sanitizeText(candidateObj.nationality || candidateObj.country, ''),
     religion: sanitizeText(candidateObj.religion, ''),
     expectedSalary: sanitizeText(candidateObj.expectedSalary || 'Confidential', 'Confidential'),
-    age: candidateObj.dateOfBirth ? new Date().getFullYear() - new Date(candidateObj.dateOfBirth).getFullYear() : null,
+    age: candidateObj.age || calculateAge(candidateObj.dateOfBirth),
+    dateOfBirth: sanitizeText(candidateObj.dateOfBirth, ''),
+    maritalStatus: sanitizeText(candidateObj.maritalStatus, ''),
+    numberOfChildren: candidateObj.numberOfChildren ?? null,
+    educationLevel: sanitizeText(
+      candidateObj.educationalLevel || candidateObj.education,
+      '',
+    ),
     verificationBadge: verificationBadges[0],
     verificationBadges,
     availabilityStatus: availability,

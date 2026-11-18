@@ -138,9 +138,21 @@ function buildCandidateSearchCriteria(candidateId) {
   criteria.push(
     { candidateId },
     { uniqueCode: candidateId },
-    { phone: candidateId },
     { email: candidateId },
   );
+  const normalized = String(candidateId).replace(/[^+0-9]/g, '').trim();
+  const digits = normalized.replace(/\D/g, '');
+  const phoneVariants = new Set([normalized, digits]);
+  if (digits.startsWith('0')) {
+    phoneVariants.add(`254${digits.slice(1)}`);
+    phoneVariants.add(`+254${digits.slice(1)}`);
+  } else if (digits.startsWith('254')) {
+    phoneVariants.add(`0${digits.slice(3)}`);
+    phoneVariants.add(`+${digits}`);
+  }
+  for (const phone of phoneVariants) {
+    if (phone) criteria.push({ phone });
+  }
   return criteria;
 }
 

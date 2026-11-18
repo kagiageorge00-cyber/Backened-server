@@ -690,7 +690,19 @@ app.get('/api/candidate-form/data', async (req, res) => {
     const cleanedCandidateId = cleanupCandidateId(candidateId);
 
     let candidate;
-    if (phone) {
+    if (candidateId || cleanedCandidateId) {
+      const requestedId = cleanedCandidateId || candidateId;
+      const searchCriteria = [
+        { candidateId: requestedId },
+        { uniqueCode: requestedId },
+        { phone: requestedId },
+        { email: requestedId },
+      ];
+      if (mongoose.Types.ObjectId.isValid(requestedId)) {
+        searchCriteria.unshift({ _id: requestedId });
+      }
+      candidate = await CandidateModel.findOne({ $or: searchCriteria });
+    } else if (phone) {
       candidate = await CandidateModel.findOne({
         $or: [
           ...phoneVariants.map((value) => ({ phone: value })),
