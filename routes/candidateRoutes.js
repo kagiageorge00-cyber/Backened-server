@@ -7,10 +7,12 @@ const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const router = express.Router();
 
 const Candidate = require('../models/candidate');
+const Payment = require('../models/Payment');
 const { sendEmail } = require('../email');
 const { FRONTEND_URL } = require('../config');
 const { getCandidateDisplayName, getCandidateNameValue } = require('../utils/candidateDisplayName');
 const { candidateMarketplaceEligibilityFilter } = require('../utils/candidateMarketplaceEligibility');
+const { syncApprovedPaymentToCandidate } = require('../utils/candidatePaymentResolver');
 
 if (process.env.CLOUDINARY_URL) {
   cloudinary.config(process.env.CLOUDINARY_URL);
@@ -720,6 +722,8 @@ router.post('/form/submit', async (req, res) => {
 
       await candidate.save();
     }
+
+    await syncApprovedPaymentToCandidate(Candidate, Payment, candidate);
 
     if (candidate.email) {
       const confirmationLink = `${FRONTEND_URL}/candidate-form?phone=${encodeURIComponent(candidate.phone)}`;

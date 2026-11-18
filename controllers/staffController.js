@@ -1096,9 +1096,11 @@ async function login(req, res) {
     }
 
     const normalizedEmail = email.toString().trim().toLowerCase();
-    const accounts = await seedStaffDirectory();
     if (mongoose.connection.readyState === 1) {
-      const found = await Staff.findOne({ email: normalizedEmail });
+      const found = await Staff.findOne({
+        email: normalizedEmail,
+        isActive: { $ne: false },
+      }).collation({ locale: 'en', strength: 2 });
       if (!found) return res.status(401).json({ success: false, error: 'Invalid staff credentials' });
       const isMatch = await found.comparePassword(password);
       if (!isMatch) return res.status(401).json({ success: false, error: 'Invalid staff credentials' });
@@ -1108,6 +1110,7 @@ async function login(req, res) {
       return res.json({ success: true, token, staff });
     }
 
+    const accounts = await seedStaffDirectory();
     const match = accounts.find((item) => item.email?.toString().trim().toLowerCase() === normalizedEmail);
     if (!match) return res.status(401).json({ success: false, error: 'Invalid staff credentials' });
     if (match.password !== password) return res.status(401).json({ success: false, error: 'Invalid staff credentials' });

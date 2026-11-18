@@ -1,11 +1,5 @@
 jest.mock('../models/Payment', () => ({
-  findOne: jest.fn().mockResolvedValue({
-    userId: '254700000001',
-    amount: 1000,
-    title: 'Test registration payment',
-    intentId: 'INT_TEST_001',
-    status: 'completed',
-  }),
+  findOne: jest.fn().mockResolvedValue(null),
 }));
 
 jest.mock('../models/candidate', () => ({

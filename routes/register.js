@@ -7,6 +7,7 @@ const bcrypt = require("bcryptjs");
 const mongoose = require('mongoose');
 
 const Candidate = require("../models/candidate");
+const Payment = require('../models/Payment');
 const { FRONTEND_URL } = require("../config");
 const {
   notifyRegistrationSuccess,
@@ -14,6 +15,7 @@ const {
 } = require('../services/notificationservice');
 const { notifyCandidateRegistered } = require('../utils/adminNotificationHelper');
 const { resolvePublicCandidateId } = require('../utils/candidateIdentity');
+const { syncApprovedPaymentToCandidate } = require('../utils/candidatePaymentResolver');
 
 // ======================
 // 🔐 HELPERS
@@ -575,6 +577,8 @@ router.post("/", async (req, res) => {
         await candidate.save();
       }
     }
+
+    await syncApprovedPaymentToCandidate(Candidate, Payment, candidate);
 
     const candidateCode = candidate.uniqueCode || uniqueCode;
     const baseFrontendUrl = FRONTEND_URL || '';
