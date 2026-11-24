@@ -1,5 +1,6 @@
 const staffController = require('../controllers/staffController');
 const Job = require('../models/Job');
+const JobCommissionMetadata = require('../models/JobCommissionMetadata');
 
 describe('Staff marketplace job posting', () => {
   test('accepts the current staff form payload without required optional fields', async () => {
@@ -39,5 +40,25 @@ describe('Staff marketplace job posting', () => {
 
     const postedJob = res.json.mock.calls[0][0].data;
     await expect(new Job(postedJob).validate()).resolves.toBeUndefined();
+  });
+
+  test('keeps internal commissions outside public job documents', async () => {
+    expect(Job.schema.path('internalCommissionRate')).toBeUndefined();
+    expect(Job.schema.path('internalCommissionAmount')).toBeUndefined();
+    expect(
+      JobCommissionMetadata.schema.path('commissionRate').options.select,
+    ).toBe(false);
+    expect(
+      JobCommissionMetadata.schema.path('commissionAmount').options.select,
+    ).toBe(false);
+
+    await expect(
+      new JobCommissionMetadata({
+        jobId: 'JOB-2026-TEST01',
+        commissionRate: 20,
+        commissionAmount: 6200,
+        currency: 'KES',
+      }).validate(),
+    ).resolves.toBeUndefined();
   });
 });

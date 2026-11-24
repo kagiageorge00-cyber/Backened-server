@@ -5,6 +5,7 @@ const bcrypt = require('bcryptjs');
 const Staff = require('../models/Staff');
 const Agent = require('../models/Agent');
 const Job = require('../models/Job');
+const JobCommissionMetadata = require('../models/JobCommissionMetadata');
 const Employer = require('../models/Employer');
 const StaffConversation = require('../models/StaffConversation');
 const StaffMessage = require('../models/StaffMessage');
@@ -848,6 +849,24 @@ async function postMarketplaceJob(req, res) {
     const now = new Date();
     const jobId = `JOB-${now.getFullYear()}-${String(Date.now()).slice(-6)}`;
     const salaryValue = Number(req.body.salary) || 0;
+    const hasCommissionMetadata =
+      req.body.internalCommissionRate != null ||
+      req.body.internalCommissionAmount != null;
+    const internalCommissionRate = Number(req.body.internalCommissionRate);
+    const internalCommissionAmount = Number(req.body.internalCommissionAmount);
+    if (
+      hasCommissionMetadata &&
+      (!Number.isFinite(internalCommissionRate) ||
+        internalCommissionRate < 0 ||
+        internalCommissionRate > 100 ||
+        !Number.isFinite(internalCommissionAmount) ||
+        internalCommissionAmount < 0)
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: 'Internal commission rate and amount must be valid non-negative numbers.',
+      });
+    }
     const requirements = typeof req.body.requirements === 'string'
       ? req.body.requirements
       : '';
@@ -911,10 +930,40 @@ async function postMarketplaceJob(req, res) {
     };
 
     if (mongoose.connection.readyState === 1) {
-      const createdJob = await Job.create(jobPayload);
+      let createdJob;
+      if (hasCommissionMetadata) {
+        const session = await mongoose.startSession();
+        try {
+          await session.withTransaction(async () => {
+            [createdJob] = await Job.create([jobPayload], { session });
+            await JobCommissionMetadata.create(
+              [
+                {
+                  jobId: createdJob.jobId,
+                  commissionRate: internalCommissionRate,
+                  commissionAmount: internalCommissionAmount,
+                  currency: jobPayload.currency,
+                },
+              ],
+              { session },
+            );
+          });
+        } finally {
+          await session.endSession();
+        }
+      } else {
+        createdJob = await Job.create(jobPayload);
+      }
       const responseJob = createdJob.toObject();
       responseJob.shareUrl = `${baseUrl}/jobs/${createdJob.jobId}`;
       return res.status(201).json({ success: true, data: responseJob });
+    }
+
+    if (hasCommissionMetadata) {
+      return res.status(503).json({
+        success: false,
+        error: 'A database connection is required to store commission metadata.',
+      });
     }
 
     await ensureDemoData();
@@ -944,7 +993,27 @@ async function listJobs(req, res) {
       const jobs = await Job.find(filter)
         .sort({ createdAt: -1 })
         .limit(100);
-      return res.json({ success: true, data: jobs });
+      const commissionRecords = await JobCommissionMetadata.find({
+        jobId: { $in: jobs.map((job) => job.jobId) },
+      })
+        .select('+commissionRate +commissionAmount')
+        .lean();
+      const commissionsByJobId = new Map(
+        commissionRecords.map((record) => [record.jobId, record]),
+      );
+      const data = jobs.map((job) => {
+        const value = job.toObject();
+        const commission = commissionsByJobId.get(value.jobId);
+        if (commission) {
+          value.internalCommission = {
+            rate: commission.commissionRate,
+            amount: commission.commissionAmount,
+            currency: commission.currency,
+          };
+        }
+        return value;
+      });
+      return res.json({ success: true, data });
     }
 
     await ensureDemoData();
