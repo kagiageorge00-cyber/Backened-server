@@ -1,3 +1,5 @@
+const genericNameValues = new Set(['candidate', 'candidates', 'n/a', 'na']);
+
 function isPhoneLike(value) {
   if (typeof value !== 'string') return false;
   const digits = value.replace(/[^0-9]/g, '');
@@ -13,12 +15,23 @@ function normalizeNameValue(value) {
   const trimmed = value.trim();
   if (trimmed.length === 0) return '';
   if (isPhoneLike(trimmed) || isEmailLike(trimmed)) return '';
+  if (genericNameValues.has(trimmed.toLowerCase())) return '';
   return trimmed;
 }
 
 function getCandidateNameValue(candidate) {
-  const normalized = normalizeNameValue(candidate?.fullName) || normalizeNameValue(candidate?.name);
-  return normalized || null;
+  const firstLastName = [candidate?.firstName || candidate?.first_name, candidate?.lastName || candidate?.last_name]
+    .filter((part) => typeof part === 'string' && part.trim())
+    .join(' ');
+  const candidates = [
+    candidate?.fullName,
+    candidate?.name,
+    candidate?.candidateName,
+    candidate?.candidate_name,
+    candidate?.full_name,
+    firstLastName,
+  ];
+  return candidates.map(normalizeNameValue).find(Boolean) || null;
 }
 
 function getCandidateDisplayName(candidate) {
@@ -27,7 +40,9 @@ function getCandidateDisplayName(candidate) {
     return directName;
   }
 
-  const fallback = normalizeNameValue(candidate?.email || candidate?.phone || candidate?.uniqueCode || candidate?.candidateId);
+  const fallback = [candidate?.phone, candidate?.uniqueCode, candidate?.candidateId]
+    .map((value) => typeof value === 'string' ? value.trim() : '')
+    .find((value) => value && !genericNameValues.has(value.toLowerCase()));
   if (fallback) {
     return fallback;
   }
@@ -36,7 +51,7 @@ function getCandidateDisplayName(candidate) {
 }
 
 function getCandidatePortalGreetingName(candidate) {
-  const realName = normalizeNameValue(candidate?.fullName || candidate?.name);
+  const realName = getCandidateNameValue(candidate);
   if (!realName) {
     return 'Candidate';
   }

@@ -63,6 +63,33 @@ describe('Marketplace routes', () => {
     });
   });
 
+  test('marketplace prefers the submitted name when fullName is a generic placeholder', async () => {
+    Candidate.find.mockReturnValue({
+      skip: jest.fn().mockReturnThis(),
+      limit: jest.fn().mockReturnThis(),
+      select: jest.fn().mockResolvedValue([
+        {
+          _id: 'candidate-name-fallback',
+          fullName: 'Candidate',
+          name: 'Ruth Wanjiku',
+          status: 'available',
+          isVerified: true,
+        },
+      ]),
+    });
+
+    const app = express();
+    app.use('/api/marketplace', marketplaceRoutes);
+
+    const response = await request(app).get('/api/marketplace/candidates');
+
+    expect(response.status).toBe(200);
+    expect(response.body.data[0]).toMatchObject({
+      fullName: 'Ruth Wanjiku',
+      name: 'Ruth Wanjiku',
+    });
+  });
+
   test('GET /api/marketplace/candidates/:candidateId returns a candidate card with sanitized name', async () => {
     const mockFindOneQuery = {
       select: jest.fn().mockResolvedValue({

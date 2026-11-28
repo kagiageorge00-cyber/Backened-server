@@ -46,16 +46,6 @@ function getPhoneValues(values) {
 }
 
 async function findCandidateForPayment(Candidate, payment) {
-  const phoneValues = getPhoneValues([
-    payment?.phone,
-    payment?.metadata?.phone,
-    payment?.userId,
-  ]);
-  for (const phone of phoneValues) {
-    const candidate = await Candidate.findOne({ phone });
-    if (candidate) return candidate;
-  }
-
   const identifiers = uniqueValues([
     payment?.candidateId,
     payment?.metadata?.candidateId,
@@ -69,6 +59,16 @@ async function findCandidateForPayment(Candidate, payment) {
     const candidate = await Candidate.findOne({
       $or: [{ candidateId: identifier }, { uniqueCode: identifier }],
     });
+    if (candidate) return candidate;
+  }
+
+  const phoneValues = getPhoneValues([
+    payment?.phone,
+    payment?.metadata?.phone,
+    payment?.userId,
+  ]);
+  for (const phone of phoneValues) {
+    const candidate = await Candidate.findOne({ phone });
     if (candidate) return candidate;
   }
 
@@ -91,32 +91,38 @@ async function syncApprovedPaymentToCandidate(Candidate, Payment, candidate) {
       ? query.sort({ approvedAt: -1, createdAt: -1 })
       : query;
   };
-  let payment = await findLatestPayment({
-    status: { $in: ['approved', 'paid', 'completed'] },
-    $or: [
-      { phone: { $in: phoneValues } },
-      { 'metadata.phone': { $in: phoneValues } },
-    ],
-  });
+  const identifiers = uniqueValues([
+    candidate._id?.toString(),
+    candidate.candidateId,
+    candidate.uniqueCode,
+  ]);
+  let payment = null;
+  if (identifiers.length) {
+    payment = await findLatestPayment({
+      status: { $in: ['approved', 'paid', 'completed'] },
+      $or: [
+        { candidateId: { $in: identifiers } },
+        { 'metadata.candidateId': { $in: identifiers } },
+      ],
+    });
+  }
 
   if (!payment) {
-    const identifiers = uniqueValues([
-      candidate._id?.toString(),
-      candidate.candidateId,
-      candidate.uniqueCode,
-    ]);
-    if (identifiers.length) {
-      payment = await findLatestPayment({
-        status: { $in: ['approved', 'paid', 'completed'] },
-        $or: [
-          { candidateId: { $in: identifiers } },
-          { 'metadata.candidateId': { $in: identifiers } },
-        ],
-      });
-    }
+    payment = await findLatestPayment({
+      status: { $in: ['approved', 'paid', 'completed'] },
+      $or: [
+        { phone: { $in: phoneValues } },
+        { 'metadata.phone': { $in: phoneValues } },
+      ],
+    });
   }
 
   if (!payment) return false;
+
+  const resolvedCandidate = await findCandidateForPayment(Candidate, payment);
+  if (!resolvedCandidate || String(resolvedCandidate._id) !== String(candidate._id)) {
+    return false;
+  }
 
   candidate.paymentStatus = 'Paid';
   candidate.isVerified = true;

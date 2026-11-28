@@ -1,5 +1,7 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const Candidate = require('../models/candidate');
+const { getCandidateNameValue } = require('../utils/candidateDisplayName');
 
 const router = express.Router();
 
@@ -118,8 +120,6 @@ router.post('/', async (req, res) => {
   try {
     const {
       candidateId,
-      fullName,
-      name,
       email,
       phone,
       country,
@@ -168,12 +168,18 @@ router.post('/', async (req, res) => {
       return sendError(res, 400, 'phone is required');
     }
 
-    const candidateLookup = [{ phone }];
-    if (email) candidateLookup.push({ email });
+    const submittedName = getCandidateNameValue(req.body);
+    let candidate = null;
     if (candidateId) {
-      candidateLookup.push({ candidateId }, { uniqueCode: candidateId });
+      const candidateIdentifiers = [{ candidateId }, { uniqueCode: candidateId }];
+      if (mongoose.Types.ObjectId.isValid(candidateId)) {
+        candidateIdentifiers.unshift({ _id: candidateId });
+      }
+      candidate = await Candidate.findOne({ $or: candidateIdentifiers });
     }
-    let candidate = await Candidate.findOne({ $or: candidateLookup });
+    if (!candidate) candidate = await Candidate.findOne({ phone });
+    if (!candidate && email) candidate = await Candidate.findOne({ email });
+    const fullName = submittedName || getCandidateNameValue(candidate) || '';
 
     const normalizedDestination = destinationCountry || preferredDestination || preferredDestinations || candidate?.destinationCountry || '';
     const normalizedDestinationPreferences = Array.isArray(destinationPreference)
@@ -206,8 +212,8 @@ router.post('/', async (req, res) => {
     };
 
     const payload = {
-      fullName: resolveFieldValue(fullName, resolveFieldValue(name, candidate?.fullName || '')),
-      name: resolveFieldValue(name, resolveFieldValue(fullName, candidate?.name || '')),
+      fullName,
+      name: fullName,
       email: resolveFieldValue(email, candidate?.email || ''),
       phone,
       applicationType: resolveFieldValue(applicationType, candidate?.applicationType || ''),

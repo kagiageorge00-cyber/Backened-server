@@ -218,6 +218,49 @@ describe('User Registration', () => {
     });
   });
 
+  it('restores a real stored name when the full name is a generic placeholder', async () => {
+    const existingCandidate = {
+      _id: 'candidate-with-name-placeholder',
+      candidateId: 'candidate-with-name-placeholder',
+      fullName: 'Candidate',
+      name: 'Amina Wanjiku',
+      email: 'amina@example.com',
+      phone: '254700000009',
+      photoUrl: 'https://example.com/photo.jpg',
+      videoUrl: 'https://example.com/video.mp4',
+      passportUrl: 'https://example.com/passport.pdf',
+      medicalUrl: 'https://example.com/medical.pdf',
+      goodConductUrl: 'https://example.com/conduct.pdf',
+      uniqueCode: 'CAND-2026-7777',
+      documents: {},
+      skills: [],
+      languages: [],
+      isVerified: false,
+      status: 'in_process',
+      paymentStatus: 'Paid',
+      save: jest.fn(async () => {}),
+      toObject() {
+        return { ...this };
+      },
+    };
+    Candidate.findOne.mockResolvedValueOnce(existingCandidate);
+
+    const response = await request(app)
+      .post('/api/register')
+      .send({
+        candidateId: 'candidate-with-name-placeholder',
+        photoUrl: existingCandidate.photoUrl,
+        videoUrl: existingCandidate.videoUrl,
+        passportUrl: existingCandidate.passportUrl,
+        medicalUrl: existingCandidate.medicalUrl,
+        conductUrl: existingCandidate.goodConductUrl,
+      });
+
+    expect(response.statusCode).toBe(201);
+    expect(existingCandidate.fullName).toBe('Amina Wanjiku');
+    expect(existingCandidate.name).toBe('Amina Wanjiku');
+  });
+
   it('should register a candidate with a phone number and no email', async () => {
     const res = await request(app)
       .post('/api/register')

@@ -16,6 +16,7 @@ const {
 const { notifyCandidateRegistered } = require('../utils/adminNotificationHelper');
 const { resolvePublicCandidateId } = require('../utils/candidateIdentity');
 const { syncApprovedPaymentToCandidate } = require('../utils/candidatePaymentResolver');
+const { getCandidateNameValue } = require('../utils/candidateDisplayName');
 
 // ======================
 // 🔐 HELPERS
@@ -208,7 +209,7 @@ router.post("/", async (req, res) => {
 
     // Accept common alias names from varied frontends
     const body = req.body || {};
-    fullName = fullName || body.name || body.full_name || body.fullName;
+    fullName = getCandidateNameValue(body);
     email = email || body.emailAddress || body.email_address || body.email;
     country = country || body.country || body.countryName || body.country_name;
     nationality = nationality || body.nationality || body.nationalityName || body.nationality_name;
@@ -277,7 +278,7 @@ router.post("/", async (req, res) => {
 
     phone = phone || normalizePhone(candidate?.phone);
     email = email || candidate?.email;
-    fullName = fullName || candidate?.fullName || candidate?.name;
+    fullName = fullName || getCandidateNameValue(candidate);
 
     // ======================
     // VALIDATION (allow existing candidate's stored docs)

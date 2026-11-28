@@ -494,7 +494,6 @@ router.post('/form/submit', async (req, res) => {
     const {
       candidateId,
       phone,
-      fullName,
       email,
       country,
       nationality,
@@ -526,6 +525,7 @@ router.post('/form/submit', async (req, res) => {
       additionalUrl,
       paymentId,
     } = req.body;
+    const fullName = getCandidateNameValue(req.body || {});
 
     const requiredFields = [
       { key: 'fullName', value: fullName },
